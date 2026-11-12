@@ -6,7 +6,7 @@ module Harbor
   class RunEvent < ApplicationRecord
     self.table_name = "run_events"
 
-    belongs_to :run, class_name: Harbor.config.run_class, inverse_of: :run_events
+    belongs_to :run, class_name: Harbor.class_name_for(:run_class), inverse_of: :run_events
 
     scope :ordered, -> { order(:seq) }
     scope :tool_uses, -> { where(event_type: "assistant").where.not(tool_name: nil) }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+- **Fix:** associations to a class the host names (`run_event.run`,
+  `webhook_event.run`, `model_choice.model_alias`) returned Harbor's own class instead
+  of a host's subclass with the same short name (`Run` was found as `Harbor::Run`).
+  They now use the configured class.
+
 ## 0.6.0
 
 - **`Harbor::ModelProvider`, `Harbor::ModelAlias` and `Harbor::ModelChoice`**: the

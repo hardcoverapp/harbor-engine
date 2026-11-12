@@ -24,8 +24,8 @@ module Harbor
     # A run an agent delegated (one agent spawning another) is a child Run. The
     # parent's actual cost already includes it (the CLI reports session
     # totals), so a child carries an estimate as the breakdown, not an addend.
-    belongs_to :parent_run, class_name: Harbor.config.run_class, optional: true, inverse_of: :child_runs
-    has_many :child_runs, class_name: Harbor.config.run_class, foreign_key: :parent_run_id,
+    belongs_to :parent_run, class_name: Harbor.class_name_for(:run_class), optional: true, inverse_of: :child_runs
+    has_many :child_runs, class_name: Harbor.class_name_for(:run_class), foreign_key: :parent_run_id,
                           inverse_of: :parent_run, dependent: :nullify
 
     enum :status, STATUSES.index_with(&:itself)

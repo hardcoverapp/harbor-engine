@@ -8,7 +8,7 @@ module Harbor
 
     STATUSES = %w[received dispatched ignored error].freeze
 
-    belongs_to :run, class_name: Harbor.config.run_class, optional: true
+    belongs_to :run, class_name: Harbor.class_name_for(:run_class), optional: true
 
     validates :status, inclusion: { in: STATUSES }
 

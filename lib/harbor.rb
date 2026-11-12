@@ -32,6 +32,11 @@ module Harbor
 
     def model_alias_class = config.model_alias_class.constantize
 
+    # A configured class's name, for an association's `class_name:`. Absolute:
+    # Active Record looks a relative name up inside Harbor first, where a
+    # host's "Run" would be found as Harbor::Run.
+    def class_name_for(setting) = "::#{config.public_send(setting).to_s.delete_prefix('::')}"
+
     # Tests only: start from the defaults again.
     def reset_config!
       @config = nil

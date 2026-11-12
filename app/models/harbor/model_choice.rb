@@ -6,7 +6,7 @@ module Harbor
 
     EFFORTS = %w[none minimal low medium high xhigh max ultra].freeze
 
-    belongs_to :model_alias, class_name: Harbor.config.model_alias_class, inverse_of: :model_choices
+    belongs_to :model_alias, class_name: Harbor.class_name_for(:model_alias_class), inverse_of: :model_choices
     belongs_to :model_provider, class_name: "Harbor::ModelProvider"
 
     validates :model, presence: true
