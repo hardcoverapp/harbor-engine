@@ -1,0 +1,6 @@
+<%# Every page of Harbor's section renders this first, Harbor's own and the
+    host's alike. It hands the side nav to the layout (as `:harbor_nav`), which
+    draws it beside the page; `harbor_section?` is then true. %>
+<% unless content_for?(:harbor_nav) %>
+  <% content_for :harbor_nav do %><%= render "harbor/shared/side_nav" %><% end %>
+<% end %>

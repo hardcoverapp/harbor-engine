@@ -1,4 +1,5 @@
 require "harbor/version"
+require "harbor/icons"
 require "harbor/nav"
 require "harbor/nav_helper"
 require "harbor/pages"

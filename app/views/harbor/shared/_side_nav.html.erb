@@ -1,0 +1,20 @@
+<%# The section's pages: grouped, each with an icon, collapsible to a rail of
+    icons. Colours and widths are the --harbor-nav-* variables. locals: title
+    (the word above the list; "Factory" by default). %>
+<nav aria-label="<%= local_assigns.fetch(:title, "Factory") %>" class="harbor-nav" data-harbor-nav data-controller="harbor--side-nav">
+  <div class="harbor-nav-head">
+    <span class="harbor-nav-title harbor-nav-text"><%= local_assigns.fetch(:title, "Factory") %></span>
+    <button type="button" class="harbor-nav-toggle" data-harbor--side-nav-target="toggle" data-action="harbor--side-nav#toggle"
+            aria-expanded="true" aria-label="Collapse the menu" title="Collapse the menu"><%= harbor_icon(:collapse) %></button>
+  </div>
+  <% harbor_nav_groups.each do |group| %>
+    <div class="harbor-nav-group" data-nav-group="<%= group.key %>">
+      <% if group.heading %><div class="harbor-nav-heading harbor-nav-text"><%= group.heading %></div><% end %>
+      <% group.links.each do |link| %>
+        <%= link_to link.path, title: link.label, class: "harbor-nav-item", aria: { current: (link.active ? "page" : nil) } do %>
+          <%= harbor_icon(link.icon) %><span class="harbor-nav-text"><%= link.label %></span>
+        <% end %>
+      <% end %>
+    </div>
+  <% end %>
+</nav>

@@ -1,3 +1,5 @@
+require "rails/engine"
+
 module Harbor
   class Engine < ::Rails::Engine
     isolate_namespace Harbor
@@ -13,6 +15,21 @@ module Harbor
       config.paths["db/migrate"].expanded.each do |path|
         host_paths << path unless host_paths.expanded.include?(path)
       end
+    end
+
+    # Harbor's Stimulus controllers, for a host on importmap-rails (the Rails
+    # default). They are pinned under controllers/harbor/, so a host that
+    # eager-loads its controllers registers them as harbor--side-nav and so on
+    # with no line of its own.
+    initializer "harbor.assets" do |app|
+      app.config.assets.paths << root.join("app/javascript") if app.config.respond_to?(:assets)
+    end
+
+    initializer "harbor.importmap", before: "importmap" do |app|
+      next unless app.config.respond_to?(:importmap)
+
+      app.config.importmap.paths << root.join("config/importmap.rb")
+      app.config.importmap.cache_sweepers << root.join("app/javascript")
     end
 
     initializer "harbor.nav_helper" do

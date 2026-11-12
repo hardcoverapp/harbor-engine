@@ -1,6 +1,91 @@
-/* Harbor's entry point for a host that builds its CSS with tailwindcss-rails:
-   it makes Tailwind read Harbor's views, so a utility class used only here is
-   still generated. tailwindcss-rails finds this file by its path
+/* Harbor's entry point for a host that builds its CSS with tailwindcss-rails.
+   tailwindcss-rails finds this file by its path
    (app/assets/tailwind/<engine name>/engine.css) and writes
-   app/assets/builds/tailwind/harbor.css in the host; the host imports that. */
+   app/assets/builds/tailwind/harbor.css in the host; the host imports that
+   from its own Tailwind file. It does two things:
+
+   1. makes Tailwind read Harbor's views, so a utility class used only here is
+      still generated;
+   2. carries Harbor's own styles: the section's shell, the side nav, tabs. */
 @source "../../../views";
+
+/* ── Theme ────────────────────────────────────────────────────────────────
+   Every colour and size of the side nav. A host restyles it by setting any of
+   these after this file is imported:
+
+     :root { --harbor-nav-bg: #1F2430; --harbor-nav-text: #B8C0CC; }       */
+:root {
+  /* The panel */
+  --harbor-nav-bg: #F1F0EC;
+  --harbor-nav-border: #E3E1DB;                 /* the line between it and the page */
+
+  /* Its contents */
+  --harbor-nav-text: #6B6A66;                   /* a page that isn't the current one */
+  --harbor-nav-text-hover: #111111;
+  --harbor-nav-heading: #9A9892;                /* "Flows", "Activity", … */
+  --harbor-nav-hover-bg: rgba(17, 17, 17, .05);
+
+  /* The current page */
+  --harbor-nav-active-bg: #FFFFFF;
+  --harbor-nav-active-text: #111111;
+  --harbor-nav-active-ring: rgba(17, 17, 17, .08);
+
+  /* Sizes: open, as a rail of icons, and how far down it starts (the height
+     of the host's own top bar, if that bar stays at the top of the window) */
+  --harbor-nav-width: 13.5rem;
+  --harbor-nav-rail-width: 3.5rem;
+  --harbor-nav-top: 0px;
+}
+
+/* ── The section's shell ──────────────────────────────────────────────────
+   <main class="harbor-shell">
+     <aside class="harbor-aside">side nav</aside>
+     <div class="harbor-page">the page</div>
+   </main>
+   Below 768px the side nav is hidden: the host's own mobile menu lists the
+   pages (harbor_nav_groups). */
+.harbor-aside { display: none; }
+.harbor-page { min-width: 0; }
+@media (min-width: 768px) {
+  .harbor-shell { display: flex; align-items: flex-start; }
+  .harbor-page { flex: 1 1 0%; }
+  .harbor-aside {
+    display: block; flex: none; box-sizing: border-box;
+    width: var(--harbor-nav-width); padding: 1.25rem .75rem 2rem; transition: width .15s ease;
+    position: sticky; top: var(--harbor-nav-top); height: calc(100dvh - var(--harbor-nav-top));
+    overflow-y: auto; overscroll-behavior: contain;
+    background: var(--harbor-nav-bg); border-right: 1px solid var(--harbor-nav-border);
+  }
+}
+
+/* ── The side nav ─────────────────────────────────────────────────────── */
+.harbor-nav-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .5rem; }
+.harbor-nav-title { padding-left: .625rem; font-size: .75rem; letter-spacing: .05em; text-transform: uppercase; color: var(--harbor-nav-heading); }
+.harbor-nav-toggle { display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: .5rem; cursor: pointer;
+  color: var(--harbor-nav-text); background: transparent; border: 0; }
+.harbor-nav-group + .harbor-nav-group { margin-top: .75rem; }
+.harbor-nav-heading { padding: 0 0 .25rem .625rem; font-size: .75rem; color: var(--harbor-nav-heading); }
+.harbor-nav-item { display: flex; align-items: center; gap: .625rem; padding: .375rem .625rem; border-radius: .5rem;
+  font-size: .875rem; line-height: 1.25rem; text-decoration: none; color: var(--harbor-nav-text); transition: color .15s, background-color .15s; }
+.harbor-nav-item .harbor-icon { flex: none; }
+.harbor-nav-item .harbor-nav-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.harbor-nav-item:hover, .harbor-nav-toggle:hover { color: var(--harbor-nav-text-hover); background: var(--harbor-nav-hover-bg); }
+.harbor-nav-item[aria-current="page"] {
+  color: var(--harbor-nav-active-text); background: var(--harbor-nav-active-bg); font-weight: 500;
+  box-shadow: 0 0 0 1px var(--harbor-nav-active-ring), 0 1px 2px rgba(17, 17, 17, .04);
+}
+
+/* Collapsed to a rail of icons (harbor--side-nav; harbor_nav_state_tag). */
+html[data-harbor-nav-state="collapsed"] .harbor-aside { width: var(--harbor-nav-rail-width); padding-left: .5rem; padding-right: .5rem; }
+html[data-harbor-nav-state="collapsed"] .harbor-nav-text { display: none; }
+html[data-harbor-nav-state="collapsed"] .harbor-nav-head { justify-content: center; }
+html[data-harbor-nav-state="collapsed"] .harbor-nav-toggle svg { transform: rotate(180deg); }
+html[data-harbor-nav-state="collapsed"] .harbor-nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+html[data-harbor-nav-state="collapsed"] .harbor-nav-group + .harbor-nav-group { margin-top: .5rem; padding-top: .5rem; border-top: 1px solid var(--harbor-nav-border); }
+
+/* ── A page's own tabs ────────────────────────────────────────────────── */
+.harbor-tabs { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 2rem; border-bottom: 1px solid var(--harbor-nav-border); overflow-x: auto; }
+.harbor-tab { padding-bottom: .625rem; margin-bottom: -1px; font-size: .875rem; white-space: nowrap; text-decoration: none;
+  color: var(--harbor-nav-text); border-bottom: 2px solid transparent; transition: color .15s; }
+.harbor-tab:hover { color: var(--harbor-nav-text-hover); }
+.harbor-tab[aria-current="page"] { color: var(--harbor-nav-active-text); border-bottom-color: var(--harbor-nav-active-text); font-weight: 500; }

@@ -1,9 +1,0 @@
-<%# Tabs above every page of the section: the same list as the menu
-    (Harbor.nav), as underline tabs. %>
-<div class="flex flex-nowrap items-center gap-6 overflow-x-auto overflow-y-hidden border-b border-hairline mb-8">
-  <% harbor_nav_links.each do |link| %>
-    <%= link_to link.label, link.path,
-          class: "shrink-0 pb-2.5 text-sm whitespace-nowrap border-b-2 transition-colors duration-200 " +
-                 (link.active ? "border-ink text-ink font-medium" : "border-transparent text-soft hover:text-ink") %>
-  <% end %>
-</div>

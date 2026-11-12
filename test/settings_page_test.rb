@@ -22,7 +22,8 @@ class HarborSettingsPageTest < ActionDispatch::IntegrationTest
     assert_select "[data-setting='workflows_enabled'] [data-value]", text: /Off/
     assert_select "[data-setting='workflows_enabled'] [data-source]", text: /Default/
     assert_select "[data-harbor-menu] a.current", text: "Settings"
-    assert_select "div.border-b.mb-8 a.font-medium", text: "Settings"
+    assert_select "main.harbor-shell > aside.harbor-aside [data-harbor-nav] a[aria-current=page]", text: "Settings"
+    assert_select "main.harbor-shell > div.harbor-page h1", text: "Settings"
   end
 
   test "the host's layout links to its own pages by bare route helper on a Harbor page" do

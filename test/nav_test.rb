@@ -22,13 +22,14 @@ class HarborNavTest < ActiveSupport::TestCase
 
   test "starts with Harbor's pages, Overview first" do
     assert_equal "Overview", @nav.labels.first
-    assert_equal %w[Overview Velocity Automations Workflows], @nav.labels.first(4)
+    assert_equal %w[Overview Velocity Workflows Automations], @nav.labels.first(4)
     assert_equal "Settings", @nav.labels.last
   end
 
   test "the host adds a page after a named one" do
     @nav.add "Database", :databases_path, after: "Automations"
-    assert_equal %w[Automations Database Workflows], @nav.labels[2, 3]
+    assert_equal %w[Workflows Automations Database], @nav.labels[2, 3]
+    assert_equal :flows, @nav.items.find { |item| item.label == "Database" }.group, "next to a page means in its group"
   end
 
   test "before: places a page ahead, and no anchor appends" do
@@ -78,7 +79,7 @@ class HarborNavTest < ActiveSupport::TestCase
   test "an engine-scoped item resolves through the engine's routes" do
     assert_equal :harbor, @nav.items.find { |item| item.label == "Settings" }.scope
     @nav.add "Audit", :audit_path, scope: :harbor
-    assert_equal "/audit", @nav.links(View.new("/")).last.path
+    assert_equal "/audit", @nav.links(View.new("/")).find { |link| link.label == "Audit" }.path
   end
 
   test "a page switched off is left out" do
@@ -95,6 +96,52 @@ class HarborNavTest < ActiveSupport::TestCase
     @nav.add "Audit", :audit_path, key: :audit
     assert Harbor::Settings.declared?("page_audit")
     assert_equal :audit, @nav.items.last.key
+  end
+
+  def groups(nav, path = "/", missing = [])
+    nav.groups(View.new(path, missing)).map { |group| [ group.key, group.heading, group.links.map(&:label) ] }
+  end
+
+  test "pages are grouped under headings, in Harbor's order" do
+    assert_equal [
+      [ :overview, nil, %w[Overview Velocity] ], [ :flows, "Flows", %w[Workflows Automations] ],
+      [ :activity, "Activity", %w[Runs Webhooks] ], [ :agents, "Agents", %w[Agents Models] ],
+      [ :infrastructure, "Infrastructure", %w[Runtimes Workspaces] ],
+      [ :quality, "Quality", [ "Review policy", "Scorers", "Proposals" ] ], [ :settings, nil, %w[Settings] ]
+    ], groups(@nav)
+    assert_equal @nav.groups(View.new("/")).flat_map(&:links).map(&:label), @nav.links(View.new("/")).map(&:label)
+  end
+
+  test "a host's page joins the group it names" do
+    @nav.add "Database", :databases_path, group: :infrastructure, icon: :database
+    infrastructure = groups(@nav).find { |key, _| key == :infrastructure }
+    assert_equal %w[Runtimes Workspaces Database], infrastructure.last
+    assert_equal :database, @nav.groups(View.new("/")).flat_map(&:links).find { |link| link.label == "Database" }.icon
+  end
+
+  test "a group the host names itself comes after Harbor's and before Settings; a page with none goes in More" do
+    @nav.add "Invoices", :invoices_path, group: :billing
+    @nav.add "Audit", :audit_path
+    keys = groups(@nav).map(&:first)
+    assert_equal %i[quality billing more settings], keys.last(4)
+    assert_equal "Billing", groups(@nav).find { |key, _| key == :billing }[1]
+  end
+
+  test "a group with no page to show is left out, heading and all" do
+    missing = %i[reviews_path scorers_path improvement_proposals_path]
+    assert_not_includes groups(@nav, "/", missing).map(&:first), :quality
+  end
+
+  test "Workflows is current on its runs pages, which sit outside its path" do
+    assert_equal [ "Workflows" ], @nav.links(View.new("/workflow_runs/76")).select(&:active).map(&:label)
+  end
+
+  test "every page of the menu has an icon of its own" do
+    icons = @nav.items.map(&:icon)
+    assert_equal icons.size, icons.uniq.size
+    icons.each { |icon| assert Harbor::Icons::PATHS.key?(icon), "no icon named #{icon}" }
+    assert_equal Harbor::Icons::PATHS[:page], Harbor::Icons.markup(:nope)
+    assert_equal "<circle/>", Harbor::Icons.markup("<circle/>")
   end
 
   test "items is a copy" do

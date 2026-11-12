@@ -22,7 +22,7 @@ RubyGems yet; add it from this repository, pinned to a release tag:
 
 ```ruby
 # Gemfile
-gem "harbor-engine", github: "hardcoverapp/harbor-engine", tag: "v0.1.0"
+gem "harbor-engine", github: "hardcoverapp/harbor-engine", tag: "v0.2.0"
 ```
 
 ```bash
@@ -74,50 +74,120 @@ Two things the controller and its layout need:
   `main_app.login_path`, not a bare `login_path`. Links in the layout need no
   change.
 
-### 5. Show the menu
+### 5. Draw the section
 
-`Harbor.nav` is the one list of Harbor's pages. Render it wherever the host's
-navigation lives:
+Harbor draws its pages inside a shell: a side nav down the left, the page
+beside it. The layout is the host's, so the host adds three things to it.
+
+In `<head>`, so a collapsed side nav doesn't open and snap shut on every page:
 
 ```erb
-<%# app/views/layouts/application.html.erb %>
-<% harbor_nav_links.each do |link| %>
-  <%= link_to link.label, link.path, class: ("current" if link.active) %>
+<%= harbor_nav_state_tag %>
+```
+
+Around the page, the shell (only on pages of Harbor's section):
+
+```erb
+<% if harbor_section? %>
+  <main class="harbor-shell">
+    <aside class="harbor-aside"><%= yield :harbor_nav %></aside>
+    <div class="harbor-page"><%= yield %></div>
+  </main>
+<% else %>
+  <main><%= yield %></main>
 <% end %>
 ```
 
-Only entries whose page exists are listed, so today that is Settings plus
-anything the host adds:
+And, if the host has a menu of its own, Harbor's pages in it:
+
+```erb
+<% harbor_nav_groups.each do |group| %>
+  <%= group.heading %>
+  <% group.links.each do |link| %>
+    <%= link_to link.path do %><%= harbor_icon(link.icon) %> <%= link.label %><% end %>
+  <% end %>
+<% end %>
+```
+
+The side nav lists only the pages that exist in the host, in groups (Flows,
+Activity, Agents, Infrastructure, Quality), each with an icon. It collapses to
+a rail of icons and remembers that in the browser. Below 768px it is hidden;
+list the pages in the host's own mobile menu.
+
+A page of the host's joins the section by rendering the side nav first, and
+the menu by being added to it:
+
+```erb
+<%= render "harbor/shared/section_nav" %>
+```
 
 ```ruby
 Harbor.configure do |c|
-  c.nav.add "Reports", :reports_path, after: "Automations"
+  c.nav.add "Database", :databases_path, group: :infrastructure, icon: :database, key: :database
 end
 ```
 
-### 6. Styles
+`group:` is one of Harbor's (`:overview`, `:flows`, `:activity`, `:agents`,
+`:infrastructure`, `:quality`) or a name of the host's own, which becomes a
+group after Harbor's. `icon:` is a name from `Harbor::Icons::PATHS` or SVG
+markup. A page's own sub-pages get tabs:
 
-Harbor's views use Tailwind utility classes. A host that builds its CSS with
-`tailwindcss-rails` adds one line to its `app/assets/tailwind/application.css`,
-so Tailwind reads Harbor's views too:
+```erb
+<%= render "harbor/shared/page_tabs", label: "Reports",
+      tabs: [ [ "Monthly", monthly_reports_path, true ], [ "Yearly", yearly_reports_path, false ] ] %>
+```
+
+### 6. Styles and JavaScript
+
+Harbor's styles ship as a Tailwind entry file. A host that builds its CSS with
+`tailwindcss-rails` adds one line to its `app/assets/tailwind/application.css`:
 
 ```css
 @import "../builds/tailwind/harbor";
 ```
 
-`tailwindcss-rails` writes that file during its build.
+`tailwindcss-rails` writes that file during its build. It brings the shell,
+the side nav and the tabs, and makes Tailwind read Harbor's views.
 
-Harbor doesn't ship its own design yet. Its views also expect these class
-names to mean something in the host's stylesheet: `card`, `pill`, `meta`,
-`display`, `field`, `btn-quiet`, and the colour utilities `bg-pale-green`,
-`text-ink-green`, `bg-pale-red`, `text-ink-red`, `text-soft`, `text-ink`,
-`border-hairline`. Without them the pages work and look plain.
+**Don't link that entry file as a stylesheet.** It sits under
+`app/assets/builds`, so `stylesheet_link_tag :app` links it, and all it holds
+is an `@import` of a path inside the gem, which the browser then requests from
+your site. Link your stylesheets by name, or filter it out:
+
+```erb
+<%= stylesheet_link_tag(*app_stylesheets_paths.reject { |path| path.start_with?("tailwind/") }) %>
+```
+
+To restyle the side nav, set any of its variables after that import:
+
+```css
+:root {
+  --harbor-nav-bg: #1F2430;
+  --harbor-nav-text: #B8C0CC;
+  --harbor-nav-top: 3.5rem; /* the height of a top bar that stays put */
+}
+```
+
+The full list, with what each one colours, is at the top of
+`app/assets/tailwind/harbor/engine.css`.
+
+Harbor's JavaScript is two small Stimulus controllers (the side nav's collapse,
+and a log that follows its newest line). On `importmap-rails` with the usual
+`eagerLoadControllersFrom("controllers", application)` there is nothing to do:
+Harbor pins them under `controllers/harbor/`.
+
+The Settings page itself still expects a few class names to mean something in
+the host's stylesheet: `card`, `pill`, `meta`, `display`, `field`, `btn-quiet`,
+and the colour utilities `bg-pale-green`, `text-ink-green`, `bg-pale-red`,
+`text-ink-red`, `text-soft`, `text-ink`, `border-hairline`. Without them it
+works and looks plain.
 
 ### 7. Check it
 
 Log in and open `/settings`. You should see the settings grouped under
 Workflows, Self-improvement and Runs, each marked "Default". Change one: it
-should say "Set here" and by whom. Log out and open `/settings` again: you
+should say "Set here" and by whom. The side nav is beside the page, with
+Settings marked as the current page. Log out and open `/settings` again: you
 should be sent to your login page.
 
 ## Switching pages off

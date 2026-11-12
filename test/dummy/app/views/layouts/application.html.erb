@@ -3,10 +3,12 @@
   <head>
     <title><%= content_for(:title) || "Dummy" %></title>
     <%= csrf_meta_tags %>
+    <%= harbor_nav_state_tag %>
   </head>
   <body>
-    <%# A host layout links to its own pages by bare route helper, and renders
-        Harbor's menu. Both have to work on host pages and on Harbor's. %>
+    <%# A host layout links to its own pages by bare route helper, and draws
+        Harbor's menu and section shell. All of it has to work on host pages
+        and on Harbor's. %>
     <nav data-host-nav>
       <%= link_to "Home", root_path %>
       <%= link_to "Reports", reports_path %>
@@ -16,8 +18,21 @@
         <% end %>
       </ul>
     </nav>
-    <% if notice %><p data-notice><%= notice %></p><% end %>
-    <% if alert %><p data-alert><%= alert %></p><% end %>
-    <%= yield %>
+    <% if harbor_section? %>
+      <main class="harbor-shell">
+        <aside class="harbor-aside"><%= yield :harbor_nav %></aside>
+        <div class="harbor-page">
+          <% if notice %><p data-notice><%= notice %></p><% end %>
+          <% if alert %><p data-alert><%= alert %></p><% end %>
+          <%= yield %>
+        </div>
+      </main>
+    <% else %>
+      <main>
+        <% if notice %><p data-notice><%= notice %></p><% end %>
+        <% if alert %><p data-alert><%= alert %></p><% end %>
+        <%= yield %>
+      </main>
+    <% end %>
   </body>
 </html>

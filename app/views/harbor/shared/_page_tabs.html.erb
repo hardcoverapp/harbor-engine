@@ -1,0 +1,7 @@
+<%# A page's own sub-pages, as underline tabs. locals: label (what the tabs
+    are of, for screen readers), tabs ([[text, path, current?], …]). %>
+<nav aria-label="<%= label %>" class="harbor-tabs" data-tabs="<%= label.parameterize %>">
+  <% tabs.each do |text, path, current| %>
+    <%= link_to text, path, class: "harbor-tab", aria: { current: (current ? "page" : nil) } %>
+  <% end %>
+</nav>

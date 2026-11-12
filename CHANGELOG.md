@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.0
+
+The section's look becomes Harbor's own.
+
+- **A side nav** beside every page of the section: pages grouped under headings, each
+  with an icon, collapsible to a rail of icons that the browser remembers. It replaces
+  the row of tabs (`harbor/shared/_tabs` is gone).
+- **A shell** for the host's layout: `harbor_section?`, `yield :harbor_nav`, and the
+  `harbor-shell` / `harbor-aside` / `harbor-page` classes. A host page joins the section
+  with `render "harbor/shared/section_nav"`.
+- **Menu entries carry a group and an icon**: `nav.add ..., group:, icon:`.
+  `harbor_nav_groups` gives the menu by group; `harbor_icon` draws an icon.
+- **A theme**: every colour and size of the side nav is a `--harbor-nav-*` CSS variable
+  a host can override.
+- **Page tabs** for a page's own sub-pages: `harbor/shared/_page_tabs`.
+- **Two Stimulus controllers**, pinned into the host's import map: `harbor--side-nav`
+  and `harbor--log-follow`.
+- Workflows is the current page on `/workflow_runs` too.
+- Harbor's styles now ship in its Tailwind entry file; the README says not to link that
+  file as a stylesheet.
+
+Upgrading from 0.1.0: replace `render "harbor/shared/tabs"` with
+`render "harbor/shared/section_nav"`, add the shell and `harbor_nav_state_tag` to the
+layout, and note that the menu's order is now by group.
+
 ## 0.1.0
 
 The foundation.
