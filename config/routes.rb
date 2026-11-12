@@ -2,4 +2,5 @@
 # still live in the host.
 Harbor::Engine.routes.draw do
   resources :settings, only: %i[index update destroy], param: :key
+  resources :webhooks, only: :index
 end

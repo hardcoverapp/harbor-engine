@@ -1,0 +1,41 @@
+<% content_for :title, "Webhooks" %>
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-10">
+  <h1 class="display text-3xl">Webhooks</h1>
+  <p class="text-sm text-soft mt-1.5 max-w-2xl">Every delivery that came in, newest first, and what each one started.</p>
+</header>
+
+<% if @events.empty? %>
+  <p class="text-faint text-sm">No webhook deliveries yet.</p>
+<% else %>
+  <%# A host with more to show for a delivery (the workflow runs it started,
+      say) adds app/views/harbor/webhooks/_event_extras.html.erb. %>
+  <% extras = lookup_context.exists?("harbor/webhooks/event_extras", [], true) %>
+  <ul class="card divide-y divide-hairline overflow-hidden">
+    <% @events.each do |event| %>
+      <li class="flex items-center gap-3 px-5 py-3" data-webhook-event="<%= event.id %>">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-ink"><%= event.label %></span>
+            <%= harbor_status_pill(event.status) %>
+            <% if event.matched_handler.present? %><span class="meta font-mono"><%= event.matched_handler %></span><% end %>
+          </div>
+          <div class="text-sm text-soft truncate">
+            <% if event.external_url.present? %>
+              <%= link_to event.subject.presence || "(event)", event.external_url, class: "hover:text-ink", target: "_blank", rel: "noopener" %>
+            <% else %>
+              <%= event.subject %>
+            <% end %>
+            <% if event.note.present? %><span class="text-faint">— <%= event.note %></span><% end %>
+          </div>
+        </div>
+        <div class="ml-auto flex items-center gap-3 shrink-0">
+          <% if extras %><%= render "harbor/webhooks/event_extras", event: event %><% end %>
+          <% if event.run %><%= harbor_run_link(event.run, class: "meta text-ink-blue hover:underline underline-offset-4") %><% end %>
+          <span class="meta"><%= time_ago_in_words(event.received_at) %> ago</span>
+        </div>
+      </li>
+    <% end %>
+  </ul>
+<% end %>

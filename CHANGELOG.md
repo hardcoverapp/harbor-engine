@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+- **`Harbor::WebhookEvent`** and **the Webhooks page** (`/webhooks`): every inbound
+  delivery and what it started. `config.webhook_event_class` for a host's subclass; an
+  optional `harbor/webhooks/_event_extras` partial for what a host adds per delivery.
+  The menu's Webhooks entry now points at Harbor's page.
+- **`harbor_status_pill`**, one look for a status wherever it shows, and
+  **`harbor_run_link`**, which links a run to its page wherever that page lives.
+- Harbor's controllers include `Harbor::PageGate` themselves.
+
 ## 0.4.0
 
 - **`Harbor::LiveLog`**: open, append to and close a run's live log; read it, or just

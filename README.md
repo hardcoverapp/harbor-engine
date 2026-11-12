@@ -22,7 +22,7 @@ RubyGems yet; add it from this repository, pinned to a release tag:
 
 ```ruby
 # Gemfile
-gem "harbor-engine", github: "hardcoverapp/harbor-engine", tag: "v0.4.0"
+gem "harbor-engine", github: "hardcoverapp/harbor-engine", tag: "v0.5.0"
 ```
 
 ```bash
@@ -235,6 +235,18 @@ end
 ```
 
 The log location has to be a disk the web process and the workers both see.
+
+## Webhooks
+
+`Harbor::WebhookEvent` is the record of every inbound delivery, and the
+Webhooks page lists them with what each one started. Receiving deliveries is
+the host's: an endpoint of its own with no login, which verifies the sender,
+writes a `Harbor::WebhookEvent` and starts whatever it starts.
+
+A host with more to show per delivery subclasses the record
+(`c.webhook_event_class = "WebhookEvent"`, overriding `for_page` to load what
+it needs) and adds `app/views/harbor/webhooks/_event_extras.html.erb`, which
+the page renders for each delivery with `event`.
 
 ## Switching pages off
 

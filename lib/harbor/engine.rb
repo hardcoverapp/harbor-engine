@@ -33,7 +33,10 @@ module Harbor
     end
 
     initializer "harbor.nav_helper" do
-      ActiveSupport.on_load(:action_controller_base) { helper Harbor::NavHelper }
+      ActiveSupport.on_load(:action_controller_base) do
+        helper Harbor::NavHelper
+        helper Harbor::StatusHelper
+      end
     end
   end
 end

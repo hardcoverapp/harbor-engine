@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_12_190000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_12_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -88,7 +88,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_190000) do
     t.datetime "updated_at", null: false
     t.index ["agent_key"], name: "index_runs_on_agent_key"
     t.index ["idempotency_key"], name: "index_runs_on_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
-    t.index ["join_key"], name: "index_runs_on_live_join_key", unique: true, where: "((join_key IS NOT NULL) AND ((status)::text = ANY ((ARRAY['queued'::character varying, 'waiting_for_model'::character varying, 'running'::character varying])::text[])))"
+    t.index ["join_key"], name: "index_runs_on_live_join_key", unique: true, where: "((join_key IS NOT NULL) AND ((status)::text = ANY (ARRAY[('queued'::character varying)::text, ('waiting_for_model'::character varying)::text, ('running'::character varying)::text])))"
     t.index ["loader", "started_at"], name: "index_runs_on_loader_and_started_at"
     t.index ["parent_run_id"], name: "index_runs_on_parent_run_id", where: "(parent_run_id IS NOT NULL)"
     t.index ["started_at"], name: "index_runs_on_started_at"
@@ -96,5 +96,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_190000) do
     t.index ["subject_type", "subject_id"], name: "index_runs_on_subject_type_and_subject_id"
   end
 
+  create_table "webhook_events", force: :cascade do |t|
+    t.string "provider", null: false
+    t.string "event", null: false
+    t.string "action"
+    t.string "delivery_id"
+    t.string "status", default: "received", null: false
+    t.string "matched_handler"
+    t.text "note"
+    t.jsonb "payload", default: {}, null: false
+    t.bigint "run_id"
+    t.datetime "received_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["delivery_id"], name: "index_webhook_events_on_delivery_id", unique: true
+    t.index ["provider", "received_at"], name: "index_webhook_events_on_provider_and_received_at"
+    t.index ["run_id"], name: "index_webhook_events_on_run_id"
+    t.index ["status"], name: "index_webhook_events_on_status"
+  end
+
   add_foreign_key "run_events", "runs"
+  add_foreign_key "webhook_events", "runs"
 end

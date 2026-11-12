@@ -38,7 +38,7 @@ module Harbor
       [ "Workflows",     :workflows_path,             { key: :workflows,   group: :flows, also: [ "/workflow_runs" ] } ],
       [ "Automations",   :automations_path,           { key: :automations, group: :flows } ],
       [ "Runs",          :runs_path,                  { key: :runs,        group: :activity } ],
-      [ "Webhooks",      :webhooks_path,              { key: :webhooks,    group: :activity } ],
+      [ "Webhooks",      :webhooks_path,              { key: :webhooks,    group: :activity, scope: :harbor } ],
       [ "Agents",        :agents_path,                { key: :agents,      group: :agents } ],
       [ "Models",        :models_path,                { key: :models,      group: :agents, also: [ "/model_aliases" ] } ],
       [ "Runtimes",      :runtimes_path,              { key: :runtimes,    group: :infrastructure } ],

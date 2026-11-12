@@ -2,6 +2,7 @@ require "harbor/version"
 require "harbor/icons"
 require "harbor/nav"
 require "harbor/nav_helper"
+require "harbor/status_helper"
 require "harbor/pages"
 require "harbor/settings"
 require "harbor/configuration"
@@ -26,6 +27,8 @@ module Harbor
 
     # The host's Run class (Harbor::Run unless the host named its own).
     def run_class = config.run_class.constantize
+
+    def webhook_event_class = config.webhook_event_class.constantize
 
     # Tests only: start from the defaults again.
     def reset_config!
