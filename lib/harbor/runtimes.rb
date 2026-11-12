@@ -34,3 +34,6 @@ module Harbor
     end
   end
 end
+
+# Harbor's own way of running work. A host registers any others.
+Harbor::Runtimes.register "orca", "Harbor::Runtimes::Backends::Orca"

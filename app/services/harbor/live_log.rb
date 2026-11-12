@@ -42,6 +42,16 @@ module Harbor
       file.close unless file.closed?
     end
 
+    # Adds text to the log exactly as given, for output that arrives in
+    # pieces from somewhere else. Nothing happens for a run with no log.
+    def append(relative_path, text)
+      return if relative_path.blank? || text.empty?
+
+      full = absolute(relative_path)
+      FileUtils.mkdir_p(File.dirname(full))
+      File.open(full, "a") { |file| file.write(text) }
+    end
+
     def exist?(relative_path) = relative_path.present? && File.file?(absolute(relative_path))
 
     # The whole log, or nil when nothing has been written.

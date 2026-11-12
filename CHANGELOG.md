@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.0
+
+- **The Orca backend** (`Harbor::Runtimes::Backends::Orca`, registered as `orca`): a
+  run is a command in a terminal of a worktree on an Orca server, local or paired. The
+  runtime's config names the repo, the environment and whether setup hooks run.
+- **`Harbor::Runner`**: the command is wrapped in a small sh script that posts its
+  output and exit status back, so no disk is shared with the runner. The new **Runner
+  address** setting says where runners reach the app.
+- **Runner endpoints** under `/harbor/runner/`: `POST runs/:id/log` and
+  `POST runs/:id/result`, with no login, each request carrying the run's own token
+  (`Harbor::RunToken`). `config.run_reported` is told when a run's command ends.
+- `Harbor::LiveLog.append` adds output that arrives in pieces.
+
 ## 0.8.0
 
 - **`Harbor::Runtime`, `Harbor::WorkspaceProfile` and `Harbor::WorkspaceProfileRuntime`**:

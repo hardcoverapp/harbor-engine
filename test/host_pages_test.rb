@@ -21,12 +21,20 @@ class HarborHostPagesTest < ActionDispatch::IntegrationTest
     assert_response :not_found
   end
 
-  test "every Harbor route needs the host's login" do
+  # The one exception: what runners post to, which take a run's token instead
+  # (Harbor::RunToken) and are covered in runner_test.rb.
+  TOKEN_ROUTES = %r{\A/harbor/runner/}
+
+  test "every Harbor route needs the host's login, except the runner's, which need a run's token" do
     delete "/logout"
     Harbor::Engine.routes.routes.each do |route|
       path = route.path.spec.to_s.sub("(.:format)", "").gsub(/:\w+/, "1")
       process(route.verb.downcase.to_sym, path)
-      assert_redirected_to "/login", "#{route.verb} #{path} was served without a login"
+      if path.match?(TOKEN_ROUTES)
+        assert_response :unauthorized, "#{route.verb} #{path} was served without a token"
+      else
+        assert_redirected_to "/login", "#{route.verb} #{path} was served without a login"
+      end
     end
   end
 end

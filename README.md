@@ -314,6 +314,36 @@ Harbor.configure do |c|
 end
 ```
 
+### Orca
+
+Harbor's own backend is `orca`: a runtime is an [Orca](https://github.com/stablyai/orca)
+server, the one beside Harbor or one paired with its machine
+(`orca environment add`). Its config says where:
+
+```json
+{ "repo": "name:app", "environment": "sam-laptop", "setup": "skip" }
+```
+
+A run there is a command in a terminal of a fresh worktree. The command is
+wrapped in a small sh script that posts its output and exit status back to
+Harbor, so nothing is shared with the runner but the network:
+
+```ruby
+session = runtime.adapter.start(run: run, command: "make test")   # returns at once
+runtime.adapter.stop(session)      # close the terminal
+runtime.adapter.cleanup(session)   # remove the worktree
+```
+
+For that, set **Runner address** on the Settings page to where runners reach
+the app, and let `POST` requests under `/harbor/runner/` through any firewall
+in front of it. Those two routes have no login: each request carries a token
+good for one run, which can append to that run's log and report its result and
+nothing else. By default a reported exit status finishes the run as ok or
+error; `c.run_reported = ->(run, exit_status:) { … }` takes that over.
+
+The runner needs `sh`, `curl` and the `orca` command where Harbor runs. An Orca
+server listens on every interface, so never give one a public address.
+
 `c.sticky_runtime` sends follow-up work back to the runtime that holds its
 workspace, and `c.runtime_class` / `c.workspace_profile_class` name a host's
 subclasses.

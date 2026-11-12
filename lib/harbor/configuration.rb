@@ -53,6 +53,10 @@ module Harbor
     # workspace that run should use, else nil. nil: nothing is sticky.
     attr_accessor :sticky_runtime
 
+    # Called with (run, exit_status:) when a runner reports that a run's
+    # command has ended. nil: Harbor finishes the run as ok or error itself.
+    attr_accessor :run_reported
+
     # Where runs' live logs are kept. `log_location` turns a log's relative
     # path into a file path; `log_path` gives a run its relative path (nil for
     # a run with nothing to name its log by).
@@ -79,6 +83,7 @@ module Harbor
       end
       @slot_key = ->(line) { "harbor:slots:#{line}" }
       @sticky_runtime = nil
+      @run_reported = nil
       @log_location = ->(path) { Rails.root.join("storage/harbor/logs", path) }
       @log_path = lambda do |run|
         name = run.loader.presence || run.skill.presence&.tr(".", "-")

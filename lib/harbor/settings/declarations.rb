@@ -19,6 +19,11 @@ Harbor::Settings.declare :model_catalog_url,
   description: "Where the list of each provider's models is read from when picking one for an alias. " \
                "A public catalog in the models.dev format; no API key is used. It is read again every 12 hours."
 
+Harbor::Settings.declare :runner_url,
+  type: :string, default: "", group: "Runtimes", label: "Runner address",
+  description: "Where work running on another machine reaches this app to send its log and result: the app's public address " \
+               "(https://…), with the path Harbor is mounted at when that isn't the root. Runs can't be placed on Orca until this is set."
+
 # One switch per page of the menu (Harbor::Pages), on by default.
 Harbor::Nav::DEFAULTS.each do |label, _route, options|
   Harbor::Pages.declare(options[:key], label: label) if options[:key]
