@@ -1,7 +1,8 @@
 require_relative "lib/harbor/version"
 
 Gem::Specification.new do |spec|
-  spec.name        = "harbor"
+  # "harbor" was taken on RubyGems in 2009. The code's namespace is still Harbor.
+  spec.name        = "harbor-engine"
   spec.version     = Harbor::VERSION
   spec.authors     = [ "Hardcover" ]
   spec.summary     = "Runs agent work: workflows, runs, runtimes, agents and models."
@@ -9,10 +10,10 @@ Gem::Specification.new do |spec|
   spec.license     = "MIT"
   spec.required_ruby_version = ">= 3.3"
 
-  # Not published yet. Guards against an accidental `gem push`.
-  spec.metadata["allowed_push_host"] = "https://rubygems.invalid"
+  spec.metadata["source_code_uri"] = spec.homepage
+  spec.metadata["changelog_uri"] = "#{spec.homepage}/blob/main/CHANGELOG.md"
 
-  spec.files = Dir.chdir(__dir__) { Dir["{app,config,db,lib}/**/*", "LICENSE", "README.md"] }
+  spec.files = Dir.chdir(__dir__) { Dir["{app,config,db,lib}/**/*", "CHANGELOG.md", "LICENSE", "README.md"] }
 
   spec.add_dependency "rails", ">= 8.1"
 end

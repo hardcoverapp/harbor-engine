@@ -12,11 +12,12 @@ the app it came from.
 
 ## Installing
 
-Harbor is not published as a gem yet. Add it from this repository:
+The gem is `harbor-engine` (the code's namespace is `Harbor`). It is not on
+RubyGems yet; add it from this repository, pinned to a release tag:
 
 ```ruby
 # Gemfile
-gem "harbor", github: "hardcoverapp/harbor-engine"
+gem "harbor-engine", github: "hardcoverapp/harbor-engine", tag: "v0.1.0"
 ```
 
 Mount it last in the host's routes, so the host's own routes win:
@@ -115,6 +116,13 @@ bundle exec rubocop
 
 `DATABASE_URL` names the server and credentials; the database is always
 `harbor_dummy_test`.
+
+## Releasing
+
+1. Update `lib/harbor/version.rb` and add the version to `CHANGELOG.md`.
+2. Merge to `main`.
+3. Tag that commit `vX.Y.Z` and push the tag. Hosts pin a tag, so nothing changes for
+   them until they move to it.
 
 ## Licence
 

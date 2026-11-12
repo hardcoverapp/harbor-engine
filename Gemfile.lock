@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    harbor (0.1.0)
+    harbor-engine (0.1.0)
       rails (>= 8.1)
 
 GEM
@@ -280,7 +280,7 @@ PLATFORMS
   x86_64-linux-musl
 
 DEPENDENCIES
-  harbor!
+  harbor-engine!
   pg (~> 1.1)
   rubocop-rails-omakase
 
