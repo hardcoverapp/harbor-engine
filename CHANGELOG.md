@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0
+
+- **`Harbor::ModelProvider`, `Harbor::ModelAlias` and `Harbor::ModelChoice`**: the
+  providers agents' models come from, and the named, ordered lists of models agents are
+  given. `config.model_alias_class` for a host's subclass. The migration creates the
+  three tables, or leaves them alone where they exist.
+- **`Harbor::ModelCatalog`**: each provider's models, read from a public catalog
+  (the `model_catalog_url` setting, models.dev by default) with no API key, newest
+  first, refreshed every 12 hours and kept when a refresh fails.
+
 ## 0.5.0
 
 - **`Harbor::WebhookEvent`** and **the Webhooks page** (`/webhooks`): every inbound

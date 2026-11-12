@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_12_200000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_12_210000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -21,6 +21,41 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_200000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["key"], name: "index_harbor_settings_on_key", unique: true
+  end
+
+  create_table "model_aliases", force: :cascade do |t|
+    t.string "name", null: false
+    t.text "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_model_aliases_on_name", unique: true
+  end
+
+  create_table "model_choices", force: :cascade do |t|
+    t.bigint "model_alias_id", null: false
+    t.bigint "model_provider_id", null: false
+    t.string "model", null: false
+    t.string "effort"
+    t.integer "position", default: 0, null: false
+    t.integer "cutoff_percent", default: 80, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["model_alias_id"], name: "index_model_choices_on_model_alias_id"
+    t.index ["model_provider_id"], name: "index_model_choices_on_model_provider_id"
+  end
+
+  create_table "model_providers", force: :cascade do |t|
+    t.string "key", null: false
+    t.boolean "enabled", default: true, null: false
+    t.decimal "session_used_percent", precision: 6, scale: 2
+    t.datetime "session_resets_at"
+    t.decimal "weekly_used_percent", precision: 6, scale: 2
+    t.datetime "weekly_resets_at"
+    t.datetime "usage_checked_at"
+    t.text "usage_error"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_model_providers_on_key", unique: true
   end
 
   create_table "run_events", force: :cascade do |t|
@@ -115,6 +150,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_200000) do
     t.index ["status"], name: "index_webhook_events_on_status"
   end
 
+  add_foreign_key "model_choices", "model_aliases"
+  add_foreign_key "model_choices", "model_providers"
   add_foreign_key "run_events", "runs"
   add_foreign_key "webhook_events", "runs"
 end

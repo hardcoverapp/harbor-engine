@@ -236,6 +236,31 @@ end
 
 The log location has to be a disk the web process and the workers both see.
 
+## Models
+
+Agents aren't given a model; they are given an alias. A `Harbor::ModelAlias`
+("Thinking", "Quick") is an ordered list of `Harbor::ModelChoice`s, each a
+provider's model with an effort and a usage cutoff. `model_alias.resolve`
+returns the first choice whose `Harbor::ModelProvider` is switched on and below
+that cutoff, so work moves to the next choice when a subscription runs low, and
+the model behind a name changes in one place.
+
+```ruby
+anthropic = Harbor::ModelProvider.find_or_create_by!(key: "anthropic")
+quick = Harbor::ModelAlias.create!(name: "Quick", model_choices_attributes: [
+  { model_provider: anthropic, model: "claude-haiku-5-5", effort: "low" } ])
+quick.resolve.model   # => "claude-haiku-5-5"
+```
+
+`Harbor::ModelCatalog.fetch(provider)` lists a provider's models for a picker.
+It reads a public catalog ([models.dev](https://models.dev) by default; the
+**Model catalog** setting changes the address), so it needs no API key and
+shows new models as they are released. The copy is refreshed every 12 hours and
+kept if a refresh fails.
+
+A host with more on its aliases subclasses the record and names it:
+`c.model_alias_class = "ModelAlias"`.
+
 ## Webhooks
 
 `Harbor::WebhookEvent` is the record of every inbound delivery, and the

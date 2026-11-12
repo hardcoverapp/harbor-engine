@@ -30,6 +30,8 @@ module Harbor
 
     def webhook_event_class = config.webhook_event_class.constantize
 
+    def model_alias_class = config.model_alias_class.constantize
+
     # Tests only: start from the defaults again.
     def reset_config!
       @config = nil

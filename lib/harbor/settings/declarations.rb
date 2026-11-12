@@ -14,6 +14,11 @@ Harbor::Settings.declare :agent_auto_retries,
   type: :integer, default: 3, min: 0, max: 10, group: "Runs", label: "Automatic retries",
   description: "How many times a failed agent run is retried, as a new run each time, before it is left for a person. 0 turns retries off."
 
+Harbor::Settings.declare :model_catalog_url,
+  type: :string, default: "https://models.dev/api.json", group: "Models", label: "Model catalog",
+  description: "Where the list of each provider's models is read from when picking one for an alias. " \
+               "A public catalog in the models.dev format; no API key is used. It is read again every 12 hours."
+
 # One switch per page of the menu (Harbor::Pages), on by default.
 Harbor::Nav::DEFAULTS.each do |label, _route, options|
   Harbor::Pages.declare(options[:key], label: label) if options[:key]
