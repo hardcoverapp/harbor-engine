@@ -287,6 +287,37 @@ agent = Harbor::TaskAssignment.agent_for("pr_review")   # nil when unassigned or
 A host with more on its agents subclasses the record and names it:
 `c.agent_class = "Agent"`.
 
+## Runtimes and workspaces
+
+A `Harbor::Runtime` is a place work can run, with a limit on how much at once.
+The code that drives one is its backend, a subclass of
+`Harbor::Runtimes::Backend` registered by name:
+
+```ruby
+# config/initializers/harbor.rb
+Harbor::Runtimes.register "laptop", "Backends::Laptop"
+```
+
+A workspace (`Harbor::WorkspaceProfile`) is an ordered list of runtimes, and an
+agent picks one. `agent.placement` walks the list and returns the first runtime
+that is switched on, healthy, below its limit and able to run one of the
+agent's models, together with that model: runtime and model fall back as one
+decision. Given `capacity: { owner:, ttl: }` it also takes a slot there, and
+the result is `waiting?` when every usable runtime is full.
+
+Slots are leases in Redis (`Harbor::Slots`), so Harbor needs a connection. It
+uses Sidekiq's when Sidekiq is loaded; otherwise give it one:
+
+```ruby
+Harbor.configure do |c|
+  c.redis = ->(&block) { MY_REDIS_POOL.with(&block) }   # yields something answering call("COMMAND", …)
+end
+```
+
+`c.sticky_runtime` sends follow-up work back to the runtime that holds its
+workspace, and `c.runtime_class` / `c.workspace_profile_class` name a host's
+subclasses.
+
 ## Webhooks
 
 `Harbor::WebhookEvent` is the record of every inbound delivery, and the

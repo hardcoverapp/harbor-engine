@@ -18,6 +18,8 @@ module Harbor
     validate :validate_avatar
 
     belongs_to :model_alias, class_name: Harbor.class_name_for(:model_alias_class), optional: true
+    # Where the agent's runs execute.
+    belongs_to :workspace_profile, class_name: Harbor.class_name_for(:workspace_profile_class), optional: true
     has_many :agent_documents, class_name: "Harbor::AgentDocument", foreign_key: :agent_id,
              dependent: :destroy, inverse_of: :agent
     accepts_nested_attributes_for :agent_documents, allow_destroy: true, reject_if: :all_blank
@@ -32,7 +34,32 @@ module Harbor
       errors.add(:default_tasks, "must be a JSON array") unless default_tasks.is_a?(Array)
     end
 
+    # How many sessions of this agent run at once, and how many workspaces
+    # they may occupy (Harbor::Slots).
+    validates :max_workspaces, :max_agents, numericality: { only_integer: true, greater_than: 0 }
+
     scope :enabled, -> { where(enabled: true) }
+
+    # What the agent's model is called where a person reads it.
+    def model_label = model_alias&.name
+
+    # The model choice this agent would run on `backend` (a runtime backend
+    # class) under a tool policy. Raises the model alias's Unavailable.
+    def model_choice_for(backend:, allowed_tools: nil, disallowed_tools: nil)
+      raise Harbor.model_alias_class::Unavailable, "#{display_name} has no model alias." unless model_alias
+      model_alias.resolve(backend:, allowed_tools:, disallowed_tools:)
+    end
+
+    # The workspace placement uses. A host with a default overrides this.
+    def effective_workspace_profile = workspace_profile
+
+    # Where a run of this agent goes and on which model
+    # (Harbor::Runtimes::Placement). Without capacity it ignores limits.
+    def placement(run: nil, capacity: nil, **options)
+      profile = effective_workspace_profile
+      raise Harbor.workspace_profile_class::Unavailable, "#{display_name} has no workspace." unless profile
+      profile.resolve(agent: self, run:, capacity:, **options)
+    end
 
     def display_name = name.presence || key
 

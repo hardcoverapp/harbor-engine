@@ -12,7 +12,11 @@ class HarborHostClassesTest < ActiveSupport::TestCase
       [ Harbor::ModelChoice, :model_alias ] => "::Harbor::ModelAlias",
       [ Harbor::Agent, :model_alias ] => "::Harbor::ModelAlias",
       [ Harbor::AgentDocument, :agent ] => "::Harbor::Agent",
-      [ Harbor::TaskAssignment, :agent ] => "::Harbor::Agent"
+      [ Harbor::TaskAssignment, :agent ] => "::Harbor::Agent",
+      [ Harbor::Agent, :workspace_profile ] => "::Harbor::WorkspaceProfile",
+      [ Harbor::Runtime, :runs ] => "::Harbor::Run",
+      [ Harbor::WorkspaceProfileRuntime, :workspace_profile ] => "::Harbor::WorkspaceProfile",
+      [ Harbor::WorkspaceProfileRuntime, :runtime ] => "::Harbor::Runtime"
     }.each do |(model, name), class_name|
       assert_equal class_name, model.reflect_on_association(name).class_name, "#{model}##{name}"
     end

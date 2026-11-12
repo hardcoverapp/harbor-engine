@@ -19,7 +19,8 @@ module Harbor
     # cutoff. `backend`, when given, is where the run will execute: anything
     # answering `supports?(choice, **policy)`, `label` and
     # `policy_hint(**policy)`; a choice it can't run is passed over. Raises
-    # Unavailable when no choice is left.
+    # the class's Unavailable when no choice is left (a host's subclass may
+    # define its own, under its own name).
     def resolve(backend: nil, **policy)
       choice = model_choices.includes(:model_provider).detect do |candidate|
         candidate.model_provider.below_cutoff?(candidate.cutoff_percent) &&
@@ -28,7 +29,7 @@ module Harbor
       return choice if choice
 
       where = backend ? ", or unsupported at #{backend.label}" : ""
-      raise Unavailable, "No available model for #{name}: providers are disabled or above their usage cutoff#{where}. " \
+      raise self.class::Unavailable, "No available model for #{name}: providers are disabled or above their usage cutoff#{where}. " \
                          "Check the Models page.#{backend&.policy_hint(**policy)}"
     end
 

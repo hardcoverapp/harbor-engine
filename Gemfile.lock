@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    harbor-engine (0.7.0)
+    harbor-engine (0.8.0)
       marcel (>= 1.0)
       rails (>= 8.1)
 
@@ -219,6 +219,8 @@ GEM
       prism (>= 1.6.0)
       rbs (>= 4.0.0)
       tsort
+    redis-client (0.31.0)
+      connection_pool
     regexp_parser (2.13.1)
     reline (0.7.0)
       io-console (~> 0.5)
@@ -283,6 +285,7 @@ PLATFORMS
 DEPENDENCIES
   harbor-engine!
   pg (~> 1.1)
+  redis-client
   rubocop-rails-omakase
 
 BUNDLED WITH

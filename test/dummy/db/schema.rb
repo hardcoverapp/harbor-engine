@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_12_220000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_12_230000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -46,8 +46,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_220000) do
     t.string "avatar_content_type"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "workspace_profile_id"
+    t.integer "max_agents", default: 5, null: false
+    t.integer "max_workspaces", default: 1, null: false
     t.index ["key"], name: "index_agents_on_key", unique: true
     t.index ["model_alias_id"], name: "index_agents_on_model_alias_id"
+    t.index ["workspace_profile_id"], name: "index_agents_on_workspace_profile_id"
   end
 
   create_table "harbor_settings", force: :cascade do |t|
@@ -162,9 +166,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_220000) do
     t.index ["join_key"], name: "index_runs_on_live_join_key", unique: true, where: "((join_key IS NOT NULL) AND ((status)::text = ANY (ARRAY[('queued'::character varying)::text, ('waiting_for_model'::character varying)::text, ('running'::character varying)::text])))"
     t.index ["loader", "started_at"], name: "index_runs_on_loader_and_started_at"
     t.index ["parent_run_id"], name: "index_runs_on_parent_run_id", where: "(parent_run_id IS NOT NULL)"
+    t.index ["runtime_id"], name: "index_runs_on_runtime_id"
     t.index ["started_at"], name: "index_runs_on_started_at"
     t.index ["status"], name: "index_runs_on_status"
     t.index ["subject_type", "subject_id"], name: "index_runs_on_subject_type_and_subject_id"
+  end
+
+  create_table "runtimes", force: :cascade do |t|
+    t.string "key", null: false
+    t.string "name", null: false
+    t.string "backend", null: false
+    t.string "host"
+    t.boolean "enabled", default: true, null: false
+    t.integer "max_concurrent", default: 5, null: false
+    t.integer "position", default: 0, null: false
+    t.jsonb "config", default: {}, null: false
+    t.datetime "checked_at"
+    t.text "last_error"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_runtimes_on_key", unique: true
   end
 
   create_table "task_assignments", force: :cascade do |t|
@@ -195,10 +216,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_220000) do
     t.index ["status"], name: "index_webhook_events_on_status"
   end
 
+  create_table "workspace_profile_runtimes", force: :cascade do |t|
+    t.bigint "workspace_profile_id", null: false
+    t.bigint "runtime_id", null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["runtime_id"], name: "index_workspace_profile_runtimes_on_runtime_id"
+    t.index ["workspace_profile_id", "runtime_id"], name: "index_workspace_profile_runtimes_uniqueness", unique: true
+    t.index ["workspace_profile_id"], name: "index_workspace_profile_runtimes_on_workspace_profile_id"
+  end
+
+  create_table "workspace_profiles", force: :cascade do |t|
+    t.string "key", null: false
+    t.string "name", null: false
+    t.text "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_workspace_profiles_on_key", unique: true
+    t.index ["name"], name: "index_workspace_profiles_on_name", unique: true
+  end
+
   add_foreign_key "agent_documents", "agents"
   add_foreign_key "agents", "model_aliases"
+  add_foreign_key "agents", "workspace_profiles"
   add_foreign_key "model_choices", "model_aliases"
   add_foreign_key "model_choices", "model_providers"
   add_foreign_key "run_events", "runs"
+  add_foreign_key "runs", "runtimes"
   add_foreign_key "webhook_events", "runs"
+  add_foreign_key "workspace_profile_runtimes", "runtimes"
+  add_foreign_key "workspace_profile_runtimes", "workspace_profiles"
 end

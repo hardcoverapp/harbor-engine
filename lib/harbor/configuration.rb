@@ -37,6 +37,22 @@ module Harbor
     # subclass of it.
     attr_accessor :agent_class
 
+    # The classes Harbor finds runtimes and workspaces with, by name.
+    attr_accessor :runtime_class, :workspace_profile_class
+
+    # How Harbor reaches Redis, for capacity slots: called with a block, yields
+    # a connection answering `call("COMMAND", …)`. Sidekiq's by default.
+    attr_accessor :redis
+
+    # The Redis key of a capacity line's ledger, from the line's name
+    # ("runtime:laptop", an agent's key).
+    attr_accessor :slot_key
+
+    # Called with a run about to be placed; returns a
+    # Harbor::Runtimes::Placement::Hold when a runtime already holds the
+    # workspace that run should use, else nil. nil: nothing is sticky.
+    attr_accessor :sticky_runtime
+
     # Where runs' live logs are kept. `log_location` turns a log's relative
     # path into a file path; `log_path` gives a run its relative path (nil for
     # a run with nothing to name its log by).
@@ -55,6 +71,14 @@ module Harbor
       @webhook_event_class = "Harbor::WebhookEvent"
       @model_alias_class = "Harbor::ModelAlias"
       @agent_class = "Harbor::Agent"
+      @runtime_class = "Harbor::Runtime"
+      @workspace_profile_class = "Harbor::WorkspaceProfile"
+      @redis = lambda do |&block|
+        raise "Harbor needs Redis for capacity slots: set config.redis, or load Sidekiq." unless defined?(::Sidekiq)
+        ::Sidekiq.redis(&block)
+      end
+      @slot_key = ->(line) { "harbor:slots:#{line}" }
+      @sticky_runtime = nil
       @log_location = ->(path) { Rails.root.join("storage/harbor/logs", path) }
       @log_path = lambda do |run|
         name = run.loader.presence || run.skill.presence&.tr(".", "-")

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.0
+
+- **`Harbor::Runtime`, `Harbor::WorkspaceProfile` and `Harbor::WorkspaceProfileRuntime`**:
+  the places work runs and the ordered lists of them that agents pick.
+  `config.runtime_class` and `config.workspace_profile_class` for a host's subclasses.
+- **`Harbor::Runtimes::Backend`** and **`Harbor::Runtimes.register`**: the code behind a
+  runtime, registered by name, so a host adds its own.
+- **`Harbor::Runtimes::Placement`**: chooses a runtime and a model together, walking the
+  workspace's list. `config.sticky_runtime` sends follow-up work back to the runtime
+  holding its workspace.
+- **`Harbor::Slots`** and **`Harbor::Runtimes::Slots`**: atomic capacity leases in Redis
+  (`config.redis`, `config.slot_key`), per agent and per runtime.
+- **`Harbor::Agent`** gains its workspace, its limits (`max_agents`, `max_workspaces`),
+  `placement` and `model_choice_for`.
+- **`Harbor::Orca::Client`**: worktrees and terminals on an Orca server, the one beside
+  Harbor or a paired one, through the `orca` command line (`config.orca_bin`). Not used
+  by a backend yet.
+- `ModelAlias#resolve` raises the class's own `Unavailable`, so a host's subclass can
+  keep its own error name.
+
 ## 0.7.0
 
 - **`Harbor::Agent`, `Harbor::AgentDocument` and `Harbor::AgentSetting`**: an agent's

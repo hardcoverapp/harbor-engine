@@ -6,6 +6,7 @@ require "harbor/status_helper"
 require "harbor/pages"
 require "harbor/settings"
 require "harbor/task_types"
+require "harbor/runtimes"
 require "harbor/configuration"
 require "harbor/orca"
 require "harbor/engine"
@@ -35,6 +36,14 @@ module Harbor
     def model_alias_class = config.model_alias_class.constantize
 
     def agent_class = config.agent_class.constantize
+
+    def runtime_class = config.runtime_class.constantize
+
+    def workspace_profile_class = config.workspace_profile_class.constantize
+
+    # A Redis connection, for the slot ledger: yields something answering
+    # `call("COMMAND", …)` (`config.redis`).
+    def redis(&block) = config.redis.call(&block)
 
     # A configured class's name, for an association's `class_name:`. Absolute:
     # Active Record looks a relative name up inside Harbor first, where a
