@@ -10,8 +10,10 @@ module Harbor
     Item = Struct.new(:label, :route, :scope, :also, keyword_init: true)
     Link = Struct.new(:label, :path, :active, keyword_init: true)
 
-    # Harbor's pages. Their routes still live in the host while the code moves
-    # into the engine; an entry switches to `scope: :harbor` when its routes do.
+    # Harbor's pages. Most of their routes still live in the host Harbor is
+    # being extracted from, and move here one area at a time; an entry switches
+    # to `scope: :harbor` when its routes do. Until then an entry shows only in
+    # a host that defines its route.
     DEFAULTS = [
       [ "Overview",      :factory_path ],
       [ "Velocity",      :velocity_path ],
@@ -62,11 +64,15 @@ module Harbor
     end
 
     # The menu for one request: each item's path and whether the current page
-    # is under it.
+    # is under it. An item whose route doesn't exist is left out, so a host
+    # shows only the pages it has.
     def links(view)
       current = view.request.path
-      @items.map do |item|
-        path = view.public_send(item.scope).public_send(item.route)
+      @items.filter_map do |item|
+        routes = view.public_send(item.scope)
+        next unless routes.respond_to?(item.route)
+
+        path = routes.public_send(item.route)
         active = [ path, *item.also ].any? { |prefix| under?(current, prefix) }
         Link.new(label: item.label, path: path, active: active)
       end

@@ -1,15 +1,20 @@
 require "test_helper"
 
 class HarborNavTest < ActiveSupport::TestCase
-  # Stands in for a view: a request path plus the two route scopes.
+  # Stands in for a view: a request path plus the two route scopes. A route
+  # named in `missing` doesn't exist in this host.
   class Routes
-    def method_missing(name, *) = name.to_s.end_with?("_path") ? "/#{name.to_s.delete_suffix('_path')}" : super
-    def respond_to_missing?(name, include_private = false) = name.to_s.end_with?("_path") || super
+    def initialize(missing = []) = @missing = missing
+    def method_missing(name, *) = route?(name) ? "/#{name.to_s.delete_suffix('_path')}" : super
+    def respond_to_missing?(name, include_private = false) = route?(name) || super
+
+    private
+      def route?(name) = name.to_s.end_with?("_path") && !@missing.include?(name)
   end
 
-  View = Struct.new(:path) do
+  View = Struct.new(:path, :missing) do
     def request = Struct.new(:path).new(path)
-    def main_app = Routes.new
+    def main_app = Routes.new(missing || [])
     def harbor = Routes.new
   end
 
@@ -50,6 +55,14 @@ class HarborNavTest < ActiveSupport::TestCase
     assert_equal "/runs", runs.path
     assert runs.active
     assert_equal [ "Runs" ], links.select(&:active).map(&:label)
+  end
+
+  test "an item whose route the host doesn't have is left out" do
+    labels = @nav.links(View.new("/", %i[velocity_path workflows_path])).map(&:label)
+    assert_not_includes labels, "Velocity"
+    assert_not_includes labels, "Workflows"
+    assert_includes labels, "Runs"
+    assert_includes labels, "Settings"
   end
 
   test "a path that only shares a prefix is not the page" do

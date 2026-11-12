@@ -10,7 +10,12 @@ Harbor is being extracted from Hardcover's internal app, one area at a time.
 settings system and the Settings page. The rest arrives as it is cut free of
 the app it came from.
 
-## Installing
+## Setting up
+
+Harbor needs a Rails 8.1+ app on Postgres with a login of its own. It has no
+login: its pages are exactly as protected as the controller you give it.
+
+### 1. Add the gem
 
 The gem is `harbor-engine` (the code's namespace is `Harbor`). It is not on
 RubyGems yet; add it from this repository, pinned to a release tag:
@@ -20,14 +25,100 @@ RubyGems yet; add it from this repository, pinned to a release tag:
 gem "harbor-engine", github: "hardcoverapp/harbor-engine", tag: "v0.1.0"
 ```
 
-Mount it last in the host's routes, so the host's own routes win:
+```bash
+bundle install
+```
+
+### 2. Mount it
+
+Mount Harbor last in the host's routes, so the host's own routes win:
 
 ```ruby
 # config/routes.rb
 mount Harbor::Engine => "/", as: :harbor
 ```
 
-Its migrations run with the host's (`bin/rails db:migrate`); nothing is copied.
+Harbor's pages then live at the root (`/settings`). Mount it somewhere else
+(`=> "/harbor"`) if the host already uses those paths.
+
+### 3. Migrate
+
+Harbor's migrations run with the host's; nothing is copied into `db/migrate`.
+
+```bash
+bin/rails db:migrate
+```
+
+### 4. Give it a login and a layout
+
+Harbor's pages inherit one of the host's controllers, and with it the host's
+login check, layout and current user. The default is `ApplicationController`.
+
+```ruby
+# config/initializers/harbor.rb
+Harbor.configure do |c|
+  c.parent_controller = "ApplicationController"
+end
+```
+
+**That controller must refuse people who aren't logged in.** If it has no
+login check, anyone who can reach the app can change Harbor's settings. Point
+`parent_controller` at an admin-only controller if only some users should.
+
+Two things the controller and its layout need:
+
+- A `current_user` method (private is fine), if you want Harbor to record who
+  changed a setting.
+- Links to the host's own pages that work from inside an engine. In a
+  `before_action` or `redirect_to` in that controller, write
+  `main_app.login_path`, not a bare `login_path`. Links in the layout need no
+  change.
+
+### 5. Show the menu
+
+`Harbor.nav` is the one list of Harbor's pages. Render it wherever the host's
+navigation lives:
+
+```erb
+<%# app/views/layouts/application.html.erb %>
+<% harbor_nav_links.each do |link| %>
+  <%= link_to link.label, link.path, class: ("current" if link.active) %>
+<% end %>
+```
+
+Only entries whose page exists are listed, so today that is Settings plus
+anything the host adds:
+
+```ruby
+Harbor.configure do |c|
+  c.nav.add "Reports", :reports_path, after: "Automations"
+end
+```
+
+### 6. Styles
+
+Harbor's views use Tailwind utility classes. A host that builds its CSS with
+`tailwindcss-rails` adds one line to its `app/assets/tailwind/application.css`,
+so Tailwind reads Harbor's views too:
+
+```css
+@import "../builds/tailwind/harbor";
+```
+
+`tailwindcss-rails` writes that file during its build.
+
+Harbor doesn't ship its own design yet. Its views also expect these class
+names to mean something in the host's stylesheet: `card`, `pill`, `meta`,
+`display`, `field`, `btn-quiet`, and the colour utilities `bg-pale-green`,
+`text-ink-green`, `bg-pale-red`, `text-ink-red`, `text-soft`, `text-ink`,
+`border-hairline`. Without them the pages work and look plain.
+
+### 7. Check it
+
+Log in and open `/settings`. You should see the settings grouped under
+Workflows, Self-improvement and Runs, each marked "Default". Change one: it
+should say "Set here" and by whom. Log out and open `/settings` again: you
+should be sent to your login page.
 
 ## Configuring
 
@@ -42,8 +133,7 @@ Harbor is configured in three places, and a value goes in the first one it can:
 ```ruby
 # config/initializers/harbor.rb
 Harbor.configure do |c|
-  # The controller Harbor's pages inherit from: it brings the host's login
-  # check, layout and current user. This is the default.
+  # The controller Harbor's pages inherit from (step 4).
   c.parent_controller = "ApplicationController"
 
   # How to name the person who changed a setting.
@@ -51,7 +141,11 @@ Harbor.configure do |c|
 
   # Called with (relative path, text) when saved configuration changes, to
   # keep a copy outside the database. Optional.
-  c.export = ->(path, body) { File.write(Rails.root.join("storage", path), body) }
+  c.export = ->(path, body) do
+    file = Rails.root.join("storage", path)
+    file.dirname.mkpath
+    file.write(body)
+  end
 
   # The host's own pages in Harbor's menu.
   c.nav.add "Reports", :reports_path, after: "Automations"
@@ -74,39 +168,6 @@ Harbor::Setting.get(:agent_auto_retries)
 A saved value wins, then the host's ENV fallback, then the default. The page
 shows which of the three each value comes from. An undeclared key can't be
 read or saved.
-
-### The menu
-
-`Harbor.nav` is the one list behind the host's menu and the tabs above each
-page. In the host's layout:
-
-```erb
-<% harbor_nav_links.each do |link| %>
-  <%= link_to link.label, link.path, class: ("current" if link.active) %>
-<% end %>
-```
-
-### Styles
-
-Harbor's views use Tailwind utility classes. A host that builds its CSS with
-`tailwindcss-rails` adds one line to its `app/assets/tailwind/application.css`, so
-Tailwind reads Harbor's views too:
-
-```css
-@import "../builds/tailwind/harbor";
-```
-
-`tailwindcss-rails` writes that file during its build.
-
-### What the host has to provide, for now
-
-Harbor's pages render inside the host's layout and use the host's stylesheet.
-Until Harbor ships its own styles, its views expect these class names to mean
-something: `card`, `pill`, `meta`, `display`, `field`, `btn-quiet`, and the
-colour utilities `bg-pale-green`, `text-ink-green`, `bg-pale-red`,
-`text-ink-red`, `text-soft`, `text-ink`, `border-hairline`. Several menu
-entries also point at routes that still live in the host (`runs_path`,
-`agents_path`, …); see `Harbor::Nav::DEFAULTS`.
 
 ## Rules for code in this repository
 

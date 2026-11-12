@@ -12,3 +12,4 @@ The foundation.
 - Pages inherit the host's base controller for login, layout and current user.
 - A Tailwind entry point (`app/assets/tailwind/harbor/engine.css`) so a host's build
   reads Harbor's views.
+- The menu lists only the entries whose page exists in the host.
