@@ -1,6 +1,7 @@
 require "harbor/version"
 require "harbor/nav"
 require "harbor/nav_helper"
+require "harbor/pages"
 require "harbor/settings"
 require "harbor/configuration"
 require "harbor/engine"

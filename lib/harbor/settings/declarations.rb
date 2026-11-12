@@ -13,3 +13,8 @@ Harbor::Settings.declare :self_improvement_pull_requests,
 Harbor::Settings.declare :agent_auto_retries,
   type: :integer, default: 3, min: 0, max: 10, group: "Runs", label: "Automatic retries",
   description: "How many times a failed agent run is retried, as a new run each time, before it is left for a person. 0 turns retries off."
+
+# One switch per page of the menu (Harbor::Pages), on by default.
+Harbor::Nav::DEFAULTS.each do |label, _route, options|
+  Harbor::Pages.declare(options[:key], label: label) if options[:key]
+end

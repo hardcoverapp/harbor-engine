@@ -9,7 +9,7 @@ Rails.application.routes.draw do
   # Two of the pages Harbor's menu names that this host happens to have. The
   # rest of Harbor's entries have no route here, so the menu leaves them out.
   get "automations" => "pages#placeholder", as: :automations
-  get "runs" => "pages#placeholder", as: :runs
+  get "runs" => "pages#home", as: :runs
 
   mount Harbor::Engine => "/", as: :harbor
 end

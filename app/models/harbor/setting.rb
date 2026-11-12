@@ -34,6 +34,13 @@ module Harbor
         Resolved.new(definition:, value: definition.default, source: :default, env_key:)
       end
 
+      # The values of several settings, by key, with one query.
+      def get_many(keys)
+        keys = keys.map(&:to_s)
+        records = where(key: keys).index_by(&:key)
+        keys.to_h { |key| [ key, resolve(key, record: records[key]).value ] }
+      end
+
       # Every declared setting, resolved with one query.
       def resolve_all
         records = where(key: Settings.all.map(&:key)).index_by(&:key)

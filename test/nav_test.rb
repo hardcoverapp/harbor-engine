@@ -81,6 +81,22 @@ class HarborNavTest < ActiveSupport::TestCase
     assert_equal "/audit", @nav.links(View.new("/")).last.path
   end
 
+  test "a page switched off is left out" do
+    Harbor::Setting.delete_all
+    Harbor::Setting.set!(:page_velocity, "false")
+    labels = @nav.links(View.new("/")).map(&:label)
+    assert_not_includes labels, "Velocity"
+    assert_includes labels, "Runs"
+  ensure
+    Harbor::Setting.delete_all
+  end
+
+  test "a page added with a key gets a switch" do
+    @nav.add "Audit", :audit_path, key: :audit
+    assert Harbor::Settings.declared?("page_audit")
+    assert_equal :audit, @nav.items.last.key
+  end
+
   test "items is a copy" do
     @nav.items.clear
     assert @nav.labels.any?

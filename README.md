@@ -120,6 +120,28 @@ Workflows, Self-improvement and Runs, each marked "Default". Change one: it
 should say "Set here" and by whom. Log out and open `/settings` again: you
 should be sent to your login page.
 
+## Switching pages off
+
+Every page in Harbor's menu, except Settings, has a switch under **Pages** on
+the Settings page. A site that doesn't use a page turns it off: it leaves the
+menu and its URLs answer as not found. Nothing running in the background is
+stopped by it.
+
+A page of the host's gets the same switch by giving it a key when adding it,
+and gating its controller:
+
+```ruby
+# config/initializers/harbor.rb
+c.nav.add "Reports", :reports_path, after: "Automations", key: :reports
+```
+
+```ruby
+class ReportsController < ApplicationController
+  include Harbor::PageGate
+  harbor_page :reports
+end
+```
+
 ## Configuring
 
 Harbor is configured in three places, and a value goes in the first one it can:

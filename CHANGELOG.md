@@ -13,3 +13,6 @@ The foundation.
 - A Tailwind entry point (`app/assets/tailwind/harbor/engine.css`) so a host's build
   reads Harbor's views.
 - The menu lists only the entries whose page exists in the host.
+- Every page of the menu except Settings can be switched off on the Settings page:
+  it leaves the menu, and a controller that includes `Harbor::PageGate` answers as not
+  found. A host's own page gets a switch with `nav.add ..., key:`.
