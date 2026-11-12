@@ -21,11 +21,16 @@ module Harbor
     # value applies until a value is saved on the Settings page.
     attr_reader :env_fallbacks
 
+    # The class Harbor builds and finds runs with, by name: Harbor's own, or a
+    # host's subclass of it that adds what is the host's.
+    attr_accessor :run_class
+
     def initialize
       @nav = Nav.new
       @parent_controller = "ApplicationController"
       @user_label = ->(user) { user.try(:name).presence || user.try(:email) }
       @env_fallbacks = {}
+      @run_class = "Harbor::Run"
     end
 
     def env_fallback(setting, env_key)

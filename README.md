@@ -22,7 +22,7 @@ RubyGems yet; add it from this repository, pinned to a release tag:
 
 ```ruby
 # Gemfile
-gem "harbor-engine", github: "hardcoverapp/harbor-engine", tag: "v0.2.0"
+gem "harbor-engine", github: "hardcoverapp/harbor-engine", tag: "v0.3.0"
 ```
 
 ```bash
@@ -189,6 +189,29 @@ Workflows, Self-improvement and Runs, each marked "Default". Change one: it
 should say "Set here" and by whom. The side nav is beside the page, with
 Settings marked as the current page. Log out and open `/settings` again: you
 should be sent to your login page.
+
+## Runs
+
+Every piece of background work is a `Harbor::Run`: an agent session, a
+scheduled job, a backup. It has a status, a log, a cost and what started it, so
+nothing happens out of sight. Harbor's migration creates the `runs` and
+`run_events` tables.
+
+A host that wants more on its runs (who triggered one, what record it is about)
+subclasses it on the same table and tells Harbor:
+
+```ruby
+class Run < Harbor::Run
+  belongs_to :triggered_by_user, class_name: "User", optional: true
+end
+```
+
+```ruby
+# config/initializers/harbor.rb
+Harbor.configure { |c| c.run_class = "Run" }
+```
+
+Harbor then builds and finds runs through that class (`Harbor.run_class`).
 
 ## Switching pages off
 

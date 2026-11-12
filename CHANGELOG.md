@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- **`Harbor::Run` and `Harbor::RunEvent`**: the record of every piece of background
+  work, and the parsed events of an agent run. The migration creates `runs` and
+  `run_events`, or leaves them alone where they exist.
+- **`config.run_class`**: a host's subclass of `Harbor::Run`, for what is the host's
+  own. `Harbor.run_class` is the class Harbor uses.
+
 ## 0.2.0
 
 The section's look becomes Harbor's own.

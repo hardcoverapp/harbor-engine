@@ -24,6 +24,9 @@ module Harbor
 
     def nav = config.nav
 
+    # The host's Run class (Harbor::Run unless the host named its own).
+    def run_class = config.run_class.constantize
+
     # Tests only: start from the defaults again.
     def reset_config!
       @config = nil
