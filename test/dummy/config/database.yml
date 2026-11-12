@@ -1,0 +1,12 @@
+# DATABASE_URL names the server and credentials; the database is always this one.
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  url: <%= ENV.fetch("DATABASE_URL", "postgres://postgres:postgres@127.0.0.1:5432") %>
+  database: harbor_dummy_<%= Rails.env %>
+
+development:
+  <<: *default
+
+test:
+  <<: *default

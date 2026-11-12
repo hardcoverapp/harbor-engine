@@ -1,0 +1,7 @@
+/.bundle/
+/vendor/bundle/
+/test/dummy/log/*
+/test/dummy/tmp/*
+!/test/dummy/log/.keep
+!/test/dummy/tmp/.keep
+/pkg/

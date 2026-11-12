@@ -1,0 +1,58 @@
+<% content_for :title, "Settings" %>
+<%= render "harbor/shared/tabs" %>
+<header class="mb-10">
+  <h1 class="display text-3xl">Settings</h1>
+  <p class="text-sm text-soft mt-2 max-w-3xl">How this site runs agent work. A change takes effect at once, with no deploy or restart. Secrets (tokens, keys) are not here: they stay in the environment.</p>
+</header>
+
+<% @groups.each do |group, settings| %>
+  <section class="mb-10">
+    <h2 class="meta uppercase tracking-[0.05em] mb-3"><%= group %></h2>
+    <div class="card divide-y divide-hairline">
+      <% settings.each do |resolved| %>
+        <% definition = resolved.definition %>
+        <div class="p-6 flex flex-wrap items-start justify-between gap-6" data-setting="<%= definition.key %>">
+          <div class="max-w-2xl">
+            <h3 class="text-ink font-medium"><%= definition.label %></h3>
+            <p class="text-sm text-soft mt-1"><%= definition.description %></p>
+            <p class="meta mt-3" data-source>
+              <% case resolved.source %>
+              <% when :saved %>
+                Set here<%= " by #{resolved.record.updated_by}" if resolved.record.updated_by.present? %>, <%= time_ago_in_words(resolved.record.updated_at) %> ago.
+              <% when :env %>
+                From <span class="font-mono"><%= resolved.env_key %></span> in the environment. Saving here takes over from it.
+              <% else %>
+                Default.
+              <% end %>
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <% if definition.type == :boolean %>
+              <span class="pill <%= resolved.value ? 'bg-pale-green text-ink-green' : 'bg-pale-red text-ink-red' %>" data-value><span aria-hidden="true">●</span> <%= resolved.value ? "On" : "Off" %></span>
+              <%= button_to (resolved.value ? "Turn off" : "Turn on"), setting_path(definition.key), method: :patch,
+                    params: { value: !resolved.value }, class: "btn-quiet",
+                    data: { turbo_confirm: "#{resolved.value ? 'Turn off' : 'Turn on'} #{definition.label}?" } %>
+            <% else %>
+              <%= form_with url: setting_path(definition.key), method: :patch, class: "flex gap-2 items-end" do |form| %>
+                <div>
+                  <%= form.label :value, definition.label, class: "sr-only", for: "setting_#{definition.key}" %>
+                  <% if definition.type == :integer %>
+                    <%= form.number_field :value, value: resolved.value, min: definition.min, max: definition.max, required: true, id: "setting_#{definition.key}", class: "field w-24" %>
+                  <% else %>
+                    <%= form.text_field :value, value: resolved.value, id: "setting_#{definition.key}", class: "field w-72" %>
+                  <% end %>
+                </div>
+                <%= form.submit "Save", class: "btn-quiet cursor-pointer" %>
+              <% end %>
+            <% end %>
+            <% if resolved.source == :saved %>
+              <%= button_to "Reset", setting_path(definition.key), method: :delete, class: "btn-quiet",
+                    data: { turbo_confirm: "Forget the value saved here for #{definition.label}?" } %>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </section>
+<% end %>

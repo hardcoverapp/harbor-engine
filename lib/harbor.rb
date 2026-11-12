@@ -1,0 +1,30 @@
+require "harbor/version"
+require "harbor/nav"
+require "harbor/nav_helper"
+require "harbor/settings"
+require "harbor/configuration"
+require "harbor/engine"
+
+# Harbor runs agent work: workflows whose steps are runs, placed on runtimes
+# through workspaces, executed by agents with routed models. It is mounted by a
+# host application and must not know which one (see README.md).
+module Harbor
+  class << self
+    def config
+      @config ||= Configuration.new
+    end
+
+    # Host initializer entry point. Only what is code belongs here; anything
+    # that is data is an in-app setting.
+    def configure
+      yield config
+    end
+
+    def nav = config.nav
+
+    # Tests only: start from the defaults again.
+    def reset_config!
+      @config = nil
+    end
+  end
+end

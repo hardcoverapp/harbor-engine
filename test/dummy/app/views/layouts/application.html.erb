@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= content_for(:title) || "Dummy" %></title>
+    <%= csrf_meta_tags %>
+  </head>
+  <body>
+    <%# A host layout links to its own pages by bare route helper, and renders
+        Harbor's menu. Both have to work on host pages and on Harbor's. %>
+    <nav data-host-nav>
+      <%= link_to "Home", root_path %>
+      <%= link_to "Reports", reports_path %>
+      <ul data-harbor-menu>
+        <% harbor_nav_links.each do |link| %>
+          <li><%= link_to link.label, link.path, class: (link.active ? "current" : nil) %></li>
+        <% end %>
+      </ul>
+    </nav>
+    <% if notice %><p data-notice><%= notice %></p><% end %>
+    <% if alert %><p data-alert><%= alert %></p><% end %>
+    <%= yield %>
+  </body>
+</html>

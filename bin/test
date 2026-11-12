@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Run the suite against the dummy app: creates its database on first use.
+# Needs Postgres; DATABASE_URL names the server (the database name is fixed).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export RAILS_ENV=test
+bundle exec rake app:db:create app:db:schema:load >/dev/null
+bundle exec rake test "$@"
