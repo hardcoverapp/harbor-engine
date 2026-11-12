@@ -5,6 +5,7 @@ require "harbor/nav_helper"
 require "harbor/status_helper"
 require "harbor/pages"
 require "harbor/settings"
+require "harbor/task_types"
 require "harbor/configuration"
 require "harbor/engine"
 
@@ -31,6 +32,8 @@ module Harbor
     def webhook_event_class = config.webhook_event_class.constantize
 
     def model_alias_class = config.model_alias_class.constantize
+
+    def agent_class = config.agent_class.constantize
 
     # A configured class's name, for an association's `class_name:`. Absolute:
     # Active Record looks a relative name up inside Harbor first, where a

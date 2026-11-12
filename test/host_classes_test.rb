@@ -9,7 +9,10 @@ class HarborHostClassesTest < ActiveSupport::TestCase
       [ Harbor::WebhookEvent, :run ] => "::Harbor::Run",
       [ Harbor::Run, :parent_run ] => "::Harbor::Run",
       [ Harbor::Run, :child_runs ] => "::Harbor::Run",
-      [ Harbor::ModelChoice, :model_alias ] => "::Harbor::ModelAlias"
+      [ Harbor::ModelChoice, :model_alias ] => "::Harbor::ModelAlias",
+      [ Harbor::Agent, :model_alias ] => "::Harbor::ModelAlias",
+      [ Harbor::AgentDocument, :agent ] => "::Harbor::Agent",
+      [ Harbor::TaskAssignment, :agent ] => "::Harbor::Agent"
     }.each do |(model, name), class_name|
       assert_equal class_name, model.reflect_on_association(name).class_name, "#{model}##{name}"
     end

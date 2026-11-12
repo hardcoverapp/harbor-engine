@@ -261,6 +261,32 @@ kept if a refresh fails.
 A host with more on its aliases subclasses the record and names it:
 `c.model_alias_class = "ModelAlias"`.
 
+## Agents
+
+A `Harbor::Agent` is a key, a name, a system prompt, any number of Markdown
+documents (`Harbor::AgentDocument`), the tools it may use and a model alias.
+`agent.full_system_prompt` is what a run is given: the house context and shared
+documents every agent gets (`Harbor::AgentSetting`), then the agent's own prompt
+and documents.
+
+Work is handed out by task type. The host declares the kinds of work its code
+dispatches, and who does each is a `Harbor::TaskAssignment` row edited in the
+app:
+
+```ruby
+# config/initializers/harbor.rb
+Harbor::TaskTypes.declare "pr_review"
+Harbor::TaskTypes.declare "pr_rebase", fallback: "pr_review"       # no row of its own: use pr_review's agent
+Harbor::TaskTypes.declare "issue_triage", default_agent: "planner"  # no row at all: this agent
+```
+
+```ruby
+agent = Harbor::TaskAssignment.agent_for("pr_review")   # nil when unassigned or switched off
+```
+
+A host with more on its agents subclasses the record and names it:
+`c.agent_class = "Agent"`.
+
 ## Webhooks
 
 `Harbor::WebhookEvent` is the record of every inbound delivery, and the

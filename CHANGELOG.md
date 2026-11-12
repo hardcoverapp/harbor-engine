@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0
+
+- **`Harbor::Agent`, `Harbor::AgentDocument` and `Harbor::AgentSetting`**: an agent's
+  identity, instructions, documents, tools, avatar and model alias, and the house
+  context and shared documents every agent is given. `config.agent_class` for a host's
+  subclass.
+- **`Harbor::TaskAssignment` and `Harbor::TaskTypes`**: which agent handles which kind
+  of work. The host declares its task types (with an optional fallback type and default
+  agent); assignments are rows edited in the app.
+- The migration creates `agents`, `agent_documents`, `agent_settings` and
+  `task_assignments`, or leaves them alone where they exist.
+
 ## 0.6.1
 
 - **Fix:** associations to a class the host names (`run_event.run`,

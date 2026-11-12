@@ -33,6 +33,10 @@ module Harbor
     # host's subclass of it.
     attr_accessor :model_alias_class
 
+    # The class Harbor finds agents with, by name: Harbor's own or a host's
+    # subclass of it.
+    attr_accessor :agent_class
+
     # Where runs' live logs are kept. `log_location` turns a log's relative
     # path into a file path; `log_path` gives a run its relative path (nil for
     # a run with nothing to name its log by).
@@ -46,6 +50,7 @@ module Harbor
       @run_class = "Harbor::Run"
       @webhook_event_class = "Harbor::WebhookEvent"
       @model_alias_class = "Harbor::ModelAlias"
+      @agent_class = "Harbor::Agent"
       @log_location = ->(path) { Rails.root.join("storage/harbor/logs", path) }
       @log_path = lambda do |run|
         name = run.loader.presence || run.skill.presence&.tr(".", "-")

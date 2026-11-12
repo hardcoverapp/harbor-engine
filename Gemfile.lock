@@ -1,7 +1,8 @@
 PATH
   remote: .
   specs:
-    harbor-engine (0.6.1)
+    harbor-engine (0.7.0)
+      marcel (>= 1.0)
       rails (>= 8.1)
 
 GEM

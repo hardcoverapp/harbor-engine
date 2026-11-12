@@ -10,9 +10,45 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_12_210000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_12_220000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "agent_documents", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.string "path", null: false
+    t.text "body"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["agent_id", "path"], name: "index_agent_documents_on_agent_id_and_path", unique: true
+    t.index ["agent_id"], name: "index_agent_documents_on_agent_id"
+  end
+
+  create_table "agent_settings", force: :cascade do |t|
+    t.string "key", null: false
+    t.text "body"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_agent_settings_on_key", unique: true
+  end
+
+  create_table "agents", force: :cascade do |t|
+    t.string "key", null: false
+    t.string "name"
+    t.text "description"
+    t.boolean "enabled", default: true, null: false
+    t.text "system_prompt"
+    t.bigint "model_alias_id"
+    t.jsonb "tools", default: {}, null: false
+    t.jsonb "configuration", default: {}, null: false
+    t.jsonb "default_tasks", default: [], null: false
+    t.binary "avatar_data"
+    t.string "avatar_content_type"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_agents_on_key", unique: true
+    t.index ["model_alias_id"], name: "index_agents_on_model_alias_id"
+  end
 
   create_table "harbor_settings", force: :cascade do |t|
     t.string "key", null: false
@@ -131,6 +167,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_210000) do
     t.index ["subject_type", "subject_id"], name: "index_runs_on_subject_type_and_subject_id"
   end
 
+  create_table "task_assignments", force: :cascade do |t|
+    t.string "task_type", null: false
+    t.string "agent_key", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["agent_key"], name: "index_task_assignments_on_agent_key"
+    t.index ["task_type"], name: "index_task_assignments_on_task_type", unique: true
+  end
+
   create_table "webhook_events", force: :cascade do |t|
     t.string "provider", null: false
     t.string "event", null: false
@@ -150,6 +195,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_210000) do
     t.index ["status"], name: "index_webhook_events_on_status"
   end
 
+  add_foreign_key "agent_documents", "agents"
+  add_foreign_key "agents", "model_aliases"
   add_foreign_key "model_choices", "model_aliases"
   add_foreign_key "model_choices", "model_providers"
   add_foreign_key "run_events", "runs"

@@ -16,4 +16,6 @@ Gem::Specification.new do |spec|
   spec.files = Dir.chdir(__dir__) { Dir["{app,config,db,lib}/**/*", "CHANGELOG.md", "LICENSE", "README.md"] }
 
   spec.add_dependency "rails", ">= 8.1"
+
+  spec.add_dependency "marcel", ">= 1.0"
 end
