@@ -1,0 +1,6 @@
+/* Harbor's entry point for a host that builds its CSS with tailwindcss-rails:
+   it makes Tailwind read Harbor's views, so a utility class used only here is
+   still generated. tailwindcss-rails finds this file by its path
+   (app/assets/tailwind/<engine name>/engine.css) and writes
+   app/assets/builds/tailwind/harbor.css in the host; the host imports that. */
+@source "../../../views";

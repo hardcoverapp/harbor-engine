@@ -86,6 +86,18 @@ page. In the host's layout:
 <% end %>
 ```
 
+### Styles
+
+Harbor's views use Tailwind utility classes. A host that builds its CSS with
+`tailwindcss-rails` adds one line to its `app/assets/tailwind/application.css`, so
+Tailwind reads Harbor's views too:
+
+```css
+@import "../builds/tailwind/harbor";
+```
+
+`tailwindcss-rails` writes that file during its build.
+
 ### What the host has to provide, for now
 
 Harbor's pages render inside the host's layout and use the host's stylesheet.
