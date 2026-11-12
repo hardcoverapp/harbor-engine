@@ -42,6 +42,10 @@ module Harbor
     # a run with nothing to name its log by).
     attr_accessor :log_location, :log_path
 
+    # The Orca command line Harbor runs agents through: a name on the PATH or
+    # a full path.
+    attr_accessor :orca_bin
+
     def initialize
       @nav = Nav.new
       @parent_controller = "ApplicationController"
@@ -56,6 +60,7 @@ module Harbor
         name = run.loader.presence || run.skill.presence&.tr(".", "-")
         "#{name}/run-#{run.id}#{run.log_attempt_suffix}.log" if name
       end
+      @orca_bin = "orca"
     end
 
     def env_fallback(setting, env_key)

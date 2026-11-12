@@ -7,6 +7,7 @@ require "harbor/pages"
 require "harbor/settings"
 require "harbor/task_types"
 require "harbor/configuration"
+require "harbor/orca"
 require "harbor/engine"
 
 # Harbor runs agent work: workflows whose steps are runs, placed on runtimes
