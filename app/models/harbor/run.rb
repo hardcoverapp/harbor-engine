@@ -37,6 +37,16 @@ module Harbor
     scope :queued_or_running, -> { where(status: ACTIVE) }
     scope :unresolved, -> { where(resolved_at: nil) }
 
+    # Where this run's live log is, relative to the log location; nil when the
+    # run has nothing to name a log by. A run restarted on another model logs
+    # each attempt to its own file.
+    def live_log_path = Harbor.config.log_path.call(self)
+
+    def log_attempt_suffix
+      attempt = Array(input["model_switches"]).size
+      attempt.positive? ? "-attempt-#{attempt + 1}" : ""
+    end
+
     # Short label for a list of runs.
     def label
       return loader.to_s.tr("-", " ").titleize if loader.present?

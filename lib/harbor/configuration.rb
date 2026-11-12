@@ -25,12 +25,22 @@ module Harbor
     # host's subclass of it that adds what is the host's.
     attr_accessor :run_class
 
+    # Where runs' live logs are kept. `log_location` turns a log's relative
+    # path into a file path; `log_path` gives a run its relative path (nil for
+    # a run with nothing to name its log by).
+    attr_accessor :log_location, :log_path
+
     def initialize
       @nav = Nav.new
       @parent_controller = "ApplicationController"
       @user_label = ->(user) { user.try(:name).presence || user.try(:email) }
       @env_fallbacks = {}
       @run_class = "Harbor::Run"
+      @log_location = ->(path) { Rails.root.join("storage/harbor/logs", path) }
+      @log_path = lambda do |run|
+        name = run.loader.presence || run.skill.presence&.tr(".", "-")
+        "#{name}/run-#{run.id}#{run.log_attempt_suffix}.log" if name
+      end
     end
 
     def env_fallback(setting, env_key)

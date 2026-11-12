@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- **`Harbor::LiveLog`**: open, append to and close a run's live log; read it, or just
+  its tail. `Harbor::Run#live_log_path` names each run's log.
+- **`config.log_location` and `config.log_path`**: where logs are kept and what each is
+  called. The default is `storage/harbor/logs/<kind>/run-<id>.log`.
+
 ## 0.3.0
 
 - **`Harbor::Run` and `Harbor::RunEvent`**: the record of every piece of background

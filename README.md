@@ -22,7 +22,7 @@ RubyGems yet; add it from this repository, pinned to a release tag:
 
 ```ruby
 # Gemfile
-gem "harbor-engine", github: "hardcoverapp/harbor-engine", tag: "v0.3.0"
+gem "harbor-engine", github: "hardcoverapp/harbor-engine", tag: "v0.4.0"
 ```
 
 ```bash
@@ -212,6 +212,29 @@ Harbor.configure { |c| c.run_class = "Run" }
 ```
 
 Harbor then builds and finds runs through that class (`Harbor.run_class`).
+
+### Live logs
+
+Work writes to its run's log as it goes, and the run's page reads it while it is
+still running:
+
+```ruby
+log = Harbor::LiveLog.open(run.live_log_path)
+log.call("fetching posts…")
+Harbor::LiveLog.close(log)
+```
+
+Logs are files under `storage/harbor/logs`, one folder per kind of work. A host
+that keeps them elsewhere, or names them differently, says so:
+
+```ruby
+Harbor.configure do |c|
+  c.log_location = ->(path) { File.join("/mnt/logs", path) }
+  c.log_path = ->(run) { "runs/#{run.id}.log" }
+end
+```
+
+The log location has to be a disk the web process and the workers both see.
 
 ## Switching pages off
 
