@@ -40,7 +40,7 @@ module Harbor
       [ "Runs",          :runs_path,                  { key: :runs,        group: :activity } ],
       [ "Webhooks",      :webhooks_path,              { key: :webhooks,    group: :activity, scope: :harbor } ],
       [ "Agents",        :agents_path,                { key: :agents,      group: :agents } ],
-      [ "Models",        :models_path,                { key: :models,      group: :agents, also: [ "/model_aliases" ] } ],
+      [ "Models",        :models_path,                { key: :models,      group: :agents, also: [ "/model_aliases" ], scope: :harbor } ],
       [ "Runtimes",      :runtimes_path,              { key: :runtimes,    group: :infrastructure, scope: :harbor } ],
       [ "Workspaces",    :workspace_profiles_path,    { key: :workspaces,  group: :infrastructure, scope: :harbor } ],
       [ "Review policy", :reviews_path,               { key: :reviews,     group: :quality } ],

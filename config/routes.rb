@@ -4,6 +4,13 @@ Harbor::Engine.routes.draw do
   resources :settings, only: %i[index update destroy], param: :key
   resources :webhooks, only: :index
 
+  # Models: providers and their usage, and the aliases agents are given.
+  resources :models, only: :index do
+    collection { post :refresh }
+  end
+  resources :model_aliases, except: %i[index show]
+  resources :model_providers, only: :update
+
   # Where work runs: runtimes (places with limits) and workspaces (ordered
   # fallback lists of runtimes that agents pick).
   resources :runtimes, only: %i[index update] do

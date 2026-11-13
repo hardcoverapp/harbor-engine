@@ -62,6 +62,13 @@ module Harbor
     # with work waiting for availability looks again. nil: nothing happens.
     attr_accessor :availability_changed
 
+    # Called with the current user when someone asks for model usage to be
+    # read again; returns the run doing it. nil: the page offers no refresh.
+    attr_accessor :refresh_model_usage
+
+    # A model id as a person reads it ("claude-sonnet-5-5" → "Sonnet 5.5").
+    attr_accessor :model_name
+
     # Where runs' live logs are kept. `log_location` turns a log's relative
     # path into a file path; `log_path` gives a run its relative path (nil for
     # a run with nothing to name its log by).
@@ -90,6 +97,8 @@ module Harbor
       @sticky_runtime = nil
       @run_reported = nil
       @availability_changed = nil
+      @refresh_model_usage = nil
+      @model_name = ->(model) { model }
       @log_location = ->(path) { Rails.root.join("storage/harbor/logs", path) }
       @log_path = lambda do |run|
         name = run.loader.presence || run.skill.presence&.tr(".", "-")

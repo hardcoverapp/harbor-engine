@@ -1,0 +1,16 @@
+<% content_for :title, "Models" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="flex flex-wrap justify-between items-start gap-4 mb-8">
+  <div><h1 class="display text-3xl">Models</h1><p class="text-sm text-soft mt-2">Usage and the models your agents run.</p></div>
+  <% if @tab == :models %>
+    <% if Harbor.config.refresh_model_usage %><%= button_to "Refresh usage", refresh_models_path, class: "btn-quiet" %><% end %>
+  <% else %>
+    <%= link_to "New alias", new_model_alias_path, class: "btn-primary" %>
+  <% end %>
+</header>
+
+<%= render "harbor/shared/page_tabs", label: "Models", tabs: [
+      [ "Models", models_path, @tab == :models ],
+      [ "Aliases", models_path(tab: "aliases"), @tab == :aliases ] ] %>
+
+<%= render "harbor/models/#{@tab}" %>

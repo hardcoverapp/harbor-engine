@@ -1,0 +1,10 @@
+<% provider_id = form.object.model_provider_id || @model_providers.first&.id %>
+<div class="card p-5 grid sm:grid-cols-3 lg:grid-cols-6 gap-4 items-end" data-harbor-nested-row data-controller="harbor--model-picker" data-harbor--model-picker-options-value="<%= @model_options.to_json %>">
+  <%= form.hidden_field :id %>
+  <div><%= form.label :model_provider_id, "Provider", class: "block text-xs text-soft mb-2" %><%= form.collection_select :model_provider_id, @model_providers, :id, :display_name, {}, class: "field w-full", data: { "harbor--model-picker-target": "provider", action: "harbor--model-picker#changeProvider" } %></div>
+  <div class="lg:col-span-2"><%= form.label :model, class: "block text-xs text-soft mb-2" %><%= form.select :model, @model_options.fetch(provider_id.to_s, []), { include_blank: "Choose a model" }, required: true, class: "field w-full", data: { "harbor--model-picker-target": "model" } %></div>
+  <div><%= form.label :effort, class: "block text-xs text-soft mb-2" %><%= form.select :effort, Harbor::ModelChoice::EFFORTS, { include_blank: "Default" }, class: "field w-full" %></div>
+  <div><%= form.label :cutoff_percent, "Skip at %", class: "block text-xs text-soft mb-2" %><%= form.number_field :cutoff_percent, min: 1, max: 100, required: true, class: "field w-full" %></div>
+  <div><%= form.label :position, "Priority", class: "block text-xs text-soft mb-2" %><%= form.number_field :position, min: 0, required: true, class: "field w-full" %></div>
+  <label class="text-xs text-soft flex gap-2 sm:col-span-3 lg:col-span-6"><%= form.check_box :_destroy %> Remove this model when saved</label>
+</div>

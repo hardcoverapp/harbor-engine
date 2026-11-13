@@ -4,6 +4,7 @@ module Harbor
   class ApplicationController < Harbor.config.parent_controller.constantize
     include Harbor::PageGate
     helper Harbor::HostRoutesHelper
+    helper Harbor::ModelsHelper
 
     private
       def harbor_user_label

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.0
+
+- **The Models page** (`/models`): a Models tab with each provider's usage and switch,
+  and an Aliases tab listing each alias's models in order.
+- **The alias form** (`/model_aliases/new`, `/model_aliases/:id/edit`): models picked
+  per provider from `Harbor::ModelCatalog`, with backups added and reordered in place.
+- `config.refresh_model_usage` puts a "Refresh usage" button on the page and does the
+  reading; `config.model_name` says how a model id reads to a person.
+- A provider's switch and an alias edit call `config.availability_changed`.
+- Stimulus controller `harbor--model-picker`.
+- The menu's Models entry now points at Harbor's page.
+
 ## 0.10.0
 
 - **The Runtimes page** (`/runtimes`): each runtime's limit, live busy count and health,

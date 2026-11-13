@@ -1,0 +1,17 @@
+<%# The Aliases tab: named, ordered lists of models that agents are given. %>
+<section>
+    <p class="text-sm text-soft mb-6 max-w-3xl">Assign an alias to an agent, then choose a primary model and any number of backups. Cutoffs apply to both the session and weekly usage windows. Unknown usage allows runs to continue; expired readings are shown as unavailable until refreshed.</p>
+  <div class="space-y-5">
+    <% @aliases.each do |model_alias| %>
+      <article class="card p-6" data-reveal data-model-alias="<%= model_alias.id %>">
+        <div class="flex justify-between items-start gap-4"><div><%= link_to model_alias.name, edit_model_alias_path(model_alias), class: "display text-xl hover:underline" %><p class="text-sm text-soft mt-1"><%= model_alias.description %></p></div><%= link_to "Edit", edit_model_alias_path(model_alias), class: "btn-quiet" %></div>
+        <ol class="mt-5 divide-y divide-hairline">
+          <% model_alias.model_choices.each_with_index do |choice, index| %>
+            <li class="py-3 flex flex-wrap gap-x-5 gap-y-1 text-sm"><span class="meta w-16"><%= index.zero? ? "Primary" : "Backup #{index}" %></span><span class="font-mono text-ink" title="<%= choice.model %>"><%= harbor_model_name(choice.model) %></span><span class="text-soft"><%= choice.model_provider.display_name %> <%= "· #{choice.effort}" if choice.effort.present? %></span><span class="text-soft ml-auto">Skip at <%= choice.cutoff_percent %>% used</span></li>
+          <% end %>
+        </ol>
+        <%= button_to "Delete alias", model_alias_path(model_alias), method: :delete, class: "text-xs text-soft underline mt-3", data: { turbo_confirm: "Delete this alias? Assigned aliases cannot be deleted." } %>
+      </article>
+    <% end %>
+  </div>
+</section>

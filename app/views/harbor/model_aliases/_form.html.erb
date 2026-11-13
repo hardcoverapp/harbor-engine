@@ -1,0 +1,28 @@
+<%= form_with model: @model_alias, scope: :model_alias, url: (@model_alias.persisted? ? model_alias_path(@model_alias) : model_aliases_path), class: "max-w-4xl space-y-8", data: { controller: "harbor--nested-fields" } do |form| %>
+  <% if @model_alias.errors.any? %>
+    <div role="alert" class="bg-pale-red text-ink-red rounded-lg p-4 text-sm"><%= @model_alias.errors.full_messages.join(". ") %></div>
+  <% end %>
+  <div class="grid sm:grid-cols-2 gap-6">
+    <div><%= form.label :name, class: "block text-sm mb-2" %><%= form.text_field :name, required: true, class: "field w-full" %></div>
+    <div><%= form.label :description, class: "block text-sm mb-2" %><%= form.text_field :description, class: "field w-full" %></div>
+  </div>
+  <div>
+    <h2 class="display text-xl mb-2">Models in priority order</h2>
+    <p class="text-sm text-soft mb-5">The first available model runs. A model is skipped when either subscription window reaches its cutoff, its provider is disabled, or the runtime does not support it. Each runtime in an agent's workspace is tried with this list in turn. Lower priority numbers run first.</p>
+    <% if @model_catalog_errors.any? %>
+      <div role="alert" class="bg-pale-red text-ink-red rounded-lg p-4 text-sm mb-5"><%= @model_catalog_errors.join(" ") %> Previously saved models are still available.</div>
+    <% end %>
+    <div data-harbor--nested-fields-target="list" class="space-y-4">
+      <%= form.fields_for :model_choices do |choice| %>
+        <%= render "choice", form: choice %>
+      <% end %>
+    </div>
+    <template data-harbor--nested-fields-target="template">
+      <%= form.fields_for :model_choices, Harbor::ModelChoice.new(cutoff_percent: 90), child_index: "NEW_RECORD" do |choice| %>
+        <%= render "choice", form: choice %>
+      <% end %>
+    </template>
+    <button type="button" data-action="harbor--nested-fields#add" class="btn-quiet mt-4">Add backup model</button>
+  </div>
+  <div class="flex gap-4 items-center"><%= form.submit "Save alias", class: "btn-primary cursor-pointer" %><%= link_to "Cancel", models_path(tab: "aliases"), class: "text-sm text-soft" %></div>
+<% end %>

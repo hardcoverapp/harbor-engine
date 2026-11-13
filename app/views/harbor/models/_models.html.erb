@@ -1,0 +1,26 @@
+<%# The Models tab: each provider's subscription usage and its switch. It
+    refreshes itself every 30 seconds by morphing, so the numbers move and the
+    page doesn't reload. %>
+<% turbo_refreshes_with(method: :morph, scroll: :preserve) if respond_to?(:turbo_refreshes_with) %>
+<div data-controller="harbor--poll" data-harbor--poll-interval-value="30" hidden></div>
+<div class="grid md:grid-cols-2 gap-6">
+  <% @providers.each do |provider| %>
+    <section class="card p-6" data-reveal data-provider="<%= provider.key %>">
+      <div class="flex justify-between items-center gap-4 mb-7">
+        <h2 class="display text-2xl"><%= provider.display_name %></h2>
+        <span class="pill <%= provider.enabled? ? 'bg-pale-green text-ink-green' : 'bg-pale-red text-ink-red' %>"><span aria-hidden="true">●</span> <%= provider.enabled? ? "Enabled" : "Disabled" %></span>
+      </div>
+      <% weekly = provider.usage_percent("weekly"); session = provider.usage_percent("session") %>
+      <p class="text-4xl text-ink font-light tracking-tight"><%= weekly ? "#{number_with_precision(weekly, precision: 1, strip_insignificant_zeros: true)}%" : "—" %><span class="text-sm text-soft ml-2">used this week</span></p>
+      <progress class="w-full h-1.5 mt-4 mb-2 accent-[#346538]" max="100" value="<%= weekly || 0 %>" aria-label="Weekly usage"></progress>
+      <p class="meta"><%= harbor_usage_reset_label(provider.weekly_resets_at) %></p>
+      <div class="mt-6 pt-5 border-t border-hairline">
+        <p class="text-sm text-body"><%= session ? "#{number_with_precision(session, precision: 1, strip_insignificant_zeros: true)}% used of current session" : "Current session usage unavailable" %></p>
+        <p class="meta mt-1"><%= harbor_usage_reset_label(provider.session_resets_at) %></p>
+      </div>
+      <% if provider.usage_error.present? %><p class="text-xs text-ink-yellow mt-4"><%= provider.usage_error %></p><% end %>
+      <p class="meta mt-4"><%= provider.usage_checked_at ? "Checked #{time_ago_in_words(provider.usage_checked_at)} ago" : "Usage has not been checked" %> · API key <%= provider.key_configured? ? "configured" : "not configured" %></p>
+      <%= button_to(provider.enabled? ? "Disable #{provider.display_name}" : "Enable #{provider.display_name}", model_provider_path(provider), method: :patch, params: { model_provider: { enabled: !provider.enabled? } }, class: "btn-quiet mt-5") %>
+    </section>
+  <% end %>
+</div>
