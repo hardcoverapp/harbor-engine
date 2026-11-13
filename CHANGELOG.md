@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.1
+
+- `Harbor::AgentSession.run!` takes `workspace:`, to place a session on a workspace other
+  than the agent's own.
+
 ## 0.15.0
 
 - **Agent sessions**: `Harbor::AgentSession.run!(agent:, prompt:)` runs an agent's

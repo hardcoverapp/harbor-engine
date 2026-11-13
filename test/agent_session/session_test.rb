@@ -176,6 +176,21 @@ class HarborAgentSessionTest < ActionDispatch::IntegrationTest
     assert_equal [ 0, 0 ], [ Harbor::Slots.busy(@agent), @runtime.busy ], "finishing gives both back"
   end
 
+  test "run! places on the workspace it is given, not the agent's own" do
+    desk = Harbor::Runtime.create!(key: "desk", name: "Desk", backend: "orca", max_concurrent: 1, position: 5,
+                                   config: @runtime.config)
+    only_desk = Harbor::WorkspaceProfile.new(key: "sessions", name: "Sessions")
+    only_desk.workspace_profile_runtimes.build(runtime: desk, position: 0)
+
+    run = Harbor::AgentSession.run!(agent: @agent, prompt: "Fix the test.", workspace: only_desk)
+    assert run.running?
+    assert_equal desk.id, run.runtime_id
+    assert_equal [ 0, 1 ], [ @runtime.busy, desk.busy ], "the agent's own workspace was not used"
+
+    waiting = Harbor::AgentSession.run!(agent: @agent, prompt: "And another.", workspace: only_desk)
+    assert waiting.queued?, "the given workspace is full, and the agent's own is not a fallback"
+  end
+
   test "a run with nothing but an agent still has a log" do
     run = Harbor::AgentSession.run!(agent: @agent, prompt: "Fix the test.")
     assert_equal "writer/run-#{run.id}.log", run.live_log_path

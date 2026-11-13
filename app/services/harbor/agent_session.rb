@@ -91,7 +91,10 @@ module Harbor
       #   run           a run made earlier (one that waited), instead of a new one
       #   attributes    for the new run: skill, task_type, trigger_source, subject…
       #   requirements  placement's, such as { tool_policy: true }
-      def run!(agent:, prompt:, run: nil, attributes: {}, requirements: {}, **options)
+      #   workspace     place on this workspace instead of the agent's own (a
+      #                 host that lets only some of an agent's runtimes take
+      #                 sessions passes a workspace listing just those)
+      def run!(agent:, prompt:, run: nil, attributes: {}, requirements: {}, workspace: nil, **options)
         run ||= Harbor.run_class.create!({ agent_key: agent.key, status: "queued" }.merge(attributes))
         owner = "run:#{run.id}"
         ttl = (options.fetch(:timeout, DEFAULT_TIMEOUT) || 1.day).to_i + SLOT_MARGIN.to_i
@@ -102,7 +105,12 @@ module Harbor
         policy = options.slice(:allowed_tools, :disallowed_tools)
         policy.delete(:allowed_tools) if policy[:allowed_tools] == :agent
         begin
-          placement = agent.placement(run:, capacity: { owner:, ttl:, workspace: nil }, requirements:, **policy)
+          capacity = { owner:, ttl:, workspace: nil }
+          placement = if workspace
+            workspace.resolve(agent:, run:, capacity:, requirements:, **policy)
+          else
+            agent.placement(run:, capacity:, requirements:, **policy)
+          end
         rescue *unavailable_errors => e
           Harbor::Slots.release(agent.key, agent_slot, owner)
           return wait!(run, "waiting_for_model", e.message)
