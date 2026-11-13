@@ -242,6 +242,14 @@ class HarborRunnerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "the run's files are gone before the result is reported, since the terminal may be closed the moment it lands" do
+    ran = run_script("echo done", bundle: { "prompt" => "hello" }, env: { "HARBOR_RUNNER_BUNDLE" => "prompt" })
+    assert_equal 0, ran.status
+    assert_equal 1, ran.results.size
+    assert_equal "", ran.files["at_result"], "nothing of the run was left on disk when the result was posted"
+    assert_empty ran.left_behind
+  end
+
   def alive?(pid)
     Process.kill(0, pid)
     true

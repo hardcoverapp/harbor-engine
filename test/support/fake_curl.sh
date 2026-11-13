@@ -54,6 +54,8 @@ case "$url" in
     fi
     answer 204 "" ;;
   */result*)
+    # What the runner still had on disk when it reported.
+    ls "$dir/tmp" > "$dir/at_result" 2>/dev/null
     printf '%s\n' "$data" >> "$dir/result"
     answer 204 "" ;;
   */bundle/*)

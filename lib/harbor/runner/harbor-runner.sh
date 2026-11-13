@@ -184,15 +184,18 @@ else
 fi
 
 drain
+[ -z "$viewer" ] || kill "$viewer" 2>/dev/null
+# The run's files go before the result does. Harbor closes the terminal as
+# soon as it has the result, and a script stopped there would leave them.
+rm -rf "$HARBOR_RUN_DIR"
 tries=0
 while [ "$tries" -lt 3 ]; do
-  status=$(request -H 'Content-Type: application/json' --data "{\"exit_status\":$code,\"signalled\":$signalled}" \
-    "$HARBOR_RUNNER_URL/result${attempt:+?$attempt}")
+  status=$(curl -sS -m 30 --retry 2 -X POST -H "Authorization: Bearer $HARBOR_RUNNER_TOKEN" -o /dev/null -w '%{http_code}' \
+    -H 'Content-Type: application/json' --data "{\"exit_status\":$code,\"signalled\":$signalled}" \
+    "$HARBOR_RUNNER_URL/result${attempt:+?$attempt}" 2>/dev/null)
   case "$status" in
     000|5??|'') tries=$((tries + 1)); sleep 2 ;;
     *) break ;;
   esac
 done
-[ -z "$viewer" ] || kill "$viewer" 2>/dev/null
-rm -rf "$HARBOR_RUN_DIR"
 exit "$code"
