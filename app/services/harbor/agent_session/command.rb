@@ -138,13 +138,16 @@ module Harbor
         # --verbose is required with stream-json in print mode. Partial
         # messages are left off: token deltas would flood the log.
         words += [ "--output-format", "stream-json", "--verbose" ]
-        # An allow list means "these tools and no others". --allowedTools
-        # alone doesn't do that: it only says what is approved without asking,
-        # and with permissions skipped everything is approved anyway. --tools
-        # is what takes the other built-in tools away. A denied tool stays
-        # denied whatever the mode.
+        # --allowedTools says what is approved without asking; with
+        # permissions skipped everything is approved anyway, so by itself it
+        # restricts nothing. --tools is what takes the other built-in tools
+        # away, making the list mean "these and no others". A denied tool
+        # stays denied whatever the mode.
+        # Whether a list is enforced is a setting, off unless a site turns it
+        # on: where everyone using the system is trusted, an agent has every
+        # tool and its list only says what needs no approval.
         if allowed_tools.any?
-          words += [ "--tools", built_in_tools.join(",") ]
+          words += [ "--tools", built_in_tools.join(",") ] if Harbor::Setting.get(:agent_allow_lists_enforced)
           words += [ "--allowedTools", allowed_tools.join(",") ]
         end
         words += [ "--disallowedTools", disallowed_tools.join(",") ] if disallowed_tools.any?

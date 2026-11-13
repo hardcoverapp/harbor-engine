@@ -14,6 +14,12 @@ Harbor::Settings.declare :agent_auto_retries,
   type: :integer, default: 3, min: 0, max: 10, group: "Runs", label: "Automatic retries",
   description: "How many times a failed agent run is retried, as a new run each time, before it is left for a person. 0 turns retries off."
 
+Harbor::Settings.declare :agent_allow_lists_enforced,
+  type: :boolean, default: false, group: "Runs", label: "Enforce agents' allow lists",
+  description: "Off, an agent session has every tool, and an agent's allowed tools only say what needs no approval. " \
+               "On, a session gets only the built-in tools on its agent's list (claude's --tools). " \
+               "A denied tool is always denied, whichever this is."
+
 Harbor::Settings.declare :agent_session_silent_minutes,
   type: :integer, default: 10, min: 1, max: 1440, group: "Runs", label: "Silent runner check (minutes)",
   description: "When a running agent session has sent nothing for this long, Harbor asks its runtime whether the terminal is still there. " \

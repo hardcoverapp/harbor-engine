@@ -58,7 +58,7 @@ class HarborAgentSessionCommandTest < ActiveSupport::TestCase
                    "--model", "claude-sonnet-5-5", "--effort", "medium",
                    "--append-system-prompt", "You're `careful`.",
                    "--output-format", "stream-json", "--verbose",
-                   "--tools", "Read,Grep,Glob", "--allowedTools", "Read,Grep,Glob", "--disallowedTools", "Bash,WebFetch",
+                   "--allowedTools", "Read,Grep,Glob", "--disallowedTools", "Bash,WebFetch",
                    "--add-dir", "/srv/docs", "--add-dir", "/srv/other",
                    "--mcp-config", "#{ran.env.grep(/\AHARBOR_RUN_DIR=/).first.delete_prefix('HARBOR_RUN_DIR=')}/mcp", "--strict-mcp-config",
                    "--dangerously-skip-permissions", "--resume", "abc-123" ], ran.argv
@@ -66,7 +66,14 @@ class HarborAgentSessionCommandTest < ActiveSupport::TestCase
     assert_empty ran.stray, "nothing in the prompt was run by the shell"
   end
 
-  test "an allow list takes the other built-in tools away, which --allowedTools alone does not" do
+  test "by default an allow list restricts nothing: it is only what needs no approval" do
+    words = Command.new(cli: "claude", allowed_tools: %w[Read Grep Glob]).arguments
+    assert_not_includes words, "--tools"
+    assert_equal "Read,Grep,Glob", words[words.index("--allowedTools") + 1]
+  end
+
+  test "with allow lists enforced, a list takes the other built-in tools away" do
+    Harbor::Setting.set!(:agent_allow_lists_enforced, "true")
     arguments = ->(allowed) { Command.new(cli: "claude", allowed_tools: allowed).arguments }
     tools = ->(allowed) { arguments.call(allowed).then { |words| words[words.index("--tools") + 1] } }
 
@@ -77,6 +84,9 @@ class HarborAgentSessionCommandTest < ActiveSupport::TestCase
     assert_includes arguments.call(%w[Read mcp__tracker__create_issue]), "Read,mcp__tracker__create_issue", "the whole list is still approved"
     assert_not_includes arguments.call([]), "--tools", "no allow list: every tool, as before"
     assert_not_includes Command.new(cli: "claude", disallowed_tools: %w[Bash]).arguments, "--tools"
+  ensure
+    # Settings outlive a test; the next one expects the default.
+    Harbor::Setting.where(key: "agent_allow_lists_enforced").delete_all
   end
 
   test "a bare claude command still gets stream-json and an MCP config of its own, strictly" do

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.1
+
+- **Enforcing an agent's allow list is now a setting, off by default** ("Enforce agents'
+  allow lists", under Runs). 0.17.0 enforced it always. Off, a session has every tool
+  and the list only says what is approved without asking, as `--allowedTools` has always
+  meant; on, the session gets only the built-in tools on the list. A denied tool is
+  denied either way.
+
 ## 0.17.0
 
 - **An agent's allow list is now enforced for claude.** A session given
