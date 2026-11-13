@@ -11,7 +11,7 @@ class HarborHostPagesTest < ActionDispatch::IntegrationTest
     get "/reports"
     assert_response :success
     labels = css_select("[data-harbor-menu] a").map { |a| a.text.strip }
-    assert_equal %w[Automations Reports Runs Webhooks Models Runtimes Workspaces Settings], labels
+    assert_equal %w[Automations Reports Runs Webhooks Models Runtimes Workspaces Databases Settings], labels
     assert_select "[data-harbor-menu] a.current", text: "Reports"
     assert_select "[data-harbor-menu] a[href='/settings']", text: "Settings"
   end

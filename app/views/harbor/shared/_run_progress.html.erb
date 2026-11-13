@@ -1,0 +1,26 @@
+<%# Live progress for a running operation (runs.progress; see
+    Harbor::DbOps::BackupProgress). locals: run, compact (inside a list row). %>
+<% progress = run.progress.presence %>
+<% if progress && (run.running? || run.pending?) %>
+  <% percent = progress["percent"] %>
+  <div id="run-progress-<%= run.id %>" class="<%= local_assigns[:compact] ? "mt-2" : "card p-5 mb-8" %>">
+    <div class="flex flex-wrap justify-between gap-2 text-sm">
+      <span class="text-ink">
+        <%= progress["label"] %><% if progress["steps"].to_i > 1 %> <span class="text-soft">· <%= progress["step"] %> of <%= progress["steps"] %></span><% end %>
+      </span>
+      <span class="text-soft tabular-nums">
+        <%= number_to_human_size(progress["bytes"]) %><% if progress["expected_bytes"] %> / ~<%= number_to_human_size(progress["expected_bytes"]) %> · <span class="text-ink"><%= percent %>%</span><% end %>
+      </span>
+    </div>
+    <% if percent %>
+      <div class="h-1.5 bg-bone rounded-full mt-3 overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= percent %>">
+        <div class="h-full bg-ink-green rounded-full transition-all duration-500" style="width: <%= percent %>%"></div>
+      </div>
+    <% end %>
+    <p class="meta mt-2">
+      <% if progress["eta_seconds"] %>~<%= Harbor::DbOps::BackupProgress.eta(progress["eta_seconds"]) %> left · <% end %>
+      <% if progress["bytes_per_second"].to_i.positive? %><%= number_to_human_size(progress["bytes_per_second"]) %>/s · <% end %>
+      <% if progress["expected_bytes"] %>estimated from the last backup<% elsif progress["reference_bytes"] %>first backup, no estimate yet · source tables <%= number_to_human_size(progress["reference_bytes"]) %> uncompressed<% else %>no estimate yet<% end %>
+    </p>
+  </div>
+<% end %>

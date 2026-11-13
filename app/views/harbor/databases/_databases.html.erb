@@ -1,0 +1,128 @@
+<%# The databases and their backups. This tab does not refresh itself: a
+    backup in progress is followed on the Recent operations tab. %>
+<% @configuration_errors.each do |error| %>
+  <p role="alert" class="bg-pale-yellow text-ink-yellow rounded-lg p-4 mb-5 text-sm"><%= error %></p>
+<% end %>
+<% if @operation_running %>
+  <p role="status" class="bg-pale-blue text-ink-blue rounded-lg px-4 py-2.5 mb-5 text-sm" data-operation-running>
+    A backup or restore is running. <%= link_to "Follow it under Recent operations", databases_path(tab: "operations"), class: "underline" %>; this page shows the result once you reload it.
+  </p>
+<% end %>
+
+<% if @databases.empty? && @configuration_errors.empty? %>
+  <p class="card p-5 mb-8 text-sm text-soft" data-no-databases>
+    No databases are declared, so there is nothing to back up. A database is declared in an initializer with
+    <span class="font-mono">Harbor::Databases.declare</span>, naming the ENV key that holds its URL.
+  </p>
+<% end %>
+
+<div class="grid md:grid-cols-3 gap-4 mb-8">
+  <section class="card p-5">
+    <p class="meta mb-2">Backups</p>
+    <p class="display text-xl"><%= pluralize(@databases.count(&:configured?), "database") %></p>
+    <p class="meta mt-2">Next: <%= backup_schedule_time(@backup_next) %></p>
+  </section>
+  <section class="card p-5">
+    <p class="meta mb-2">Stored in</p>
+    <p class="text-sm text-ink"><%= Harbor::DatabaseBackup.location_label(Harbor::DatabaseBackup::LOCAL) %> <span class="text-soft">· every kind</span></p>
+    <p class="meta break-all font-mono"><%= @backup_host_root || @backup_root %></p>
+    <% if @buckets.any? %>
+      <p class="text-sm text-ink mt-2"><%= Harbor::DatabaseBackup.location_label(@bucket_location) %></p>
+      <% @buckets.each do |name, stored| %>
+        <p class="meta break-all"><span class="font-mono"><%= name %></span> · <%= stored.to_sentence %></p>
+      <% end %>
+    <% else %>
+      <p class="meta mt-2">No bucket configured (<%= Harbor.config.backup_bucket_env_prefix %>_*), so nothing leaves the backup drive.</p>
+    <% end %>
+  </section>
+  <section class="card p-5">
+    <p class="meta mb-2">Staging refresh</p>
+    <p class="display text-xl"><%= @restore_on ? "Enabled" : "Paused" %></p>
+    <p class="meta mt-2">Next: <%= backup_schedule_time(@restore_next) %></p>
+    <% if @operations_available %><%= button_to "Refresh staging", refresh_staging_databases_path, class: "btn-quiet mt-3 !py-1 !px-3 text-xs", disabled: !@restore_on, data: { turbo_confirm: "Replace all configured staging databases with their newest staging backups?" } %><% end %>
+  </section>
+</div>
+
+<%# What the three kinds are, once, instead of under every database. %>
+<ul class="flex flex-wrap gap-x-6 gap-y-2 mb-5 text-xs text-soft" data-backup-legend>
+  <% Harbor::DbOps::Database::VARIANTS.each do |kind| %>
+    <li class="flex items-center gap-2"><%= backup_kind_chip(kind) %> <%= backup_kind(kind)[:about] %></li>
+  <% end %>
+</ul>
+
+<% cloud_name = @buckets.any? ? Harbor::DatabaseBackup.location_label(@bucket_location) : "a bucket" %>
+<div class="space-y-4 mb-14">
+  <% @databases.each do |database| %>
+    <% by_kind = @backups[database.key] || {} %>
+    <% configured_kinds = @database_variants.fetch(database) %>
+    <% shown = Harbor::DbOps::Database::VARIANTS.select { |kind| configured_kinds.include?(kind) || by_kind.key?(kind) } %>
+    <section class="card px-5 py-4" id="database-<%= database.key %>">
+      <div class="flex flex-wrap justify-between items-center gap-3">
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 class="display text-xl"><%= database.name %></h2>
+          <p class="meta">
+            <%= database.configured? ? "Source configured" : "Set #{database.source_env}" %> ·
+            <% if database.own? %><%= database.owner.upcase_first %>'s own database · full backups only<% elsif database.mysql? %>MySQL · full backups only<% else %><%= database.staging_configured? ? "Staging configured" : "Staging not configured" %><% end %>
+          </p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <% configured_kinds.each do |variant| %>
+            <% if @operations_available %><%= button_to "Back up #{variant}", backup_database_path(database.key), params: { variant: }, class: "btn-quiet !py-1 !px-3 text-xs", disabled: !database.configured? %><% end %>
+          <% end %>
+        </div>
+      </div>
+      <div class="overflow-x-auto mt-3">
+        <table class="w-full text-sm text-left">
+          <thead class="meta">
+            <tr>
+              <th class="py-1.5 pr-4 font-normal w-28">Backup</th>
+              <th class="py-1.5 pr-4 font-normal">Taken</th>
+              <th class="py-1.5 pr-4 font-normal text-right w-24">Size</th>
+              <th class="py-1.5 px-3 font-normal text-center w-16" title="<%= Harbor::DatabaseBackup.location_label(Harbor::DatabaseBackup::LOCAL) %>">Local</th>
+              <th class="py-1.5 px-3 font-normal text-center w-16" title="<%= cloud_name %>">Cloud</th>
+              <th class="py-1.5 pl-4 font-normal w-48">Restore</th>
+            </tr>
+          </thead>
+          <% shown.each do |kind| %>
+            <% backups = by_kind.fetch(kind, []) %>
+            <tbody class="divide-y divide-hairline border-t border-hairline" id="database-<%= database.key %>-<%= kind %>" data-backups="<%= backups.size %>">
+              <% if backups.empty? %>
+                <tr>
+                  <td class="py-2 pr-4"><%= backup_kind_chip(kind) %></td>
+                  <td class="py-2 text-soft" colspan="5">No <%= kind %> backups yet.</td>
+                </tr>
+              <% end %>
+              <% backups.each do |backup| %>
+                <tr data-backup="<%= backup.id %>">
+                  <td class="py-2 pr-4"><%= backup_kind_chip(kind) %></td>
+                  <td class="py-2 pr-4 whitespace-nowrap">
+                    <span title="<%= backup.path %>"><%= backup.created_at.in_time_zone.strftime("%b %-d, %Y · %-I:%M %p") %></span>
+                    <% if backup.run %><%= harbor_run_link(backup.run, class: "meta underline ml-2") %><% end %>
+                  </td>
+                  <td class="py-2 pr-4 whitespace-nowrap text-right tabular-nums"><%= number_to_human_size(backup.bytes) %></td>
+                  <td class="py-2 px-3 text-center"><%= backup_copy_mark(backup.on_disk? ? :present : :missing, where: "local", name: "the backup drive") %></td>
+                  <td class="py-2 px-3 text-center"><%= backup_copy_mark(backup_cloud_state(backup, bucket_configured: @bucket_kinds[kind]), where: "cloud", name: cloud_name) %></td>
+                  <td class="py-2 pl-4">
+                    <% if !backup.masked? %><span class="text-faint" title="Full backups are never restored to staging">–</span>
+                    <% elsif !backup.on_disk? %><span class="meta">Not on the backup drive</span>
+                    <% elsif database.staging_configured? && @restore_on && @operations_available %>
+                      <details>
+                        <summary class="cursor-pointer text-soft hover:text-ink">Restore to staging</summary>
+                        <%= form_with url: restore_database_path(database.key), class: "mt-2 space-y-2 min-w-56" do |form| %>
+                          <%= form.hidden_field :backup_id, value: backup.id %>
+                          <%= form.label :confirmation, "Type #{database.key} to replace staging", for: "confirmation_#{backup.id}", class: "meta block" %>
+                          <%= form.text_field :confirmation, required: true, autocomplete: "off", id: "confirmation_#{backup.id}", class: "field w-full" %>
+                          <%= form.submit "Replace staging", class: "btn-quiet text-ink-red", data: { turbo_confirm: "Replace #{database.name} staging with this backup?" } %>
+                        <% end %>
+                      </details>
+                    <% else %><span class="meta">Staging restore paused</span><% end %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          <% end %>
+        </table>
+      </div>
+    </section>
+  <% end %>
+</div>

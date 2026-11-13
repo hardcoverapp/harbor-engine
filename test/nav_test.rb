@@ -27,9 +27,9 @@ class HarborNavTest < ActiveSupport::TestCase
   end
 
   test "the host adds a page after a named one" do
-    @nav.add "Database", :databases_path, after: "Automations"
-    assert_equal %w[Workflows Automations Database], @nav.labels[2, 3]
-    assert_equal :flows, @nav.items.find { |item| item.label == "Database" }.group, "next to a page means in its group"
+    @nav.add "Schedules", :schedules_path, after: "Automations"
+    assert_equal %w[Workflows Automations Schedules], @nav.labels[2, 3]
+    assert_equal :flows, @nav.items.find { |item| item.label == "Schedules" }.group, "next to a page means in its group"
   end
 
   test "before: places a page ahead, and no anchor appends" do
@@ -106,17 +106,17 @@ class HarborNavTest < ActiveSupport::TestCase
     assert_equal [
       [ :overview, nil, %w[Overview Velocity] ], [ :flows, "Flows", %w[Workflows Automations] ],
       [ :activity, "Activity", %w[Runs Webhooks] ], [ :agents, "Agents", %w[Agents Models] ],
-      [ :infrastructure, "Infrastructure", %w[Runtimes Workspaces] ],
+      [ :infrastructure, "Infrastructure", %w[Runtimes Workspaces Databases] ],
       [ :quality, "Quality", [ "Review policy", "Scorers", "Proposals" ] ], [ :settings, nil, %w[Settings] ]
     ], groups(@nav)
     assert_equal @nav.groups(View.new("/")).flat_map(&:links).map(&:label), @nav.links(View.new("/")).map(&:label)
   end
 
   test "a host's page joins the group it names" do
-    @nav.add "Database", :databases_path, group: :infrastructure, icon: :database
+    @nav.add "Storage", :storage_path, group: :infrastructure, icon: :database
     infrastructure = groups(@nav).find { |key, _| key == :infrastructure }
-    assert_equal %w[Runtimes Workspaces Database], infrastructure.last
-    assert_equal :database, @nav.groups(View.new("/")).flat_map(&:links).find { |link| link.label == "Database" }.icon
+    assert_equal %w[Runtimes Workspaces Databases Storage], infrastructure.last
+    assert_equal :database, @nav.groups(View.new("/")).flat_map(&:links).find { |link| link.label == "Storage" }.icon
   end
 
   test "a group the host names itself comes after Harbor's and before Settings; a page with none goes in More" do

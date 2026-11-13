@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_12_230000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_13_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -52,6 +52,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_230000) do
     t.index ["key"], name: "index_agents_on_key", unique: true
     t.index ["model_alias_id"], name: "index_agents_on_model_alias_id"
     t.index ["workspace_profile_id"], name: "index_agents_on_workspace_profile_id"
+  end
+
+  create_table "database_backups", force: :cascade do |t|
+    t.string "database_key", null: false
+    t.string "variant", null: false
+    t.string "path", null: false
+    t.bigint "bytes", null: false
+    t.string "sha256", null: false
+    t.jsonb "copies", default: {}, null: false
+    t.bigint "run_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["database_key", "created_at"], name: "index_database_backups_on_database_key_and_created_at"
+    t.index ["path"], name: "index_database_backups_on_path", unique: true
+    t.index ["run_id"], name: "index_database_backups_on_run_id"
   end
 
   create_table "harbor_settings", force: :cascade do |t|
@@ -240,6 +255,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_230000) do
   add_foreign_key "agent_documents", "agents"
   add_foreign_key "agents", "model_aliases"
   add_foreign_key "agents", "workspace_profiles"
+  add_foreign_key "database_backups", "runs"
   add_foreign_key "model_choices", "model_aliases"
   add_foreign_key "model_choices", "model_providers"
   add_foreign_key "run_events", "runs"

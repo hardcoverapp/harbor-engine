@@ -5,6 +5,7 @@ require "active_model/railtie"
 require "active_record/railtie"
 require "action_controller/railtie"
 require "action_view/railtie"
+require "active_job/railtie"
 
 Bundler.require(*Rails.groups)
 require "harbor"
@@ -26,5 +27,6 @@ module Dummy
     config.active_record.maintain_test_schema = true
     # One schema: the engine's migrations, dumped here.
     config.paths["db/migrate"] = []
+    config.active_job.queue_adapter = :test
   end
 end

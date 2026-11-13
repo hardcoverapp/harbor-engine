@@ -1,0 +1,20 @@
+<%# Backup and restore runs. Only this tab refreshes itself, only while
+    something is running, and with Turbo it morphs: the progress bars move and
+    nothing else on the page is redrawn. %>
+<% turbo_refreshes_with method: :morph, scroll: :preserve if respond_to?(:turbo_refreshes_with) %>
+<% if @operation_running %><div data-controller="harbor--poll" data-harbor--poll-interval-value="10" hidden></div><% end %>
+<section id="database-operations">
+  <% if @runs.empty? %><p class="text-sm text-soft">Backup and restore runs will appear here.</p><% end %>
+  <div class="card divide-y divide-hairline">
+    <% @runs.each do |run| %>
+      <% path = harbor_run_path(run) %>
+      <%= content_tag(path ? :a : :div, href: path, id: "operation-#{run.id}", class: "block px-5 py-3 text-sm hover:bg-bone") do %>
+        <span class="flex flex-wrap items-center justify-between gap-3">
+          <span><%= run.label %> <span class="text-soft">· <%= run.input["database"] || "All databases" %><%= " · #{run.input['variant']}" if run.input["variant"] %></span></span>
+          <span class="flex items-center gap-2 text-soft"><%= harbor_status_pill(run.status) %> <%= time_ago_in_words(run.created_at) %> ago</span>
+        </span>
+        <%= render "harbor/shared/run_progress", run:, compact: true %>
+      <% end %>
+    <% end %>
+  </div>
+</section>

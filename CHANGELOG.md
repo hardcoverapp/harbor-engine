@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.12.0
+
+- **Databases** (`/databases`): backups of the databases a host declares and refreshes
+  of their staging copies, with the Databases page, its switch and its menu entry.
+  `Harbor::DbOps::*` does the work and `Harbor::DatabaseBackup` is the catalog
+  (`database_backups`).
+- **`Harbor::Databases.declare`** names each database's ENV keys (its URLs stay in ENV),
+  its freshness tables and whether it is the app's own; `declare_each_time` for a list
+  read when asked for.
+- Greenmask, the PostgreSQL and MySQL client tools and the `aws-sdk-s3` gem are needed
+  only when a backup or restore runs. With no database declared the page says so.
+- Config, set on the machine: `backup_root`, `backup_host_root`, `masking_rules_path`,
+  `greenmask_bin`, `greenmask_pg_bin_path`, `backup_bucket_env_prefix`,
+  `unsafe_restore_env`, `staging_lock_role`, `restore_application_name`,
+  `restore_spared_applications`, `backup_kind_notes`.
+- Settings, under Databases: staging restores (off by default), backups kept, parallel
+  dump jobs, free space needed, newest write allowed, oldest backup a refresh uses,
+  connection timeout, upload threads.
+- **`Harbor::TrackedJob`**, a job whose life is one run, and `config.tracked_job` for a
+  host with its own. `Harbor::DbOperationJob` and `Harbor::DatabaseRestoreJob` are built
+  on it; `config.database_operation` starts an operation from the page and
+  `config.database_schedule` says when one next runs.
+- The run progress bar is `harbor/shared/run_progress`.
+
 ## 0.11.0
 
 - **The Models page** (`/models`): a Models tab with each provider's usage and switch,

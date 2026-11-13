@@ -123,7 +123,7 @@ the menu by being added to it:
 
 ```ruby
 Harbor.configure do |c|
-  c.nav.add "Database", :databases_path, group: :infrastructure, icon: :database, key: :database
+  c.nav.add "Storage", :storage_path, group: :infrastructure, icon: :database, key: :storage
 end
 ```
 
@@ -359,6 +359,169 @@ A host with more to show per delivery subclasses the record
 (`c.webhook_event_class = "WebhookEvent"`, overriding `for_page` to load what
 it needs) and adds `app/views/harbor/webhooks/_event_extras.html.erb`, which
 the page renders for each delivery with `event`.
+
+## Databases
+
+Harbor backs up the databases a site declares and refreshes staging copies of
+them, on the Databases page (`/databases`). Every backup and restore is a run.
+
+- **Backups** come in three kinds per database. `full` is everything, for
+  disaster recovery. `cleaned` is masked while it is read, so it is safe to hand
+  to developers. `staging` is masked with a second set of rules, for a staging
+  site that needs more kept than a laptop does. Each dump is a folder
+  `<database>/<kind>/<dump id>/`, cataloged in `Harbor::DatabaseBackup` with its
+  size and checksum.
+- **Staging refreshes** replace a database's staging copy with a saved masked
+  dump (staging, else cleaned). A full dump is never restored anywhere.
+- MySQL databases get full backups only.
+
+### What it needs
+
+Nothing, until a database is declared: with none, the page says so and no tool
+is run. Harbor never loads or looks for these when the app boots. They are
+needed where the jobs run, when a backup or restore runs:
+
+- [Greenmask](https://greenmask.io), which makes every PostgreSQL dump.
+- `pg_dump`, `pg_restore` and `psql`, at least as new as the newest server.
+- `mysqldump`, `mysql` and `gzip`, if a MySQL database is declared.
+- The `aws-sdk-s3` gem in the host's Gemfile, if dumps are copied to a bucket.
+
+### Declaring databases
+
+Connection strings are secrets, so they stay in ENV. A declaration names the
+ENV keys:
+
+```ruby
+# config/initializers/harbor.rb
+Harbor::Databases.declare "shop",
+  source_env: "SHOP_DATABASE_URL",            # what is backed up; point it at a read-only role
+  staging_env: "SHOP_STAGING_DATABASE_URL",   # optional: what a staging refresh replaces
+  variants_env: "SHOP_BACKUP_VARIANTS",       # optional: an ENV key listing the kinds to make ("full,cleaned")
+  freshness: { "orders" => "created_at" }     # optional: tables whose newest row proves the source is live
+
+Harbor::Databases.declare "app", own: true, owner: "Storefront"   # the app's own database
+```
+
+A `postgres://` URL is dumped with Greenmask, a `mysql://` one with
+`mysqldump`. `own: true` is the database Rails is connected to: full backups
+only, never a restore target. A database with `freshness:` tables is not backed
+up once its newest row is older than the **Newest write allowed** setting,
+because a source that stopped receiving writes is usually the wrong server.
+
+A list that isn't known until it is asked for is declared in a block, run each
+time the list is read: `Harbor::Databases.declare_each_time { |list| list.declare … }`.
+
+### Masking rules
+
+Rules are files in the host, one per database, each a Greenmask `dump:`
+section:
+
+```
+config/greenmask/<database>.yml           cleaned backups
+config/greenmask/staging/<database>.yml   staging backups
+```
+
+A database gets a kind when its rules file exists. Another folder:
+`c.masking_rules_path = "/srv/masking"`. The rules decide what leaves
+production, so test them against sample data in the host.
+
+### Where backups go
+
+Where dumps go and what is run are decided on the machine, in the initializer,
+not on the Settings page. Each value may be a callable, read when needed:
+
+```ruby
+Harbor.configure do |c|
+  c.backup_root = "/mnt/backups/databases"   # default: storage/harbor/backups in the app
+  c.backup_host_root = "/Volumes/backups"    # optional: that folder as shown on the page, when the app sees it through a mount
+  c.greenmask_bin = "greenmask"              # the default
+  c.greenmask_pg_bin_path = "/usr/lib/postgresql/16/bin"   # default: wherever pg_dump is on the PATH
+  c.backup_bucket_env_prefix = "MYAPP_BACKUP_S3"            # default: HARBOR_BACKUP_S3
+end
+```
+
+The local folder always gets every dump, and restores read from it. It has to
+be a disk the workers see, with at least **Free space needed** free.
+
+To copy dumps to an S3-compatible bucket as well (Amazon S3, Cloudflare R2,
+DigitalOcean Spaces, Google Cloud Storage), set these in ENV, under the prefix
+above:
+
+| ENV key | |
+|---|---|
+| `…_ENDPOINT` | The provider's S3 endpoint. R2: `https://<account id>.r2.cloudflarestorage.com` |
+| `…_ACCESS_KEY_ID`, `…_SECRET_ACCESS_KEY` | A key that can write to the buckets |
+| `…_REGION` | Optional. `auto` when unset, which is what R2 expects |
+| `…_CLEANED_BUCKET` | Where cleaned dumps go. Give developers a read-only key to this one only |
+| `…_FULL_BUCKET` | Optional. Where full and staging dumps go: private, for disaster recovery |
+| `…_LOCATION` | Optional. The provider's short name on the page (`r2`, `spaces`, `gcs`, `s3`); guessed from the endpoint |
+
+A kind with no bucket stays in the local folder only. Buckets keep the
+folder's layout, so `greenmask restore latest` works against either.
+
+### Settings
+
+Under **Databases** on the Settings page: **Staging restores** (off by
+default), **Backups kept**, **Parallel dump jobs**, **Free space needed**,
+**Newest write allowed**, **Oldest backup a refresh uses**, **Connection
+timeout** and **Upload threads**.
+
+### What a restore will not do
+
+A restore drops every schema in its target first, so the target is checked
+before anything is queued and again by the job:
+
+- **Staging restores** must be switched on.
+- The target must not be any declared database's source, the app's own
+  `DATABASE_URL`, or any database in Rails's own configuration. Nothing
+  overrides this.
+- The target's database name or host must contain `staging`. A site whose
+  disposable database is named otherwise sets an ENV key to `true` on the
+  machine: `HARBOR_ALLOW_UNSAFE_RESTORE`, or the key named by
+  `c.unsafe_restore_env`.
+- Two databases may not share a staging target.
+- Only a masked dump is restored, and only after its size and checksum match
+  what was cataloged.
+
+While a restore runs, the staging role is made read-only and its other
+connections are closed (`c.staging_lock_role` names a role other than the one
+in the URL; `c.restore_spared_applications` lists application names whose
+connections are left alone).
+
+### Starting operations
+
+The jobs are tracked runs. `Harbor::DatabaseRestoreJob` restores one chosen
+backup. Backing up and refreshing every staging database are jobs the host
+writes on `Harbor::DbOperationJob`, because when they run is the host's
+schedule:
+
+```ruby
+class DatabaseBackupJob < Harbor::DbOperationJob
+  self.loader_slug = "db-backup"
+
+  def operate(directory:, logger:)
+    Harbor::DbOps::Backup.new(run: @operation_run, logger:, directory:).call
+  end
+end
+```
+
+The page's buttons call the host, which creates the run and queues the job;
+without this the page shows the databases and their backups and starts nothing:
+
+```ruby
+Harbor.configure do |c|
+  jobs = { "db-backup" => "DatabaseBackupJob", "database-restore" => "Harbor::DatabaseRestoreJob", "staging-restore" => "StagingRefreshJob" }
+  c.database_operation = lambda do |operation, user:, input:|
+    run = Harbor.run_class.create!(loader: operation, trigger_source: "manual", input: input.merge(loader: operation))
+    jobs.fetch(operation).constantize.perform_later(run.id)
+    run
+  end
+  c.database_schedule = ->(operation) { MySchedule.next_run_at(operation) }   # optional: "Next: …" on the page
+end
+```
+
+A host with a base job of its own for tracked work names it
+(`c.tracked_job = "MyTrackedJob"`); the default is `Harbor::TrackedJob`.
 
 ## Switching pages off
 

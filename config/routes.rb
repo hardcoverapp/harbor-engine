@@ -18,6 +18,19 @@ Harbor::Engine.routes.draw do
   end
   resources :workspace_profiles, path: "workspaces", except: %i[show]
 
+  # Databases: the declared databases with their backups, and the backup and
+  # restore runs.
+  resources :databases, only: :index do
+    collection do
+      post :backup_all
+      post :refresh_staging
+    end
+    member do
+      post :backup
+      post :restore
+    end
+  end
+
   # What runners post to, with a run's token and no login. A site behind a
   # firewall lets POSTs under /harbor/runner/ through.
   scope "harbor/runner", module: :runner, as: :runner do

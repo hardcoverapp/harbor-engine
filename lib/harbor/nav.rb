@@ -43,6 +43,7 @@ module Harbor
       [ "Models",        :models_path,                { key: :models,      group: :agents, also: [ "/model_aliases" ], scope: :harbor } ],
       [ "Runtimes",      :runtimes_path,              { key: :runtimes,    group: :infrastructure, scope: :harbor } ],
       [ "Workspaces",    :workspace_profiles_path,    { key: :workspaces,  group: :infrastructure, scope: :harbor } ],
+      [ "Databases",     :databases_path,             { key: :database,    group: :infrastructure, scope: :harbor } ],
       [ "Review policy", :reviews_path,               { key: :reviews,     group: :quality } ],
       [ "Scorers",       :scorers_path,               { key: :scorers,     group: :quality } ],
       [ "Proposals",     :improvement_proposals_path, { key: :proposals,   group: :quality } ],

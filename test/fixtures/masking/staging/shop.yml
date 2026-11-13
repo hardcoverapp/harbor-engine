@@ -1,0 +1,5 @@
+# Staging rules for the tests' "shop" database: staff keep their own rows.
+dump:
+  pg_dump_options:
+    exclude-table-data:
+      - public.audit_log

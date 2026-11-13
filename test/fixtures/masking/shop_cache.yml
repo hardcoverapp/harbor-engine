@@ -1,0 +1,5 @@
+# Cleaned rules for the tests' "shop_cache" database.
+dump:
+  pg_dump_options:
+    exclude-table-data:
+      - public.cache_entries

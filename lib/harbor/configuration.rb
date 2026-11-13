@@ -78,6 +78,64 @@ module Harbor
     # a full path.
     attr_accessor :orca_bin
 
+    # --- Databases (backups and staging refreshes; see README "Databases") ---
+    #
+    # Where dumps go and what gets run are decided on the machine, not on the
+    # Settings page. Each of these may be a value or a callable, which is read
+    # every time it is needed.
+
+    # The folder backups are written under, one folder per database and kind.
+    attr_accessor :backup_root
+
+    # The same folder as the person at the machine knows it, when the app sees
+    # it through a mount. Shown on the page instead of `backup_root`.
+    attr_accessor :backup_host_root
+
+    # The folder holding the masking rules: <database>.yml for cleaned
+    # backups, staging/<database>.yml for staging ones.
+    attr_accessor :masking_rules_path
+
+    # The Greenmask command, and the folder holding the pg_dump and pg_restore
+    # it runs (nil: the folder `pg_dump` is found in on the PATH).
+    attr_accessor :greenmask_bin, :greenmask_pg_bin_path
+
+    # The prefix of the ENV keys describing the bucket backups are copied to:
+    # <prefix>_ENDPOINT, _REGION, _ACCESS_KEY_ID, _SECRET_ACCESS_KEY,
+    # _LOCATION, _CLEANED_BUCKET and _FULL_BUCKET.
+    attr_accessor :backup_bucket_env_prefix
+
+    # The ENV key that, set to "true", lets a restore replace a database whose
+    # name and host don't say it is disposable. Deliberately not a setting:
+    # turning it on is an act on the machine.
+    attr_accessor :unsafe_restore_env
+
+    # The database role made read-only while a staging database is replaced
+    # (nil: the role in the staging URL).
+    attr_accessor :staging_lock_role
+
+    # The application name restores connect with, and the names of other
+    # applications whose connections a restore leaves alone.
+    attr_accessor :restore_application_name, :restore_spared_applications
+
+    # What each kind of backup is for at this site, by kind ("full", "cleaned",
+    # "staging"), where Harbor's own wording doesn't fit.
+    attr_accessor :backup_kind_notes
+
+    # The job class database operations inherit from, by name: one whose
+    # `perform(run_id)` calls `load(logger:)`, records the result on the run,
+    # and records a raised `Skipped` (a constant of the class) as skipped.
+    attr_accessor :tracked_job
+
+    # Called with (operation, user:, input:) when someone starts a database
+    # operation from the page ("db-backup", "database-restore" or
+    # "staging-restore"); starts it and returns its run. nil: the page starts
+    # nothing.
+    attr_accessor :database_operation
+
+    # Called with an operation's name; returns when it next runs on a schedule,
+    # or nil. nil: the page says nothing is scheduled.
+    attr_accessor :database_schedule
+
     def initialize
       @nav = Nav.new
       @parent_controller = "ApplicationController"
@@ -105,6 +163,20 @@ module Harbor
         "#{name}/run-#{run.id}#{run.log_attempt_suffix}.log" if name
       end
       @orca_bin = "orca"
+      @backup_root = -> { Rails.root.join("storage/harbor/backups").to_s }
+      @backup_host_root = nil
+      @masking_rules_path = -> { Rails.root.join("config/greenmask") }
+      @greenmask_bin = "greenmask"
+      @greenmask_pg_bin_path = nil
+      @backup_bucket_env_prefix = "HARBOR_BACKUP_S3"
+      @unsafe_restore_env = "HARBOR_ALLOW_UNSAFE_RESTORE"
+      @staging_lock_role = nil
+      @restore_application_name = "harbor-restorer"
+      @restore_spared_applications = []
+      @backup_kind_notes = {}
+      @tracked_job = "Harbor::TrackedJob"
+      @database_operation = nil
+      @database_schedule = nil
     end
 
     def env_fallback(setting, env_key)
