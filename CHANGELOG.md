@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.1
+
+- **The Webhooks page reads properly on a phone.** A delivery is three short lines
+  (what came in and its status, what it was about, then what it started and when), and
+  nothing overlaps or runs off the side. From tablet width up it is laid out as before.
+
 ## 0.14.0
 
 - **Every page is under `/factory`**: `/factory/runtimes`, `/factory/databases`,

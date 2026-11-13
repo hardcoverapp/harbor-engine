@@ -36,6 +36,18 @@ class HarborWebhooksTest < ActionDispatch::IntegrationTest
     assert_select "[data-webhook-event='#{event.id}'] a", text: "Run ##{run.id}", count: 0
   end
 
+  test "a row keeps the status beside the name and lets the rest wrap, so nothing overlaps on a phone" do
+    event = delivery(delivery_id: "d-long", event: "pull_request_review_comment", action: "created", status: "dispatched",
+                     matched_handler: "Reviews::LongHandlerName", note: "a note long enough to need a second line on a narrow screen")
+    get harbor.webhooks_path
+    assert_select "[data-webhook-event='#{event.id}']" do
+      assert_select "[data-status=dispatched]", count: 1
+      assert_select "[data-webhook-subject].line-clamp-2", text: /a note long enough/
+      assert_select "[data-webhook-meta].flex-wrap", text: /Reviews::LongHandlerName.*ago/m
+      assert_select "[data-webhook-meta] .whitespace-nowrap", text: /ago/
+    end
+  end
+
   test "an empty page says so" do
     get harbor.webhooks_path
     assert_select "p", text: /No webhook deliveries yet/

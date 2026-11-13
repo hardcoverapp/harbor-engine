@@ -12,16 +12,21 @@
   <%# A host with more to show for a delivery (the workflow runs it started,
       say) adds app/views/harbor/webhooks/_event_extras.html.erb. %>
   <% extras = lookup_context.exists?("harbor/webhooks/event_extras", [], true) %>
+  <%# One delivery per row. On a phone a row is three short lines: what came
+      in and what was done with it, what it was about, then what it started
+      and when. From sm up the last line sits at the right of the first two. %>
   <ul class="card divide-y divide-hairline overflow-hidden">
     <% @events.each do |event| %>
-      <li class="flex items-center gap-3 px-5 py-3" data-webhook-event="<%= event.id %>">
-        <div class="min-w-0">
+      <li class="px-4 py-3 sm:flex sm:items-center sm:gap-3 sm:px-5" data-webhook-event="<%= event.id %>">
+        <div class="min-w-0 sm:flex-1">
           <div class="flex items-center gap-2">
-            <span class="text-sm font-medium text-ink"><%= event.label %></span>
-            <%= harbor_status_pill(event.status) %>
-            <% if event.matched_handler.present? %><span class="meta font-mono"><%= event.matched_handler %></span><% end %>
+            <%# A long name breaks after a dot or an underscore, not mid-word. %>
+            <span class="min-w-0 text-sm font-medium text-ink [overflow-wrap:anywhere]"><%= safe_join(event.label.split(/(?<=[._])/), tag.wbr) %></span>
+            <span class="ml-auto shrink-0 sm:ml-0"><%= harbor_status_pill(event.status) %></span>
+            <% if event.matched_handler.present? %><span class="hidden sm:inline meta font-mono"><%= event.matched_handler %></span><% end %>
           </div>
-          <div class="text-sm text-soft truncate">
+          <%# Two lines on a phone, where one would cut off the note that says why. %>
+          <div class="mt-0.5 text-sm text-soft line-clamp-2 [overflow-wrap:anywhere] sm:line-clamp-none sm:truncate" data-webhook-subject>
             <% if event.external_url.present? %>
               <%= link_to event.subject.presence || "(event)", event.external_url, class: "hover:text-ink", target: "_blank", rel: "noopener" %>
             <% else %>
@@ -30,10 +35,11 @@
             <% if event.note.present? %><span class="text-faint">— <%= event.note %></span><% end %>
           </div>
         </div>
-        <div class="ml-auto flex items-center gap-3 shrink-0">
+        <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 sm:mt-0 sm:ml-auto sm:shrink-0 sm:flex-nowrap" data-webhook-meta>
+          <% if event.matched_handler.present? %><span class="meta font-mono [overflow-wrap:anywhere] sm:hidden"><%= event.matched_handler %></span><% end %>
           <% if extras %><%= render "harbor/webhooks/event_extras", event: event %><% end %>
           <% if event.run %><%= harbor_run_link(event.run, class: "meta text-ink-blue hover:underline underline-offset-4") %><% end %>
-          <span class="meta"><%= time_ago_in_words(event.received_at) %> ago</span>
+          <span class="meta ml-auto whitespace-nowrap sm:ml-0"><%= time_ago_in_words(event.received_at) %> ago</span>
         </div>
       </li>
     <% end %>
