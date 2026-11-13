@@ -9,7 +9,9 @@ module Harbor
     # already fetched the run's files into $HARBOR_RUN_DIR: the prompt, the
     # system prompt and the MCP config are read from there, so none of them,
     # and no secret, is part of this text. Everything that is part of it is
-    # shell-escaped.
+    # shell-escaped. With a slash command the prompt is not fetched: a first
+    # step of the command writes it there, from the command's file in the
+    # repository (SlashCommand).
     #
     #   command = Command.new(cli: "claude", model: "claude-sonnet-5-5", effort: "medium")
     #   command.shell     # what the terminal runs
@@ -41,10 +43,10 @@ module Harbor
       end
 
       attr_reader :cli, :model, :effort, :permission_mode, :allowed_tools, :disallowed_tools, :add_dirs,
-                  :mcp_config, :resume_session_id
+                  :mcp_config, :resume_session_id, :slash_command
 
       def initialize(cli:, model: nil, effort: nil, permission_mode: nil, allowed_tools: nil, disallowed_tools: nil,
-                     add_dirs: nil, mcp_config: nil, resume_session_id: nil, bin: nil)
+                     add_dirs: nil, mcp_config: nil, resume_session_id: nil, slash_command: nil, command_ref: nil, bin: nil)
         raise ArgumentError, "unknown agent command #{cli.inspect}" unless CLIS.include?(cli.to_s)
 
         @cli = cli.to_s
@@ -59,6 +61,8 @@ module Harbor
         resume = resume_session_id.to_s.strip
         # codex exec has no flag that continues a session by id here.
         @resume_session_id = resume if @cli == "claude" && resume.match?(SESSION_ID)
+        # The prompt is a file in the repository (SlashCommand), not text.
+        @slash_command = slash_command.is_a?(SlashCommand) ? slash_command : SlashCommand.new(slash_command, ref: command_ref) if slash_command.present?
         @bin = bin.presence || Harbor.config.public_send("#{@cli}_bin")
       end
 
@@ -67,8 +71,12 @@ module Harbor
       def to_h
         { "cli" => cli, "model" => model, "effort" => effort, "permission_mode" => permission_mode,
           "allowed_tools" => allowed_tools, "disallowed_tools" => disallowed_tools, "add_dirs" => add_dirs,
-          "resume_session_id" => resume_session_id }
+          "resume_session_id" => resume_session_id }.merge(slash_command ? { "slash_command" => slash_command.to_s, "command_ref" => slash_command.ref } : {})
       end
+
+      # The run's files the runner fetches for this command. A slash command
+      # makes the prompt on the runner, from its file and the arguments.
+      def bundle = [ slash_command ? "arguments" : "prompt", "system", "mcp", "env" ]
 
       def self.from(hash, mcp_config: nil) = new(**hash.to_h.symbolize_keys, mcp_config:)
 
@@ -78,14 +86,16 @@ module Harbor
       # The command line the runner script runs with `sh -c`.
       def shell = cli == "codex" ? codex_shell : claude_shell
 
-      # The command as a person is shown it: no file plumbing, no prompt.
+      # The command as a person is shown it: no file plumbing, and no prompt
+      # but a slash command.
       def display
+        prompt = slash_command&.to_s || "<prompt…>"
         if cli == "codex"
-          words = [ "codex", "exec", "<prompt…>", "--sandbox", codex_sandbox ]
+          words = [ "codex", "exec", prompt, "--sandbox", codex_sandbox ]
           words += [ "--model", model ] if model
           words += [ "--effort", effort ] if effort
         else
-          words = [ "claude", "-p", "<prompt…>" ]
+          words = [ "claude", "-p", prompt ]
           words += [ "--model", model ] if model
           words += [ "--effort", effort ] if effort
           words += [ "--allowedTools", allowed_tools.join(",") ] if allowed_tools.any?
@@ -102,7 +112,7 @@ module Harbor
       private
 
       def claude_shell
-        [ preflight,
+        [ preflight, *slash_command&.shell,
           # In print mode the CLI gives background subagents ten minutes after
           # the main turn ends, then ends them and exits 0: a review fanned out
           # over many subagents is cut off with nothing posted and still looks
@@ -145,7 +155,7 @@ module Harbor
       end
 
       def codex_shell
-        [ preflight,
+        [ preflight, *slash_command&.shell,
           # A home of its own, so the session sees no MCP server or setting
           # from the machine owner's codex config. Only the saved login is
           # copied in, and only when no API key was passed.

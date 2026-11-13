@@ -280,6 +280,29 @@ class HarborAgentSessionFinisherTest < ActionDispatch::IntegrationTest
     assert_equal [ [ run.id, "ok" ] ], @finished
   end
 
+  test "a slash command session started again without --resume expands its command again" do
+    run = start_session(prompt: nil, slash_command: "/tidy:shelf 12 --fast", command_ref: "origin/main", resume_session_id: "old-session")
+    first = wrapped_command(0)
+    assert first.last.end_with?(" --resume old-session")
+
+    post_output run, ndjson(NO_SESSION), attempt: 1
+    post_result run, 1, attempt: 1
+    run.reload
+
+    assert run.running?
+    second = wrapped_command(1)
+    assert_equal first.last.delete_suffix(" --resume old-session"), second.last, "the same command, expansion and all, without --resume"
+    assert_includes second.last, "git show origin/main:.claude/commands/tidy/shelf.md"
+    assert_equal [ "HARBOR_RUNNER_BUNDLE=arguments system mcp env", "HARBOR_RUNNER_ATTEMPT=2" ], second[2, 2]
+    assert_equal "claude -p /tidy:shelf 12 --fast --model claude-sonnet-5-5 --effort medium --allowedTools Read,Grep,Glob --dangerously-skip-permissions",
+                 run.command
+    assert_equal [ "/tidy:shelf 12 --fast", "origin/main" ], run.input.dig("agent_session", "command").values_at("slash_command", "command_ref")
+
+    post "/harbor/runner/runs/#{run.id}/bundle/arguments?attempt=2", headers: runner_headers(run)
+    assert_response :success
+    assert_equal "12\n--fast\n", response.body, "and its arguments are there for the second runner"
+  end
+
   test "it is never started again more than once" do
     run = start_session(resume_session_id: "old-session")
     post_result run, 1, attempt: 1

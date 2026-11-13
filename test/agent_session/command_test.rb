@@ -26,7 +26,7 @@ class HarborAgentSessionCommandTest < ActiveSupport::TestCase
         File.write(File.join(dir, "bin", bin), RECORDER)
         File.chmod(0o755, File.join(dir, "bin", bin))
       end
-      { "prompt" => "the prompt", "system" => "the system prompt", "mcp" => "{}" }.merge(files).each do |name, body|
+      { "prompt" => "the prompt", "system" => "the system prompt", "mcp" => "{}" }.merge(files).compact.each do |name, body|
         File.write(File.join(dir, "run", name), body)
       end
       yield dir if block_given?
@@ -72,6 +72,84 @@ class HarborAgentSessionCommandTest < ActiveSupport::TestCase
                    "--mcp-config", Command::MCP, "--strict-mcp-config", "--dangerously-skip-permissions" ], words
     with_servers = Command.new(cli: "claude", mcp_config: { "mcpServers" => { "docs" => { "command" => "node" } } }).arguments
     assert_equal words, with_servers, "given servers or none, the run's own file is the only MCP config"
+  end
+
+  # --- a slash command for a prompt ---
+
+  COMMAND_FILE = "---\ndescription: Tidy a shelf\n---\n\nTidy shelf $1 ($ARGUMENTS).\n$(touch stray-file) `touch stray-file` & \\1\n".freeze
+  SHELF = ".claude/commands/tidy/shelf.md".freeze
+
+  def write_command(dir, body)
+    FileUtils.mkdir_p(File.dirname(File.join(dir, SHELF)))
+    File.write(File.join(dir, SHELF), body)
+  end
+
+  def git(dir, *words)
+    env = { "GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_SYSTEM" => "/dev/null", "GIT_AUTHOR_NAME" => "Test", "GIT_AUTHOR_EMAIL" => "test@example.com",
+            "GIT_COMMITTER_NAME" => "Test", "GIT_COMMITTER_EMAIL" => "test@example.com" }
+    output, status = Open3.capture2e(env, "git", "-C", dir, *words)
+    assert status.success?, "git #{words.join(' ')}: #{output}"
+  end
+
+  test "a slash command is shown as the prompt, kept with the command's parameters, and asks for its arguments instead of a prompt" do
+    command = Command.new(cli: "claude", model: "claude-sonnet-5-5", slash_command: "tidy:shelf  12 --fast", command_ref: "origin/main",
+                          resume_session_id: "abc-1")
+    assert_equal "claude -p /tidy:shelf 12 --fast --model claude-sonnet-5-5 --dangerously-skip-permissions --resume abc-1", command.display
+    assert_equal "codex exec /tidy 7 --sandbox danger-full-access", Command.new(cli: "codex", slash_command: "/tidy 7").display
+    assert_equal %w[arguments system mcp env], command.bundle
+    assert_equal %w[prompt system mcp env], Command.new(cli: "claude").bundle
+    assert_equal [ "/tidy:shelf 12 --fast", "origin/main" ], command.to_h.values_at("slash_command", "command_ref")
+    assert_not Command.new(cli: "claude").to_h.key?("slash_command"), "a command with a prompt keeps what it kept before"
+
+    assert_no_match(/--fast/, command.shell, "the arguments are in a file of the run's, not in the command")
+    steps = [ "command -v claude", "git show origin/main:.claude/commands/tidy/shelf.md > \"$HARBOR_RUN_DIR/command\"",
+              "> \"$HARBOR_RUN_DIR/prompt\"", "exec claude -p \"$(cat \"$HARBOR_RUN_DIR/prompt\")\"" ].map { |step| command.shell.index(step) }
+    assert_equal steps.compact.sort, steps, "the prompt is made after the check for the CLI and before it starts"
+
+    again = Command.from(command.to_h).without_resume
+    assert_equal command.shell.delete_suffix(" --resume abc-1"), again.shell, "built again without --resume, it expands the same command"
+    assert_equal "claude -p /tidy:shelf 12 --fast --model claude-sonnet-5-5 --dangerously-skip-permissions", again.display
+    assert_equal [ "/tidy:shelf 12 --fast", "origin/main" ], again.to_h.values_at("slash_command", "command_ref")
+
+    assert_raises(ArgumentError) { Command.new(cli: "claude", slash_command: "/tidy:..") }
+    assert_raises(ArgumentError) { Command.new(cli: "claude", slash_command: "/tidy", command_ref: "--all") }
+  end
+
+  test "claude's prompt is the slash command's file as the ref has it, with the arguments put in" do
+    command = Command.new(cli: "claude", slash_command: "/tidy:shelf 12 --fast", command_ref: "origin/main")
+    ran = run_command(command, files: { "prompt" => nil, "arguments" => "12\n--fast\n" }) do |dir|
+      write_command(dir, COMMAND_FILE)
+      git(dir, "init", "--quiet")
+      git(dir, "add", SHELF)
+      git(dir, "commit", "--quiet", "--message", "the command")
+      git(dir, "update-ref", "refs/remotes/origin/main", "HEAD")
+      write_command(dir, "Whatever the checked-out branch says.\n")
+    end
+
+    assert_equal 0, ran.status, ran.output
+    assert_equal [ "-p", "Tidy shelf 12 (12 --fast).\n$(touch stray-file) `touch stray-file` & \\1" ], ran.argv.first(2)
+    assert_equal [ "--append-system-prompt", "the system prompt" ], ran.argv[2, 2]
+    assert_equal %w[.claude .git], ran.stray.sort, "nothing in the file was run by the shell"
+  end
+
+  test "codex gets the slash command's file from the worktree on stdin, after the system text" do
+    command = Command.new(cli: "codex", slash_command: "/tidy:shelf 12 --fast")
+    ran = run_command(command, files: { "prompt" => nil, "arguments" => "12\n--fast\n", "system" => "Be brief." }) { |dir| write_command(dir, COMMAND_FILE) }
+
+    assert_equal 0, ran.status, ran.output
+    assert_equal "Be brief.\n\n---\n\nTidy shelf 12 (12 --fast).\n$(touch stray-file) `touch stray-file` & \\1\n", ran.stdin
+    assert_equal %w[.claude], ran.stray
+  end
+
+  test "a slash command whose file is missing ends the command before the CLI starts" do
+    %w[claude codex].each do |cli|
+      [ [ nil, "no .claude/commands/tidy/shelf.md in" ], [ "origin/main", "no ref origin/main (for .claude/commands/tidy/shelf.md) in" ] ].each do |ref, where|
+        ran = run_command(Command.new(cli:, slash_command: "/tidy:shelf 12", command_ref: ref), files: { "prompt" => nil, "arguments" => "12\n" })
+        assert_equal 66, ran.status
+        assert_match(/\AERROR: slash command \/tidy:shelf not found: #{Regexp.escape(where)} \S+\n\z/, ran.output)
+        assert_nil ran.argv, "#{cli} was never started"
+      end
+    end
   end
 
   test "the permission mode maps as the CLI expects" do

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.17.0
+
+- **A session's prompt can be a slash command.**
+  `Harbor::AgentSession.run!(agent:, slash_command: "/tidy:shelf 12 --fast")` (and
+  `start!`) takes, instead of `prompt:`, the name of a prompt kept in the repository
+  the agent works in: `/tidy:shelf` is `.claude/commands/tidy/shelf.md`. The file is
+  read on the runner machine, as a first step of the agent command: its YAML
+  frontmatter is dropped, `$ARGUMENTS` and `$1`..`$9` are filled in, and the result
+  is the prompt the CLI is given. `command_ref: "origin/main"` reads the file from
+  that git ref instead of the worktree as checked out, so a session working on
+  somebody's branch doesn't take its instructions from that branch. A file or ref
+  that isn't there ends the run as an error, with one `ERROR:` line saying where it
+  was looked for. `runs.command` shows the slash command. See README "Agent sessions".
+- The runner fetches one more file for such a session, `arguments`, in place of
+  `prompt`: the arguments are never part of a command line.
+
 ## 0.16.0
 
 - **Runtimes can be added and removed on the Runtimes page.** "New runtime" takes a name,

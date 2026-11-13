@@ -378,7 +378,7 @@ once with the run `running`; the session reports as it goes. Options:
 
 ```ruby
 Harbor::AgentSession.run!(
-  agent: agent, prompt: "…",
+  agent: agent, prompt: "…",                # or slash_command:, below
   attributes: { skill: "writer.fix", task_type: "fix" },   # for the new run
   system_prompt_extra: "The task: …",   # added after the agent's own prompt
   allowed_tools: %w[Read Grep Glob],     # the agent's own unless given
@@ -399,6 +399,52 @@ nothing starts: `run!` gives back what it took and returns the run still
 `run!(agent:, prompt:, run: that_run)` to try again. `Harbor::AgentSession.start!`
 is the same without placement, for a host that has already chosen a `runtime:`
 and a model `choice:`.
+
+### A slash command for a prompt
+
+The prompt can be a file in the repository the agent works in, named the way
+Claude Code names its custom commands:
+
+```ruby
+Harbor::AgentSession.run!(agent: agent, slash_command: "/tidy:shelf 12 --fast", command_ref: "origin/main")
+```
+
+Give `prompt:` or `slash_command:`, one of the two (anything else is an
+`ArgumentError`). The first word is the command's name and the rest are its
+arguments, split on whitespace: quotes don't group words.
+
+- **The name is a path under `.claude/commands`.** `/tidy` is
+  `.claude/commands/tidy.md`, `/tidy:shelf` is `.claude/commands/tidy/shelf.md`,
+  and each further colon is one more folder. A part of a name is letters,
+  digits, dots, dashes and underscores. A name with anything else in it (a
+  slash, `..`, an empty part) raises an `ArgumentError` before a run is made or
+  touched. The leading slash may be left off.
+- **The file is read on the runner machine**, where the repository is, as the
+  first step of the agent command; Harbor never sees it. That step is plain
+  `sh` with `git`, `cat` and `awk`.
+- **`command_ref:`** names a git ref (`origin/main`, a tag, a commit): the file
+  is then read with `git show <ref>:<path>` and the checked-out copy is ignored.
+  It exists for a session that works on a branch somebody else wrote, such as a
+  review of a pull request: without it, the branch under review could change
+  the instructions of its own reviewer. Harbor does not fetch, so the ref is
+  whatever the runner's repository has by that name. With no `command_ref:`
+  the file is the worktree's, committed or not.
+- **What becomes the prompt.** A leading YAML frontmatter block (from a first
+  line starting `---` to the next line starting `---`) is dropped, with the
+  blank space after it. `$ARGUMENTS` becomes all the arguments joined by single
+  spaces, then `$9` down to `$1` become the arguments by position, or nothing
+  for one that wasn't given. There is no `$10`: it is `$1` followed by a `0`.
+  Everything else in the file, and everything in an argument, is only text:
+  nothing is run or expanded by a shell. The CLI's own slash commands aren't
+  used; it gets the finished text as its prompt, like any other.
+- **A file or a ref that isn't there** stops the command before the CLI starts,
+  with one line such as
+  `ERROR: slash command /tidy:shelf not found: no .claude/commands/tidy/shelf.md at origin/main in /work/tree`
+  and exit status 66, so the run ends as an `error` with that line.
+
+`runs.command` shows the slash command (`claude -p /tidy:shelf 12 --fast --model …`),
+and it is kept with the run (`input["agent_session"]["command"]`), so a session
+started again without `--resume` expands it again.
 
 ### What the agent is told
 
@@ -441,7 +487,8 @@ the other way round. With neither, the machine's own login is used.
 
 ### What the runner machine needs
 
-`sh`, `curl`, the agent command (`claude`, or `codex`) on its `PATH`, and either
+`sh`, `curl`, the agent command (`claude`, or `codex`) on its `PATH` (and `git`
+and `awk` for a slash command), and either
 a login for it on that machine or a credential passed by the host's hook. A
 machine without the command says so in the run's log and the run ends as an
 error (exit 127).
@@ -451,14 +498,15 @@ error (exit 127).
 The terminal's command line carries the run's address, its token and the names
 of four files, and nothing else. The runner script fetches those files over
 HTTPS with the token (`POST /harbor/runner/runs/:id/bundle/:name`) into a
-private folder (`$HARBOR_RUN_DIR`, mode 700, removed at the end): `prompt`,
-`system`, `mcp` and `env`. `env` is `export NAME='value'` lines the script
+private folder (`$HARBOR_RUN_DIR`, mode 700, removed at the end): `prompt`
+(or `arguments`, a slash command's, one to a line), `system`, `mcp` and
+`env`. `env` is `export NAME='value'` lines the script
 sources before the command starts, so a secret is never an argument of any
 process and never in the terminal's command line. Harbor works `env` out from
 `agent_session_env` each time it is asked, only while the session is running,
 and stores none of it. The agent command is not given the run's token.
 
-The prompt, system prompt and MCP config are kept with the run
+The prompt (or the slash command), system prompt and MCP config are kept with the run
 (`input["agent_session"]`), so put no secret in an MCP config: give it to the
 command through `agent_session_env` and name the variable in the config.
 
@@ -525,7 +573,6 @@ returns those as data and records nothing for them.
 - **Queueing.** A run that could not start is returned waiting; when to try
   again is the host's.
 - **Changing model mid-run.** A session runs on the model it started with.
-- **Slash commands.** The prompt is passed as it is.
 - **MCP servers hosted by Harbor.** `mcp_config:` names servers that exist
   elsewhere.
 - **`codex`** is built from its documentation and tested against a stand-in;

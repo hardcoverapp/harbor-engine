@@ -351,6 +351,27 @@ class HarborRunnerTest < ActionDispatch::IntegrationTest
     assert_empty ran.left_behind, "the folder and the files in it are removed"
   end
 
+  test "a slash command's arguments are fetched with the run's files, and its prompt is made from them before the command goes on" do
+    slash = Harbor::AgentSession::SlashCommand.new("/tidy:shelf 12 $(touch${IFS}pwned) it's")
+    command = %(cd "$FAKE_CURL_DIR/repo" && { #{slash.shell}; cat "$HARBOR_RUN_DIR/prompt"; })
+    options = { env: { "HARBOR_RUNNER_BUNDLE" => "arguments" }, bundle: { "arguments" => slash.arguments_file } }
+
+    ran = run_script(command, **options) do |dir|
+      FileUtils.mkdir_p(File.join(dir, "repo/.claude/commands/tidy"))
+      File.write(File.join(dir, "repo/.claude/commands/tidy/shelf.md"), "---\ndescription: x\n---\nTidy $1: $ARGUMENTS\n")
+    end
+    assert_equal 0, ran.status
+    assert_equal "Tidy 12: 12 $(touch${IFS}pwned) it's\n", ran.log
+    assert_match %r{/runs/7/bundle/arguments$}, ran.argv
+    assert_not ran.files.key?("pwned")
+    assert_empty ran.left_behind
+
+    missing = run_script(command, **options) { |dir| FileUtils.mkdir_p(File.join(dir, "repo")) }
+    assert_equal 66, missing.status
+    assert_match(/\AERROR: slash command \/tidy:shelf not found: no \.claude\/commands\/tidy\/shelf\.md in \S+\/repo\n\z/, missing.log)
+    assert_equal [ '{"exit_status":66,"signalled":false}' ], missing.results, "the run ends as an error, with that line as its output"
+  end
+
   test "a run whose files can't be fetched doesn't start its command, and says why" do
     ran = run_script(%q(touch "$FAKE_CURL_DIR/ran"), env: { "HARBOR_RUNNER_BUNDLE" => "prompt" })
 

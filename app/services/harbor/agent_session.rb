@@ -4,10 +4,13 @@ module Harbor
   # HTTP between that machine and this app.
   #
   #   run = Harbor::AgentSession.run!(agent: agent, prompt: "Fix the failing test in …")
+  #   run = Harbor::AgentSession.run!(agent: agent, slash_command: "/tidy:shelf 12", command_ref: "origin/main")
   #
   # Harbor builds the command (Command), wraps it in the runner script
   # (Harbor::Runner) and asks the runtime's backend to start it. The script
-  # fetches the run's prompt, MCP config and environment over HTTPS, runs the
+  # fetches the run's prompt (or, for a slash command, its arguments: the
+  # command then reads the prompt's file from the repository there), MCP
+  # config and environment over HTTPS, runs the
   # command, and posts what it prints back. Harbor keeps those bytes as the
   # run's raw stream, reads them as they arrive into the live log and the
   # run's events (Recorder), and when the command ends writes the session,
@@ -29,7 +32,8 @@ module Harbor
   #   "keep_worktree", "resume_session_id", "resume_fallback"
   #   "exit_status", "signalled"   what the runner reported
   #
-  # The prompt, system prompt and MCP config are kept in the run's input
+  # The prompt (a slash command is among the command's parameters instead),
+  # system prompt and MCP config are kept in the run's input
   # (`input["agent_session"]`) for the runner to fetch. Secrets are in none of
   # these: they come from `config.agent_session_env` when the runner asks.
   module AgentSession
@@ -37,8 +41,9 @@ module Harbor
     # start! was called for a run that is already a session, or is over.
     class AlreadyStarted < Error; end
 
-    # The files a session's runner fetches before the command starts.
-    BUNDLE = %w[prompt system mcp env].freeze
+    # The files a session's runner may fetch before the command starts. Which
+    # of them it does is the command's (Command#bundle).
+    BUNDLE = %w[prompt arguments system mcp env].freeze
     # A session always gets an MCP config of its own, if only an empty one.
     EMPTY_MCP = { "mcpServers" => {} }.freeze
     STOP_REASONS = %w[canceled timeout].freeze
@@ -62,6 +67,18 @@ module Harbor
       # at once, running; the session reports as it goes. A session that
       # can't be started is finished as an error, and the run still returned.
       #
+      # The prompt is `prompt` (text) or `slash_command`, one of them:
+      #
+      #   slash_command     "/tidy:shelf 12 --fast": the prompt is the file
+      #                     .claude/commands/tidy/shelf.md of the repository, read
+      #                     on the runner, with its arguments put in (SlashCommand)
+      #   command_ref       the git ref that file is read from ("origin/main"),
+      #                     instead of the worktree as checked out
+      #
+      # An ArgumentError (neither or both given, a name that isn't a plain
+      # one, a ref that doesn't look like one) is raised before anything is
+      # touched.
+      #
       #   allowed_tools, permission_mode   the agent's own unless given
       #   mcp_config        { "mcpServers" => { … } }; kept with the run, so
       #                     no secrets in it (put them in the environment)
@@ -71,10 +88,11 @@ module Harbor
       #   idle_timeout      how long it may print nothing
       #   keep_worktree     leave the worktree when the session ends
       #   slots             capacity slots to give back at the end (run! passes them)
-      def start!(run:, agent:, prompt:, runtime:, choice:, system_prompt_extra: nil, allowed_tools: :agent,
-                 disallowed_tools: nil, permission_mode: :agent, add_dirs: [], mcp_config: nil, resume_session_id: nil,
-                 base: nil, timeout: DEFAULT_TIMEOUT, idle_timeout: nil, keep_worktree: false, slots: nil)
-        Starter.new(run:, agent:, prompt:, runtime:, choice:, system_prompt_extra:, allowed_tools:, disallowed_tools:,
+      def start!(run:, agent:, runtime:, choice:, prompt: nil, slash_command: nil, command_ref: nil, system_prompt_extra: nil,
+                 allowed_tools: :agent, disallowed_tools: nil, permission_mode: :agent, add_dirs: [], mcp_config: nil,
+                 resume_session_id: nil, base: nil, timeout: DEFAULT_TIMEOUT, idle_timeout: nil, keep_worktree: false, slots: nil)
+        slash_command = slash_command_for(prompt, slash_command, command_ref)
+        Starter.new(run:, agent:, prompt:, slash_command:, runtime:, choice:, system_prompt_extra:, allowed_tools:, disallowed_tools:,
                     permission_mode:, add_dirs:, mcp_config:, resume_session_id:, base:, timeout:, idle_timeout:,
                     keep_worktree:, slots:).call
       end
@@ -94,7 +112,9 @@ module Harbor
       #   workspace     place on this workspace instead of the agent's own (a
       #                 host that lets only some of an agent's runtimes take
       #                 sessions passes a workspace listing just those)
-      def run!(agent:, prompt:, run: nil, attributes: {}, requirements: {}, workspace: nil, **options)
+      def run!(agent:, prompt: nil, slash_command: nil, command_ref: nil, run: nil, attributes: {}, requirements: {},
+               workspace: nil, **options)
+        slash_command = slash_command_for(prompt, slash_command, command_ref)
         run ||= Harbor.run_class.create!({ agent_key: agent.key, status: "queued" }.merge(attributes))
         owner = "run:#{run.id}"
         ttl = (options.fetch(:timeout, DEFAULT_TIMEOUT) || 1.day).to_i + SLOT_MARGIN.to_i
@@ -123,7 +143,7 @@ module Harbor
         note(run, "[harbor] #{placement.summary}")
         slots = { "owner" => owner, "agent" => { "key" => agent.key, "slot" => agent_slot },
                   "runtime" => { "key" => placement.runtime.key, "slot" => placement.slot } }
-        start!(run:, agent:, prompt:, runtime: placement.runtime, choice: placement.choice, slots:, **options)
+        start!(run:, agent:, prompt:, slash_command:, runtime: placement.runtime, choice: placement.choice, slots:, **options)
       end
 
       # Stops a session: records why, closes its terminal, and finishes the
@@ -183,6 +203,7 @@ module Harbor
         kept = run.input.to_h["agent_session"].to_h
         case name.to_s
         when "prompt" then kept["prompt"].to_s
+        when "arguments" then kept.dig("command", "slash_command").then { |spec| spec ? SlashCommand.new(spec).arguments_file : "" }
         when "system" then kept["system"].to_s
         when "mcp" then JSON.generate(kept["mcp"].presence || EMPTY_MCP)
         when "env" then Environment.file(run, run.runner_state.to_h["provider"])
@@ -211,6 +232,17 @@ module Harbor
       end
 
       private
+
+      # The slash command a session was asked for, checked, or nil when it
+      # was given a prompt. Exactly one of the two is given.
+      def slash_command_for(prompt, slash_command, command_ref)
+        return slash_command if slash_command.is_a?(SlashCommand) && prompt.nil? && command_ref.nil?
+        raise ArgumentError, "give a session a prompt: or a slash_command:, not both" if !prompt.nil? && !slash_command.nil?
+        raise ArgumentError, "a session needs a prompt: or a slash_command:" if prompt.nil? && slash_command.nil?
+        raise ArgumentError, "command_ref: is where a slash_command: is read from; a prompt: has none" if slash_command.nil? && command_ref.present?
+
+        SlashCommand.new(slash_command, ref: command_ref) if slash_command
+      end
 
       def wait!(run, status, reason)
         run.update!(status:) unless run.status == status

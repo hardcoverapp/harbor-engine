@@ -87,6 +87,96 @@ class HarborAgentSessionTest < ActionDispatch::IntegrationTest
     assert_match(/\| codex exec --json --skip-git-repo-check --sandbox read-only /, wrapped_command.last)
   end
 
+  # --- a slash command for a prompt ---
+
+  def fetch_file(run, name, attempt: nil)
+    post "/harbor/runner/runs/#{run.id}/bundle/#{name}#{"?attempt=#{attempt}" if attempt}", headers: runner_headers(run)
+    response.body
+  end
+
+  test "a session given a slash command keeps it with the run, shows it as the command and has the runner expand it" do
+    run = start_session(prompt: nil, slash_command: "/tidy:shelf 12 --fast", command_ref: "origin/main")
+
+    assert run.running?
+    assert_equal "claude -p /tidy:shelf 12 --fast --model claude-sonnet-5-5 --effort medium --allowedTools Read,Grep,Glob --dangerously-skip-permissions",
+                 run.command
+    assert_match "[harbor] claude -p /tidy:shelf 12 --fast --model claude-sonnet-5-5", live_log(run)
+    assert_not stored(run).key?("prompt")
+    assert_equal [ "/tidy:shelf 12 --fast", "origin/main" ], stored(run)["command"].values_at("slash_command", "command_ref")
+
+    words = wrapped_command
+    assert_equal [ "HARBOR_RUNNER_BUNDLE=arguments system mcp env", "HARBOR_RUNNER_ATTEMPT=1" ], words[2, 2]
+    command = Harbor::AgentSession::Command.new(cli: "claude", model: "claude-sonnet-5-5", effort: "medium", allowed_tools: %w[Read Grep Glob],
+                                                slash_command: "/tidy:shelf 12 --fast", command_ref: "origin/main")
+    assert_equal command.shell, words.last
+    assert_includes words.last, "git show origin/main:.claude/commands/tidy/shelf.md"
+    assert_no_match(/--fast/, @orca.calls.to_json, "the arguments are on no command line")
+
+    assert_equal "12\n--fast\n", fetch_file(run, "arguments")
+    assert_response :success
+    assert_equal "text/plain", response.media_type
+    assert_equal "", fetch_file(run, "prompt")
+
+    post_output run, "ERROR: slash command /tidy:shelf not found: no .claude/commands/tidy/shelf.md at origin/main in /work/harbor-run-#{run.id}\n"
+    post_result run, 66
+    assert run.reload.error?
+    assert_equal "ERROR: slash command /tidy:shelf not found: no .claude/commands/tidy/shelf.md at origin/main in /work/harbor-run-#{run.id}", run.error
+  end
+
+  test "a session given a prompt has no arguments, and is not asked to fetch any" do
+    run = start_session
+    assert_equal "", fetch_file(run, "arguments")
+    assert_response :success
+    assert_no_match(/arguments|\.claude\/commands/, wrapped_command.last)
+  end
+
+  test "a slash command with no ref is read from the worktree, and codex takes one too" do
+    gpt = Harbor::ModelAlias.create!(name: "Other", model_choices_attributes: [ { model_provider: @openai, model: "gpt-5.5", effort: "high", position: 0 } ])
+    run = Harbor::AgentSession.start!(run: new_run, agent: @agent, slash_command: "tidy 7", runtime: @runtime, choice: gpt.model_choices.first)
+
+    assert run.running?
+    assert_equal "codex exec /tidy 7 --sandbox read-only --model gpt-5.5 --effort high", run.command
+    assert_equal [ "/tidy 7", nil ], stored(run)["command"].values_at("slash_command", "command_ref")
+    assert_includes wrapped_command.last, "[ -f .claude/commands/tidy.md ] && cat .claude/commands/tidy.md"
+    assert_no_match(/git (show|rev-parse)/, wrapped_command.last)
+    assert_includes wrapped_command, "HARBOR_RUNNER_BUNDLE=arguments system mcp env"
+    assert_equal "7\n", fetch_file(run, "arguments")
+  end
+
+  test "a session takes a prompt or a slash command, one of the two, and a command that isn't plain is refused before anything is touched" do
+    run = new_run
+    runs = Harbor::Run.count
+    { {} => /needs a prompt: or a slash_command:/,
+      { prompt: "Fix it.", slash_command: "/tidy" } => /not both/,
+      { prompt: "Fix it.", command_ref: "origin/main" } => /command_ref/,
+      { slash_command: "" } => /invalid slash command name/,
+      { slash_command: "/../../etc/passwd" } => /invalid slash command name/,
+      { slash_command: "/tidy:.. 12" } => /invalid slash command name/,
+      { slash_command: "/tidy", command_ref: "--output=/tmp/x" } => /invalid command_ref/,
+      { slash_command: "/tidy", command_ref: "main:other" } => /invalid command_ref/ }.each do |given, message|
+      error = assert_raises(ArgumentError, given.inspect) { Harbor::AgentSession.start!(run:, agent: @agent, runtime: @runtime, choice: @choice, **given) }
+      assert_match message, error.message
+      error = assert_raises(ArgumentError, given.inspect) { Harbor::AgentSession.run!(agent: @agent, **given) }
+      assert_match message, error.message
+    end
+
+    assert_equal "queued", run.reload.status, "the run was not touched"
+    assert_nil run.input.to_h["agent_session"]
+    assert_equal runs, Harbor::Run.count, "run! made no run"
+    assert_equal [ 0, 0 ], [ Harbor::Slots.busy(@agent), @runtime.busy ]
+    assert_empty @orca.calls
+  end
+
+  test "run! takes a slash command in place of a prompt" do
+    run = Harbor::AgentSession.run!(agent: @agent, slash_command: "/tidy:shelf 12", command_ref: "origin/main", attributes: { skill: "writer.tidy" })
+
+    assert run.running?
+    assert_match(/\Aclaude -p \/tidy:shelf 12 --model claude-sonnet-5-5 /, run.command)
+    assert_equal [ 1, 1 ], [ Harbor::Slots.busy(@agent), @runtime.busy ]
+    assert_includes wrapped_command.last, "git show origin/main:.claude/commands/tidy/shelf.md"
+    assert_equal "12\n", fetch_file(run, "arguments")
+  end
+
   test "the checks that end a session are scheduled when it starts" do
     freeze_time do
       run = start_session(timeout: 20.minutes, idle_timeout: 5.minutes)

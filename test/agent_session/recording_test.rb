@@ -174,7 +174,7 @@ class HarborAgentSessionRecordingTest < ActionDispatch::IntegrationTest
   test "files are only given out while the session is running" do
     Harbor.config.agent_session_env = ->(*) { { "GH_TOKEN" => "gh-s3cr3t" } }
     Harbor::AgentSession.stop!(@run)
-    %w[prompt system mcp env].each do |name|
+    Harbor::AgentSession::BUNDLE.each do |name|
       body = fetch(name)
       assert_response :conflict, name
       assert_equal "finished", body

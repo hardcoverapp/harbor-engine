@@ -5,12 +5,13 @@ module Harbor
     # wrapped command, and schedules the checks that end a session that
     # overruns or goes quiet.
     class Starter
-      def initialize(run:, agent:, prompt:, runtime:, choice:, system_prompt_extra:, allowed_tools:, disallowed_tools:,
+      def initialize(run:, agent:, prompt:, slash_command:, runtime:, choice:, system_prompt_extra:, allowed_tools:, disallowed_tools:,
                      permission_mode:, add_dirs:, mcp_config:, resume_session_id:, base:, timeout:, idle_timeout:,
                      keep_worktree:, slots:)
         @run = run
         @agent = agent
-        @prompt = prompt.to_s
+        @prompt = prompt&.to_s
+        @slash_command = slash_command
         @runtime = runtime
         @choice = choice
         @system_prompt_extra = system_prompt_extra
@@ -32,7 +33,7 @@ module Harbor
         backend = AgentSession.backend(@runtime)
         command = build_command
         claim(backend, command)
-        session = backend.start(run: @run, command: command.shell, base: @base, title: title, bundle: BUNDLE, attempt: 1)
+        session = backend.start(run: @run, command: command.shell, base: @base, title: title, bundle: command.bundle, attempt: 1)
         keep(session)
         schedule
         @run
@@ -47,7 +48,8 @@ module Harbor
       def build_command
         Command.new(cli: Command.cli_for(@choice), model: @choice.model, effort: @choice.effort,
                     permission_mode: @permission_mode, allowed_tools: @allowed_tools, disallowed_tools: @disallowed_tools,
-                    add_dirs: @add_dirs, mcp_config: @mcp_config, resume_session_id: @resume_session_id)
+                    add_dirs: @add_dirs, mcp_config: @mcp_config, resume_session_id: @resume_session_id,
+                    slash_command: @slash_command)
       end
 
       # What the agent is told before its task: its own instructions, that

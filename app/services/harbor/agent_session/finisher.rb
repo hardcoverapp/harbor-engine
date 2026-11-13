@@ -137,7 +137,7 @@ module Harbor
                                 "(exit #{@exit_status}); starting again without it")
         guarded("closing the first terminal") { backend.stop(held) }
         command = Command.from(kept["command"], mcp_config: kept["mcp"]).without_resume
-        fresh = backend.restart(held, run: @run, command: command.shell, bundle: BUNDLE, attempt: @state["attempt"])
+        fresh = backend.restart(held, run: @run, command: command.shell, bundle: command.bundle, attempt: @state["attempt"])
 
         over = @run.with_lock do
           next true if @run.finished?
