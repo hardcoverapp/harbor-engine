@@ -16,7 +16,7 @@ Harbor::Engine.routes.draw do
 
     # Where work runs: runtimes (places with limits) and workspaces (ordered
     # fallback lists of runtimes that agents pick).
-    resources :runtimes, only: %i[index update] do
+    resources :runtimes, only: %i[index new create update destroy] do
       member { post :check }
     end
     resources :workspace_profiles, path: "workspaces", except: %i[show]

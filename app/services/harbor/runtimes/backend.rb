@@ -29,6 +29,13 @@ module Harbor
         # runtime holding them.
         def keeps_workspaces? = false
 
+        # What this backend reads from a runtime's config, in a sentence or
+        # two, for whoever is filling the form in. nil: nothing to say.
+        def config_help = nil
+
+        # A config to start from, as the form's placeholder.
+        def config_example = {}
+
         def capabilities = { enforces_tool_policy: enforces_tool_policy?, keeps_workspaces: keeps_workspaces? }
       end
 

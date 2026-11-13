@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.0
+
+- **Runtimes can be added and removed on the Runtimes page.** "New runtime" takes a name,
+  a backend, a limit and the backend's config, with each backend saying what its config
+  means (`Backend.config_help`, `.config_example`). A new runtime takes no work until a
+  workspace lists it. One that no workspace lists and no run used can be removed.
+
 ## 0.15.1
 
 - `Harbor::AgentSession.run!` takes `workspace:`, to place a session on a workspace other

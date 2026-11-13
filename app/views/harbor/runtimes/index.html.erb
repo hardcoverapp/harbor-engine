@@ -2,6 +2,7 @@
 <%= render "harbor/shared/section_nav" %>
 <header class="flex flex-wrap justify-between items-start gap-4 mb-10">
   <div><h1 class="display text-3xl">Runtimes</h1><p class="text-sm text-soft mt-2 max-w-3xl">Places a workspace can run, each with a limit. <%= link_to "Workspaces", workspace_profiles_path, class: "underline" %> list them in fallback order. Disabling one moves new workspaces to the next runtime in line; live workspaces finish where they are.</p></div>
+  <%= link_to "New runtime", new_runtime_path, class: "btn-primary" %>
 </header>
 <div class="grid md:grid-cols-2 gap-6" data-controller="harbor--poll" data-harbor--poll-interval-value="30">
   <% @runtimes.each do |runtime| %>
@@ -40,6 +41,10 @@
           <div><%= form.label :config, "Config (JSON)", class: "block text-xs text-soft mb-1" %><%= form.text_area :config, value: JSON.pretty_generate(runtime.config), rows: 4, class: "field w-full font-mono text-sm" %></div>
           <p class="meta">Capabilities: <%= runtime.backend_class.capabilities.map { |k, v| "#{k.to_s.humanize.downcase}: #{v}" }.join(" · ") %></p>
           <%= form.submit "Save config", class: "btn-quiet cursor-pointer" %>
+        <% end %>
+        <% if runtime.workspace_profiles.empty? %>
+          <%= button_to "Remove #{runtime.name}", runtime_path(runtime), method: :delete, class: "text-xs text-soft underline mt-3",
+                data: { turbo_confirm: "Remove #{runtime.name}? Only a runtime no workspace lists and no run used can be removed." } %>
         <% end %>
       </details>
     </section>

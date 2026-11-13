@@ -72,6 +72,65 @@ class HarborRuntimePagesTest < ActionDispatch::IntegrationTest
     assert_equal({ "repo" => "name:app" }, @laptop.reload.config)
   end
 
+  test "a runtime is added from the page, with each backend saying what its config means" do
+    get harbor.new_runtime_path
+    assert_response :success
+    assert_select "select[name='runtime[backend]'] option[value=orca]", text: "Orca (orca)"
+    assert_select "select[name='runtime[backend]'] option[value=page]"
+    assert_select "[data-backend-help]", text: /Orca:.*repo is the Orca repo/m
+
+    assert_difference("Harbor::Runtime.count", 1) do
+      post harbor.runtimes_path, params: { runtime: { name: "Sam's laptop", backend: "orca", max_concurrent: 2, enabled: "1",
+                                                      config: '{"repo": "name:app", "environment": "sam"}' } }
+    end
+    assert_redirected_to harbor.runtimes_path
+    added = Harbor::Runtime.find_by!(key: "sam-s-laptop")
+    assert_equal [ "Sam's laptop", "orca", 2, true, { "repo" => "name:app", "environment" => "sam" } ],
+                 [ added.name, added.backend, added.max_concurrent, added.enabled, added.config ]
+    assert_operator added.position, :>, @laptop.position, "a new runtime goes last"
+    assert_empty added.workspace_profiles, "and takes no work until a workspace lists it"
+    assert_equal 0, @changes, "so nothing waiting is told to look again"
+  end
+
+  test "a runtime that isn't valid is shown again with what is wrong, and nothing is added" do
+    assert_no_difference("Harbor::Runtime.count") do
+      post harbor.runtimes_path, params: { runtime: { name: "", backend: "nope", max_concurrent: 0, config: "{}" } }
+      assert_response :unprocessable_entity
+      assert_select "[role=alert]", text: /Name can't be blank.*not a registered backend.*greater than 0/m
+
+      post harbor.runtimes_path, params: { runtime: { name: "Odd", backend: "page", max_concurrent: 1, config: "{not json" } }
+      assert_response :unprocessable_entity
+      assert_select "[role=alert]", text: /Config must be valid JSON/
+      assert_select "input[name='runtime[name]'][value=Odd]"
+
+      post harbor.runtimes_path, params: { runtime: { name: "List", backend: "page", max_concurrent: 1, config: "[1]" } }
+      assert_select "[role=alert]", text: /Config must be a JSON object/
+
+      post harbor.runtimes_path, params: { runtime: { name: "Cloud again", key: "cloud", backend: "page", max_concurrent: 1, config: "{}" } }
+      assert_select "[role=alert]", text: /Key has already been taken/
+    end
+  end
+
+  test "only a runtime nothing depends on can be removed" do
+    spare = Harbor::Runtime.create!(key: "spare", name: "Spare", backend: "page")
+    get harbor.runtimes_path
+    assert_select "[data-runtime=spare] form[action=?] input[name=_method][value=delete]", harbor.runtime_path(spare)
+    assert_select "[data-runtime=cloud] input[name=_method][value=delete]", count: 0, message: "a runtime in a workspace offers no Remove"
+
+    delete harbor.runtime_path(@cloud)
+    assert_match "Cloud can't be removed", flash[:alert]
+    assert Harbor::Runtime.exists?(@cloud.id)
+
+    used = Harbor::Runtime.create!(key: "used", name: "Used", backend: "page")
+    Harbor::Run.create!(skill: "writer.fix", status: "ok", runtime_id: used.id)
+    delete harbor.runtime_path(used)
+    assert_match "Used can't be removed", flash[:alert]
+
+    delete harbor.runtime_path(spare)
+    assert_equal "Spare removed.", flash[:notice]
+    assert_not Harbor::Runtime.exists?(spare.id)
+  end
+
   test "a health check records its result either way" do
     PageBackend.healthy = false
     post harbor.check_runtime_path(@cloud)

@@ -22,6 +22,14 @@ module Harbor
 
         class << self
           def label = "Orca"
+
+          def config_help
+            "repo is the Orca repo work happens in (\"name:app\", \"path:/code/app\" or \"id:…\", as `orca repo list` shows them). " \
+              "environment is the paired server's name (`orca environment add`); leave it out for the Orca on this machine. " \
+              "setup says whether the repo's own setup hooks run in a new worktree: \"skip\" (the default), \"run\" or \"inherit\"."
+          end
+
+          def config_example = { "repo" => "name:app" }
           def keeps_workspaces? = true
 
           # An agent's tool rules are flags on the agent command, so they hold
