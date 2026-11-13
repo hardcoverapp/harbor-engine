@@ -22,6 +22,8 @@ module Harbor
     Error = Class.new(StandardError)
 
     SECTIONS = %w[databases restore_environments].freeze
+    # Top-level entries that are one value, not a mapping.
+    VALUES = %w[path].freeze
 
     class << self
       def path
@@ -48,6 +50,13 @@ module Harbor
         return {} if value.nil?
         raise Error, "#{label}: #{name} must be a mapping" unless value.is_a?(Hash)
         value
+      end
+
+      # One top-level value (nil when the file or the entry is absent).
+      def value(name)
+        name = name.to_s
+        raise ArgumentError, "Unknown config value #{name}" unless VALUES.include?(name)
+        sections[name]
       end
 
       # Every section. The same object is returned until the file's text
@@ -89,8 +98,8 @@ module Harbor
           return {}.freeze if data.nil?
           raise Error, "#{label}: must be a mapping of sections (#{SECTIONS.join(', ')})" unless data.is_a?(Hash)
           data = data.transform_keys(&:to_s)
-          unknown = data.keys - SECTIONS
-          raise Error, "#{label}: unknown section #{unknown.join(', ')} (expected #{SECTIONS.join(', ')})" if unknown.any?
+          unknown = data.keys - SECTIONS - VALUES
+          raise Error, "#{label}: unknown section #{unknown.join(', ')} (expected #{(VALUES + SECTIONS).join(', ')})" if unknown.any?
           data.freeze
         rescue Psych::Exception => error
           raise Error, "#{label}: not valid YAML: #{error.message}"

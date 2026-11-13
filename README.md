@@ -632,6 +632,28 @@ a run whose loader is `<key>-restore` and whose input is
 A host with a base job of its own for tracked work names it
 (`c.tracked_job = "MyTrackedJob"`); the default is `Harbor::TrackedJob`.
 
+## Where the pages live
+
+Mount the engine at `/`. Harbor puts every page of its own under one path,
+`/factory` by default: `/factory/runtimes`, `/factory/databases`,
+`/factory/settings`. To change it, say so in `config/harbor.yml`:
+
+```yaml
+path: /ops      # or / to put the pages at the root
+```
+
+It is read when routes are drawn, so a change takes a restart. A host with
+pages of the same section in its own routes puts them under the same path:
+
+```ruby
+scope Harbor.path do
+  resources :reports
+end
+```
+
+The runner's endpoints stay at `/harbor/runner/` whatever the path is, because
+runners and firewall rules are given that address.
+
 ## Switching pages off
 
 Every page in Harbor's menu, except Settings, has a switch under **Pages** on

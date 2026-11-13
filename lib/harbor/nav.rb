@@ -69,7 +69,8 @@ module Harbor
     #   icon:    a name from Harbor::Icons::PATHS, or SVG markup
     #   after: / before:  an existing label to sit next to; with neither, the
     #            page goes last in its group
-    #   also:    extra path prefixes that count as this page
+    #   also:    extra path prefixes that count as this page, written without
+    #            the section's path ("/workflow_runs")
     #   key:     gives the page a switch on the Settings page, like Harbor's own
     def add(label, route, after: nil, before: nil, scope: :main_app, also: [], key: nil, group: nil, icon: nil)
       raise ArgumentError, "#{label.inspect} is already in the menu" if labels.include?(label)
@@ -109,7 +110,7 @@ module Harbor
         next unless routes.respond_to?(item.route)
 
         path = routes.public_send(item.route)
-        active = [ path, *item.also ].any? { |prefix| under?(current, prefix) }
+        active = active?(current, path, item.also)
         Link.new(label: item.label, path: path, active: active, key: item.key, group: item.group, icon: item.icon)
       end
 
@@ -126,6 +127,17 @@ module Harbor
     end
 
     private
+      # A page is current on its own address and anything beneath it, and on
+      # its `also` prefixes, which are given without the section's path
+      # ("/workflow_runs") and live under it like every page. The page at the
+      # section's own address (an overview at "/factory") is current only
+      # there: everything else is beneath it too.
+      def active?(current, path, also)
+        return current == path if path == Harbor.path && path.present?
+        prefixes = [ path, *also.map { |prefix| "#{Harbor.path}#{prefix}" } ]
+        prefixes.any? { |prefix| under?(current, prefix) }
+      end
+
       # "/runs" covers "/runs" and "/runs/12", not "/runsheet".
       def under?(current, prefix)
         current == prefix || current.start_with?("#{prefix.chomp('/')}/")

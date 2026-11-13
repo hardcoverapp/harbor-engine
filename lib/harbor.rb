@@ -31,6 +31,42 @@ module Harbor
 
     def nav = config.nav
 
+    DEFAULT_PATH = "/factory".freeze
+
+    # Where Harbor's pages live in the host: every page's address starts with
+    # this ("/factory/runtimes"). `path:` in the config file changes it;
+    # "/" puts the pages at the root. It is read once, when routes are drawn,
+    # so changing it takes a restart.
+    #
+    # A host that still has pages of the section in its own routes puts them
+    # under the same path: `scope Harbor.path do … end`.
+    def path
+      @path ||= begin
+        normalize_path(ConfigFile.value("path"))
+      rescue ConfigFile::Error, ArgumentError => error
+        # A broken file must not take the app down at boot; the pages stay
+        # where they are by default and the Databases page reports the file.
+        Rails.logger&.error("[harbor] #{error.message}; pages stay under #{DEFAULT_PATH}")
+        DEFAULT_PATH
+      end
+    end
+
+    # "" for the root, else "/like/this": a leading slash, no trailing one.
+    def normalize_path(value)
+      return DEFAULT_PATH if value.nil?
+      text = value.to_s.strip
+      return "" if text == "/"
+      unless text.match?(%r{\A(/[a-z0-9][a-z0-9_-]*)+\z})
+        raise ArgumentError, "#{ConfigFile.label}: path must look like /factory (lowercase letters, numbers, - and _), or / for the root; got #{value.inspect}"
+      end
+      text
+    end
+
+    # Tests only.
+    def reset_path!
+      @path = nil
+    end
+
     # The host's Run class (Harbor::Run unless the host named its own).
     def run_class = config.run_class.constantize
 

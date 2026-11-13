@@ -72,7 +72,7 @@ class HarborNavTest < ActiveSupport::TestCase
   end
 
   test "also: prefixes count as the page" do
-    links = @nav.links(View.new("/model_aliases/new"))
+    links = @nav.links(View.new("/factory/model_aliases/new"))
     assert_equal [ "Models" ], links.select(&:active).map(&:label)
   end
 
@@ -133,7 +133,24 @@ class HarborNavTest < ActiveSupport::TestCase
   end
 
   test "Workflows is current on its runs pages, which sit outside its path" do
-    assert_equal [ "Workflows" ], @nav.links(View.new("/workflow_runs/76")).select(&:active).map(&:label)
+    assert_equal [ "Workflows" ], @nav.links(View.new("/factory/workflow_runs/76")).select(&:active).map(&:label)
+  end
+
+  test "also: prefixes are under the section's path, not beside it" do
+    assert_empty @nav.links(View.new("/workflow_runs/76")).select(&:active)
+  end
+
+  test "the page at the section's own address is current only there" do
+    view = Class.new(View) do
+      def main_app
+        routes = super
+        routes.define_singleton_method(:factory_path) { "/factory" }
+        routes
+      end
+    end
+    assert_equal [ "Overview" ], @nav.links(view.new("/factory")).select(&:active).map(&:label)
+    assert_not_includes @nav.links(view.new("/factory/velocity")).select(&:active).map(&:label), "Overview",
+                        "every page is beneath /factory, so Overview isn't current on all of them"
   end
 
   test "every page of the menu has an icon of its own" do

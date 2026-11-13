@@ -137,7 +137,7 @@ class HarborDatabasesTest < ActiveSupport::TestCase
       "databases:\n  ledger: [unclosed\n" => /harbor\.yml: not valid YAML/,
       "- just\n- a list\n" => /harbor\.yml: must be a mapping of sections/,
       "databases: nope\n" => /harbor\.yml: databases must be a mapping/,
-      "database:\n  ledger: { source_env: LEDGER_DB_URL }\n" => /harbor\.yml: unknown section database \(expected databases, restore_environments\)/,
+      "database:\n  ledger: { source_env: LEDGER_DB_URL }\n" => /harbor\.yml: unknown section database \(expected path, databases, restore_environments\)/,
       "databases:\n  <%= raise 'boom' %>\n" => /harbor\.yml: boom/,
       "databases:\n  <%= nope( %>\n" => /harbor\.yml: /,
       "databases:\n  ledger: { source_env: A_DB_URL }\n  ledger: { source_env: B_DB_URL }\n" => /harbor\.yml: databases\.ledger appears twice/

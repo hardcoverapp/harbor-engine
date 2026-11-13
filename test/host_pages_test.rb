@@ -13,7 +13,7 @@ class HarborHostPagesTest < ActionDispatch::IntegrationTest
     labels = css_select("[data-harbor-menu] a").map { |a| a.text.strip }
     assert_equal %w[Automations Reports Runs Webhooks Models Runtimes Workspaces Databases Settings], labels
     assert_select "[data-harbor-menu] a.current", text: "Reports"
-    assert_select "[data-harbor-menu] a[href='/settings']", text: "Settings"
+    assert_select "[data-harbor-menu] a[href='/factory/settings']", text: "Settings"
   end
 
   test "a path neither the host nor Harbor knows is a 404" do

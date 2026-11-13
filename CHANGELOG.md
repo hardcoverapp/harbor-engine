@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.14.0
+
+- **Every page is under `/factory`**: `/factory/runtimes`, `/factory/databases`,
+  `/factory/settings` and so on. `path:` in `config/harbor.yml` changes it (`path: /ops`,
+  or `path: /` for the root); it is read when routes are drawn, so a change takes a
+  restart. `Harbor.path` is the value, for a host that keeps pages of the section in its
+  own routes (`scope Harbor.path do … end`).
+- The runner endpoints stay at `/harbor/runner/`, whatever the path is.
+- A nav item's `also:` prefixes are written without the section's path.
+
+Upgrading from 0.13.0: the engine is still mounted at `/`. Links built with route
+helpers follow by themselves; a hard-coded `/runtimes` or `/settings` needs the path, or
+set `path: /` to keep the old addresses.
+
 ## 0.13.0
 
 - **`config/harbor.yml`**, one config file in the host (run through ERB, then YAML;
