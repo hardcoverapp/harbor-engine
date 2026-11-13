@@ -57,6 +57,11 @@ module Harbor
     # command has ended. nil: Harbor finishes the run as ok or error itself.
     attr_accessor :run_reported
 
+    # Called with nothing when where or on what work can run has changed: a
+    # runtime switched on or off, a limit raised, a workspace reordered. A host
+    # with work waiting for availability looks again. nil: nothing happens.
+    attr_accessor :availability_changed
+
     # Where runs' live logs are kept. `log_location` turns a log's relative
     # path into a file path; `log_path` gives a run its relative path (nil for
     # a run with nothing to name its log by).
@@ -84,6 +89,7 @@ module Harbor
       @slot_key = ->(line) { "harbor:slots:#{line}" }
       @sticky_runtime = nil
       @run_reported = nil
+      @availability_changed = nil
       @log_location = ->(path) { Rails.root.join("storage/harbor/logs", path) }
       @log_path = lambda do |run|
         name = run.loader.presence || run.skill.presence&.tr(".", "-")

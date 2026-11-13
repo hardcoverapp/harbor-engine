@@ -1,0 +1,47 @@
+<% content_for :title, "Runtimes" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="flex flex-wrap justify-between items-start gap-4 mb-10">
+  <div><h1 class="display text-3xl">Runtimes</h1><p class="text-sm text-soft mt-2 max-w-3xl">Places a workspace can run, each with a limit. <%= link_to "Workspaces", workspace_profiles_path, class: "underline" %> list them in fallback order. Disabling one moves new workspaces to the next runtime in line; live workspaces finish where they are.</p></div>
+</header>
+<div class="grid md:grid-cols-2 gap-6" data-controller="harbor--poll" data-harbor--poll-interval-value="30">
+  <% @runtimes.each do |runtime| %>
+    <% busy = runtime.busy; reason = runtime.unavailable_reason; adapter = runtime.adapter %>
+    <section class="card p-6" data-reveal data-runtime="<%= runtime.key %>">
+      <div class="flex justify-between items-start gap-4 mb-7">
+        <div><h2 class="display text-2xl"><%= runtime.name %></h2><p class="meta mt-1"><%= runtime.backend_class.label %> · <%= runtime.host.presence || "—" %> · <span class="font-mono"><%= runtime.key %></span></p></div>
+        <span class="pill <%= runtime.enabled? ? 'bg-pale-green text-ink-green' : 'bg-pale-red text-ink-red' %>"><span aria-hidden="true">●</span> <%= runtime.enabled? ? "Enabled" : "Disabled" %></span>
+      </div>
+      <p class="text-4xl text-ink font-light tracking-tight" data-busy><%= busy %> / <%= runtime.max_concurrent %><span class="text-sm text-soft ml-2">workspaces busy</span></p>
+      <progress class="w-full h-1.5 mt-4 mb-2 accent-[#346538]" max="<%= runtime.max_concurrent %>" value="<%= [busy, runtime.max_concurrent].min %>" aria-label="Busy workspaces"></progress>
+      <div class="mt-6 pt-5 border-t border-hairline space-y-1">
+        <p class="text-sm text-body" data-health><%= reason ? "Not taking new work: #{reason}" : "Taking new work" %></p>
+        <% adapter.warnings.each do |warning| %><p class="text-xs text-ink-yellow"><%= warning %></p><% end %>
+        <% if runtime.last_error.present? %><p class="text-xs text-ink-yellow">Last check failed: <%= runtime.last_error %></p><% end %>
+        <p class="meta"><%= runtime.checked_at ? "Checked #{time_ago_in_words(runtime.checked_at)} ago" : "Health has not been checked" %></p>
+        <p class="meta">In <%= runtime.workspace_profiles.map(&:name).sort.to_sentence.presence || "no workspace yet" %></p>
+      </div>
+      <div class="flex flex-wrap gap-3 items-end mt-5">
+        <%= button_to(runtime.enabled? ? "Disable #{runtime.name}" : "Enable #{runtime.name}", runtime_path(runtime), method: :patch,
+              params: { runtime: { enabled: !runtime.enabled? } }, class: "btn-quiet",
+              data: (runtime.enabled? ? { turbo_confirm: "Disable #{runtime.name}? New workspaces move to the next runtime in each workspace's list." } : {})) %>
+        <%= button_to "Check health", check_runtime_path(runtime), class: "btn-quiet" %>
+        <%= form_with model: runtime, scope: :runtime, url: runtime_path(runtime), method: :patch, class: "flex gap-2 items-end" do |form| %>
+          <div><%= form.label :max_concurrent, "Limit", class: "block text-xs text-soft mb-1" %><%= form.number_field :max_concurrent, min: 1, required: true, class: "field w-24" %></div>
+          <%= form.submit "Save limit", class: "btn-quiet cursor-pointer" %>
+        <% end %>
+      </div>
+      <details class="mt-5">
+        <summary class="text-sm text-soft cursor-pointer">Backend config</summary>
+        <%= form_with model: runtime, scope: :runtime, url: runtime_path(runtime), method: :patch, class: "mt-3 space-y-3" do |form| %>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div><%= form.label :name, class: "block text-xs text-soft mb-1" %><%= form.text_field :name, class: "field w-full" %></div>
+            <div><%= form.label :host, class: "block text-xs text-soft mb-1" %><%= form.text_field :host, class: "field w-full" %></div>
+          </div>
+          <div><%= form.label :config, "Config (JSON)", class: "block text-xs text-soft mb-1" %><%= form.text_area :config, value: JSON.pretty_generate(runtime.config), rows: 4, class: "field w-full font-mono text-sm" %></div>
+          <p class="meta">Capabilities: <%= runtime.backend_class.capabilities.map { |k, v| "#{k.to_s.humanize.downcase}: #{v}" }.join(" · ") %></p>
+          <%= form.submit "Save config", class: "btn-quiet cursor-pointer" %>
+        <% end %>
+      </details>
+    </section>
+  <% end %>
+</div>

@@ -1,0 +1,26 @@
+<%= form_with model: @workspace_profile, scope: :workspace_profile, url: (@workspace_profile.persisted? ? workspace_profile_path(@workspace_profile) : workspace_profiles_path), class: "max-w-4xl space-y-8", data: { controller: "harbor--nested-fields" } do |form| %>
+  <% if @workspace_profile.errors.any? %>
+    <div role="alert" class="bg-pale-red text-ink-red rounded-lg p-4 text-sm"><%= @workspace_profile.errors.full_messages.join(". ") %></div>
+  <% end %>
+  <div class="grid sm:grid-cols-2 gap-6">
+    <div><%= form.label :name, class: "block text-sm mb-2" %><%= form.text_field :name, required: true, class: "field w-full" %></div>
+    <div><%= form.label :key, class: "block text-sm mb-2" %><%= form.text_field :key, readonly: @workspace_profile.persisted?, placeholder: "from the name", class: "field w-full font-mono" %><p class="meta mt-1">What code and settings name this workspace by.</p></div>
+    <div class="sm:col-span-2"><%= form.label :description, class: "block text-sm mb-2" %><%= form.text_field :description, class: "field w-full" %></div>
+  </div>
+  <div>
+    <h2 class="display text-xl mb-2">Runtimes in fallback order</h2>
+    <p class="text-sm text-soft mb-5">The first runtime that is enabled, healthy, below its limit and can run the agent's model gets the workspace. Runtime and model fall back together. Use the arrows to reorder.</p>
+    <div data-harbor--nested-fields-target="list" class="space-y-4">
+      <%= form.fields_for :workspace_profile_runtimes do |row| %>
+        <%= render "runtime_row", form: row %>
+      <% end %>
+    </div>
+    <template data-harbor--nested-fields-target="template">
+      <%= form.fields_for :workspace_profile_runtimes, Harbor::WorkspaceProfileRuntime.new, child_index: "NEW_RECORD" do |row| %>
+        <%= render "runtime_row", form: row %>
+      <% end %>
+    </template>
+    <button type="button" data-action="harbor--nested-fields#add" class="btn-quiet mt-4">Add runtime</button>
+  </div>
+  <div class="flex gap-4 items-center"><%= form.submit "Save workspace", class: "btn-primary cursor-pointer" %><%= link_to "Cancel", workspace_profiles_path, class: "text-sm text-soft" %></div>
+<% end %>

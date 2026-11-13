@@ -42,6 +42,10 @@ module Harbor
 
     def workspace_profile_class = config.workspace_profile_class.constantize
 
+    # Tell the host that where or on what work can run has changed (a runtime
+    # switched on, a workspace reordered), so anything waiting can look again.
+    def availability_changed! = config.availability_changed&.call
+
     # A Redis connection, for the slot ledger: yields something answering
     # `call("COMMAND", …)` (`config.redis`).
     def redis(&block) = config.redis.call(&block)

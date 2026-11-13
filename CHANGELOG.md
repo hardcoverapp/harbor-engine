@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.0
+
+- **The Runtimes page** (`/runtimes`): each runtime's limit, live busy count and health,
+  with its switch, a health check and its backend config.
+- **The Workspaces pages** (`/workspaces`): the ordered lists of runtimes, created,
+  reordered and deleted in the app.
+- `config.availability_changed` is told when a runtime or workspace changes, so a host
+  with work waiting for somewhere to run looks again.
+- Stimulus controllers `harbor--nested-fields` and `harbor--poll`.
+- The menu's Runtimes and Workspaces entries now point at Harbor's pages.
+
 ## 0.9.0
 
 - **The Orca backend** (`Harbor::Runtimes::Backends::Orca`, registered as `orca`): a

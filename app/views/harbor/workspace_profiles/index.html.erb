@@ -1,0 +1,21 @@
+<% content_for :title, "Workspaces" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="flex flex-wrap justify-between items-start gap-4 mb-10">
+  <div><h1 class="display text-3xl">Workspaces</h1><p class="text-sm text-soft mt-2 max-w-3xl">Where agents and workflows get a workspace: an ordered list of <%= link_to "runtimes", runtimes_path, class: "underline" %>. A run uses the first one that is enabled, healthy, below its limit and able to run the agent's model. When every usable runtime is full the run waits in the queue. Follow-ups, reviews and fixes stay on the runtime that holds their live workspace.</p></div>
+  <%= link_to "New workspace", new_workspace_profile_path, class: "btn-primary" %>
+</header>
+<div class="space-y-5">
+  <% @profiles.each do |profile| %>
+    <article class="card p-6" data-reveal data-workspace="<%= profile.key %>">
+      <div class="flex justify-between items-start gap-4"><div><%= link_to profile.name, edit_workspace_profile_path(profile), class: "display text-xl hover:underline" %><p class="text-sm text-soft mt-1"><%= profile.description %></p></div><%= link_to "Edit", edit_workspace_profile_path(profile), class: "btn-quiet" %></div>
+      <ol class="mt-5 divide-y divide-hairline">
+        <% profile.workspace_profile_runtimes.each_with_index do |row, index| %>
+          <% runtime = row.runtime; reason = runtime.unavailable_reason %>
+          <li class="py-3 flex flex-wrap gap-x-5 gap-y-1 text-sm"><span class="meta w-16"><%= index.zero? ? "First" : "Then #{index}" %></span><span class="text-ink"><%= runtime.name %></span><span class="text-soft"><%= runtime.usage_label %></span><span class="<%= reason ? 'text-ink-red' : 'text-soft' %> ml-auto"><%= reason ? reason.capitalize : "Taking new work" %></span></li>
+        <% end %>
+      </ol>
+      <p class="meta mt-3">Agents: <%= (@agents_by_profile[profile.id] || []).map(&:key).to_sentence.presence || "none" %> · key <span class="font-mono"><%= profile.key %></span></p>
+      <%= button_to "Delete workspace", workspace_profile_path(profile), method: :delete, class: "text-xs text-soft underline mt-3", data: { turbo_confirm: "Delete this workspace? Workspaces with agents can't be deleted." } %>
+    </article>
+  <% end %>
+</div>

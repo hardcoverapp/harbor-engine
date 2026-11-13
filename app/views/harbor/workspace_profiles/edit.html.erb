@@ -1,0 +1,4 @@
+<% content_for :title, "#{@workspace_profile.name} · Workspaces" %>
+<%= render "harbor/shared/section_nav" %>
+<h1 class="display text-3xl mb-8">Edit <%= @workspace_profile.name %></h1>
+<%= render "form" %>
