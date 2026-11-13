@@ -1,7 +1,8 @@
 module Harbor
   # A token a runner proves itself with: signed by this app, good for one run
-  # and a limited time. It lets its holder append to that run's log and report
-  # its result, and nothing else.
+  # and a limited time. It lets its holder append to that run's log, report
+  # its result and, for an agent session, fetch what its command needs
+  # (prompt, MCP config, environment) while it runs. Nothing else.
   module RunToken
     PURPOSE = "harbor.run".freeze
     LIFETIME = 48.hours

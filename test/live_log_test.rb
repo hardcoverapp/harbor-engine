@@ -19,7 +19,8 @@ class HarborLiveLogTest < ActiveSupport::TestCase
     assert_equal "db-backup/run-7.log", Harbor::Run.new(id: 7, loader: "db-backup").live_log_path
     assert_equal "workflow-review-ask/run-8.log", Harbor::Run.new(id: 8, skill: "workflow.review.ask").live_log_path
     assert_equal "review/run-9-attempt-2.log", Harbor::Run.new(id: 9, skill: "review", input: { "model_switches" => [ {} ] }).live_log_path
-    assert_nil Harbor::Run.new(id: 10, agent_key: "ada").live_log_path
+    assert_equal "ada/run-10.log", Harbor::Run.new(id: 10, agent_key: "ada").live_log_path, "an agent's run with no skill is named for the agent"
+    assert_nil Harbor::Run.new(id: 11).live_log_path
   end
 
   test "the host can name logs its own way" do

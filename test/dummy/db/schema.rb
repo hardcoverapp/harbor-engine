@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_13_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_14_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -176,6 +176,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_000000) do
     t.integer "cache_creation_tokens"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.jsonb "runner_state", default: {}, null: false
     t.index ["agent_key"], name: "index_runs_on_agent_key"
     t.index ["idempotency_key"], name: "index_runs_on_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
     t.index ["join_key"], name: "index_runs_on_live_join_key", unique: true, where: "((join_key IS NOT NULL) AND ((status)::text = ANY (ARRAY[('queued'::character varying)::text, ('waiting_for_model'::character varying)::text, ('running'::character varying)::text])))"

@@ -46,7 +46,7 @@ class HarborPathTest < ActionDispatch::IntegrationTest
   test "every page route is under the path, and nothing else is but the runner's" do
     paths = Harbor::Engine.routes.routes.map { |route| route.path.spec.to_s }
     runner, pages = paths.partition { |path| path.start_with?("/harbor/runner/") }
-    assert_equal 2, runner.size, "the runner's address never moves: firewalls and runners are given it"
+    assert_equal 3, runner.size, "the runner's address never moves: firewalls and runners are given it"
     assert pages.any?
     pages.each { |path| assert path.start_with?("/factory/"), "#{path} is outside /factory" }
   end

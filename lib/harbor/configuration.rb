@@ -70,13 +70,35 @@ module Harbor
     attr_accessor :model_name
 
     # Where runs' live logs are kept. `log_location` turns a log's relative
-    # path into a file path; `log_path` gives a run its relative path (nil for
-    # a run with nothing to name its log by).
+    # path into a file path; `log_path` gives a run its relative path, named
+    # for its loader, its skill or its agent (nil for a run with none).
     attr_accessor :log_location, :log_path
 
     # The Orca command line Harbor runs agents through: a name on the PATH or
     # a full path.
     attr_accessor :orca_bin
+
+    # --- Agent sessions (see README "Agent sessions") ---
+
+    # The agent command lines, as the machines that run them know them: a
+    # name on the PATH there, or a full path.
+    attr_accessor :claude_bin, :codex_bin
+
+    # Called with (run, provider key: "anthropic" or "openai") when a runner
+    # asks for a session's environment; returns a Hash of NAME => value for
+    # the agent command: a model credential, a source-control token, a git
+    # author. This is where secrets come from. Harbor reads it when asked and
+    # stores none of it. nil: the command gets nothing but what the runner
+    # machine already has (its own login).
+    attr_accessor :agent_session_env
+
+    # Called with a run; returns a line or two added to the agent's system
+    # prompt: who it is acting as, the site's own rules. nil: nothing added.
+    attr_accessor :agent_session_preamble
+
+    # Called with a run when its agent session has ended, however it ended,
+    # after Harbor has recorded it and cleaned up. nil: nothing happens.
+    attr_accessor :agent_session_finished
 
     # The host's Harbor config file (Harbor::ConfigFile): which databases are
     # backed up and which environments they are restored to. A path or a
@@ -161,10 +183,15 @@ module Harbor
       @model_name = ->(model) { model }
       @log_location = ->(path) { Rails.root.join("storage/harbor/logs", path) }
       @log_path = lambda do |run|
-        name = run.loader.presence || run.skill.presence&.tr(".", "-")
+        name = run.loader.presence || run.skill.presence&.tr(".", "-") || run.agent_key.presence
         "#{name}/run-#{run.id}#{run.log_attempt_suffix}.log" if name
       end
       @orca_bin = "orca"
+      @claude_bin = "claude"
+      @codex_bin = "codex"
+      @agent_session_env = nil
+      @agent_session_preamble = nil
+      @agent_session_finished = nil
       @config_file = -> { Rails.root.join("config/harbor.yml") }
       @backup_root = -> { Rails.root.join("storage/harbor/backups").to_s }
       @backup_host_root = nil

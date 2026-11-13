@@ -14,6 +14,11 @@ Harbor::Settings.declare :agent_auto_retries,
   type: :integer, default: 3, min: 0, max: 10, group: "Runs", label: "Automatic retries",
   description: "How many times a failed agent run is retried, as a new run each time, before it is left for a person. 0 turns retries off."
 
+Harbor::Settings.declare :agent_session_silent_minutes,
+  type: :integer, default: 10, min: 1, max: 1440, group: "Runs", label: "Silent runner check (minutes)",
+  description: "When a running agent session has sent nothing for this long, Harbor asks its runtime whether the terminal is still there. " \
+               "A session whose terminal has gone is finished as an error instead of being left running forever."
+
 Harbor::Settings.declare :model_catalog_url,
   type: :string, default: "https://models.dev/api.json", group: "Models", label: "Model catalog",
   description: "Where the list of each provider's models is read from when picking one for an alias. " \

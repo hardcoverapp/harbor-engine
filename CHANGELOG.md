@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.15.0
+
+- **Agent sessions**: `Harbor::AgentSession.run!(agent:, prompt:)` runs an agent's
+  command line (`claude -p`, or `codex exec` for an OpenAI model) as a command in an
+  Orca terminal, with only HTTP between the runner and the app, and records what comes
+  back: the raw stream beside the live log, a readable line and a `run_events` row per
+  event as they arrive, and at the end the session id, model, cost, duration, tokens,
+  final text and status. `start!` is the same for a host that places the run itself;
+  `stop!` cancels one. See README "Agent sessions".
+- Hooks: `c.agent_session_env` (the command's environment, where secrets come from),
+  `c.agent_session_preamble`, `c.agent_session_finished`, `c.claude_bin`, `c.codex_bin`.
+  Setting: **Silent runner check (minutes)** (`agent_session_silent_minutes`, 10).
+- Secrets reach the command in a file the runner fetches and sources
+  (`POST /harbor/runner/runs/:id/bundle/:name`), never on a command line; every session
+  runs with `--strict-mcp-config` and an MCP config of its own.
+- Timeouts as Active Job jobs (`Harbor::AgentSession::WatchJob`): a whole-session limit,
+  an optional idle limit, and a check that finishes a session whose runner stopped
+  reporting and whose terminal has gone.
+- **Runner protocol v2**, for every run on Orca:
+  - Each log post says where it starts (`?offset=N`). A post sent twice adds nothing
+    twice; one that would leave a gap is answered `409` with Harbor's count and the
+    script resumes from it. Before, a retried post duplicated its bytes.
+  - No post is over 1 MB, so a backlog drains in pieces. Before, a backlog over the
+    2 MB limit was refused forever and the log stalled.
+  - Bytes are kept as they arrive and made valid text only where they are read
+    (`Harbor::LiveLog.read` and `.tail`). Before, a character split across two posts
+    was corrupted.
+  - The script traps TERM, HUP and INT: it stops the command's whole process group
+    (TERM, then KILL), sends what was printed and a result with `"signalled": true`,
+    and removes its files. Before, a closed terminal reported nothing.
+  - The command runs in a group of its own, with a private `$HARBOR_RUN_DIR`, and is no
+    longer given the run's token in its environment.
+  - A result is taken once: `c.run_reported` is no longer called for a second report or
+    for a run that is already finished. What was reported is in
+    `run.runner_state` (`exit_status`, `signalled`).
+- `runs.runner_state` (jsonb): what Harbor keeps about a run's runner.
+- The Orca backend enforces tool rules (`enforces_tool_policy?`), and is not chosen for
+  an OpenAI model when the agent's rules are ones `codex` can't keep. It gains
+  `restart(session, …)` and `exited?(session)`; `start` passes `bundle:` and `attempt:`
+  on to `Harbor::Runner.command_for`.
+- `Harbor::Orca.runner`: what runs the `orca` command for clients not given their own
+  (tests set a stand-in).
+- A run with only an `agent_key` now has a live log, named for the agent.
+
+Upgrading from 0.14.0 or 0.14.1:
+
+- Run the migrations: `runs.runner_state` is added (`if_not_exists`, default `{}`).
+- Let `POST /harbor/runner/runs/:id/bundle/:name` through whatever is in front of the
+  app. A rule that already allows `POST` under `/harbor/runner/` covers it.
+- A run started before the upgrade keeps working: its script posts without an offset,
+  which is taken as the next piece. Runs started afterwards use offsets.
+- `c.run_reported` hosts: the hook is now called at most once per run and not at all
+  for a finished run. Read `run.runner_state["signalled"]` to tell a stopped command
+  from one that failed.
+- A host backend used for agent sessions must answer `start`, `restart`, `stop`,
+  `cleanup` and `exited?`. Harbor's Orca backend does.
+- Agent sessions need an Active Job queue that honours `set(wait:)`, for timeouts.
+- If the host's `c.log_path` is its own, nothing changes; with the default, runs that
+  have an `agent_key` and neither `loader` nor `skill` now get a log file.
+
 ## 0.14.1
 
 - **The Webhooks page reads properly on a phone.** A delivery is three short lines

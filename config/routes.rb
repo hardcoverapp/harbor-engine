@@ -36,10 +36,12 @@ Harbor::Engine.routes.draw do
   end
 
   # What runners post to, with a run's token and no login. A site behind a
-  # firewall lets POSTs under /harbor/runner/ through. Not under Harbor.path:
+  # firewall lets POSTs under /harbor/runner/ through, so every route here is
+  # a POST, the one that fetches a file included. Not under Harbor.path:
   # runners and firewall rules are given this address, so it never moves.
   scope "harbor/runner", module: :runner, as: :runner do
     post "runs/:id/log", to: "runs#log", as: :run_log
     post "runs/:id/result", to: "runs#result", as: :run_result
+    post "runs/:id/bundle/:name", to: "runs#bundle", as: :run_bundle, format: false
   end
 end

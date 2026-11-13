@@ -336,17 +336,201 @@ runtime.adapter.cleanup(session)   # remove the worktree
 
 For that, set **Runner address** on the Settings page to where runners reach
 the app, and let `POST` requests under `/harbor/runner/` through any firewall
-in front of it. Those two routes have no login: each request carries a token
-good for one run, which can append to that run's log and report its result and
-nothing else. By default a reported exit status finishes the run as ok or
-error; `c.run_reported = ->(run, exit_status:) { … }` takes that over.
+in front of it. Those routes have no login: each request carries a token good
+for one run, which can append to that run's log, report its result and (for an
+agent session) fetch what its command needs, and nothing else. By default a
+reported exit status finishes the run as ok or error;
+`c.run_reported = ->(run, exit_status:) { … }` takes that over, and is called
+once per run.
 
-The runner needs `sh`, `curl` and the `orca` command where Harbor runs. An Orca
-server listens on every interface, so never give one a public address.
+The script posts what the command printed about once a second. Each post says
+where it starts (`POST …/log?offset=N`), so one that is sent twice adds nothing
+twice, and Harbor answers `409` with its own count when a post would leave a
+gap, which the script resumes from. No post is over 1 MB. The bytes are kept as
+they arrive and only made valid text where a person reads them. When the
+script is signalled (a closed terminal, a stop, ctrl-c) it stops the command
+and everything the command started, sends what was printed and a result marked
+`signalled`, and removes its files.
+
+The runner needs `sh`, `curl` and the usual base utilities; Harbor needs the
+`orca` command where it runs. An Orca server listens on every interface, so
+never give one a public address.
 
 `c.sticky_runtime` sends follow-up work back to the runtime that holds its
 workspace, and `c.runtime_class` / `c.workspace_profile_class` name a host's
 subclasses.
+
+## Agent sessions
+
+An agent session is one run of an AI coding agent's command line, `claude -p`
+for an Anthropic model or `codex exec` for an OpenAI one, as the command in an
+Orca terminal. Only HTTP passes between the machine it runs on and the app.
+Harbor builds the command, and turns what comes back into the run's log, its
+events, its cost and tokens, its final text and its status.
+
+```ruby
+run = Harbor::AgentSession.run!(agent: agent, prompt: "Fix the failing test in test/models/book_test.rb")
+```
+
+`run!` makes the run, places it through the agent's workspace (taking a slot on
+the runtime and one of the agent's), and starts the session. It returns at
+once with the run `running`; the session reports as it goes. Options:
+
+```ruby
+Harbor::AgentSession.run!(
+  agent: agent, prompt: "…",
+  attributes: { skill: "writer.fix", task_type: "fix" },   # for the new run
+  system_prompt_extra: "The task: …",   # added after the agent's own prompt
+  allowed_tools: %w[Read Grep Glob],     # the agent's own unless given
+  disallowed_tools: %w[Bash],
+  permission_mode: "default",            # the agent's own unless given
+  add_dirs: [ "/srv/docs" ],
+  mcp_config: { "mcpServers" => { … } },
+  resume_session_id: earlier_run.session_id,
+  base: "main",                          # the branch the worktree starts from
+  timeout: 30.minutes, idle_timeout: 5.minutes,
+  keep_worktree: false
+)
+```
+
+When the agent or every usable runtime is full, or no model is available,
+nothing starts: `run!` gives back what it took and returns the run still
+`queued` (or `waiting_for_model`) with the reason in its log. Call
+`run!(agent:, prompt:, run: that_run)` to try again. `Harbor::AgentSession.start!`
+is the same without placement, for a host that has already chosen a `runtime:`
+and a model `choice:`.
+
+### What the agent is told
+
+The system prompt is the agent's own (`agent.full_system_prompt`), then a
+paragraph of Harbor's saying the run is unattended (never ask a question, never
+wait for input, on a failed precondition print a line starting `ERROR:` and
+exit non-zero), then the host's line, then `system_prompt_extra`.
+
+### Hooks
+
+```ruby
+# config/initializers/harbor.rb
+Harbor.configure do |c|
+  # The environment of the agent command, per run. This is where secrets come
+  # from: a model credential, a source-control token, a git author.
+  c.agent_session_env = ->(run, provider) do
+    env = { "GH_TOKEN" => Tokens.for(run), "GIT_AUTHOR_NAME" => "Build Bot", "GIT_AUTHOR_EMAIL" => "bot@example.com" }
+    env["CLAUDE_CODE_OAUTH_TOKEN"] = ENV["CLAUDE_CODE_OAUTH_TOKEN"] if provider == "anthropic"
+    env["CODEX_API_KEY"] = ENV["OPENAI_API_KEY"] if provider == "openai"
+    env
+  end
+
+  # A line or two for the system prompt: who the agent acts as, the site's rules.
+  c.agent_session_preamble = ->(run) { "You act as the build-bot account. Never push to main." }
+
+  # Called once when a session has ended, however it ended, after Harbor has
+  # recorded it and cleaned up.
+  c.agent_session_finished = ->(run) { FollowUpJob.perform_later(run.id) }
+
+  # The agent commands as the runner machines know them.
+  c.claude_bin = "claude"
+  c.codex_bin = "codex"
+end
+```
+
+Harbor adds no secret of its own. It applies one rule to what the hook
+returns: `claude` takes a single credential, so when the hash has
+`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` is unset for the command, and
+the other way round. With neither, the machine's own login is used.
+
+### What the runner machine needs
+
+`sh`, `curl`, the agent command (`claude`, or `codex`) on its `PATH`, and either
+a login for it on that machine or a credential passed by the host's hook. A
+machine without the command says so in the run's log and the run ends as an
+error (exit 127).
+
+### Where secrets travel
+
+The terminal's command line carries the run's address, its token and the names
+of four files, and nothing else. The runner script fetches those files over
+HTTPS with the token (`POST /harbor/runner/runs/:id/bundle/:name`) into a
+private folder (`$HARBOR_RUN_DIR`, mode 700, removed at the end): `prompt`,
+`system`, `mcp` and `env`. `env` is `export NAME='value'` lines the script
+sources before the command starts, so a secret is never an argument of any
+process and never in the terminal's command line. Harbor works `env` out from
+`agent_session_env` each time it is asked, only while the session is running,
+and stores none of it. The agent command is not given the run's token.
+
+The prompt, system prompt and MCP config are kept with the run
+(`input["agent_session"]`), so put no secret in an MCP config: give it to the
+command through `agent_session_env` and name the variable in the config.
+
+### MCP servers
+
+Every session gets an MCP config of its own and `--strict-mcp-config`: the
+servers in `mcp_config:`, or none. A session never inherits the MCP servers of
+whoever owns the machine. For `codex` the same servers are passed as config
+overrides, in a `CODEX_HOME` of the session's own.
+
+### Stopping and timeouts
+
+```ruby
+Harbor::AgentSession.stop!(run)   # status "canceled"
+```
+
+`stop!` records why, closes the terminal and finishes the run at once, without
+waiting for a result. The runner script, signalled by the closing terminal,
+stops the agent and everything it started (TERM, then KILL). It is safe to call
+twice and on a finished run, and a result that arrives afterwards is ignored.
+
+Three checks run as Active Job jobs (`Harbor::AgentSession::WatchJob`), so the
+host needs a queue that honours `set(wait:)`:
+
+- **`timeout:`** (30 minutes unless given): a session still running then is
+  stopped with status `timeout`.
+- **`idle_timeout:`** (off unless given): a session that prints nothing for
+  that long is stopped with status `timeout`.
+- **The silent-runner check**: when nothing has arrived for the **Silent runner
+  check** setting (10 minutes), Harbor asks Orca whether the terminal's command
+  is still there. If it has gone, no result is coming and the run is finished
+  as an `error` ("the runner stopped reporting"). A quiet session whose
+  terminal is still busy is left alone.
+
+A session that was asked to continue an earlier one (`resume_session_id:`) and
+fails before the agent gets a turn, because that session is gone, is started
+once more in the same worktree without `--resume`.
+
+### How a session ends
+
+Whichever way it ends, one finisher runs once: it writes `session_id`, `model`,
+`cost_usd_actual`, `duration_ms`, the four token counts, `error_class`
+(the result's subtype when it wasn't a success) and
+`output = { "exit_code" => …, "text" => … }` (the agent's final text, or the
+end of what it printed otherwise). A recorded stop decides the status
+(`canceled`, `timeout`); otherwise exit 0 is `ok` and anything else `error`,
+with the last plain lines the command printed as the error. Then it gives back
+the slots, closes the terminal, removes the worktree (unless
+`keep_worktree: true`) and calls `agent_session_finished`. A failure in any of
+those is logged in the run's log and never leaves the run unfinished.
+
+### Where the stream and the log live
+
+Beside each other, under the log location (see Live logs): the live log at
+`run.live_log_path` holds one readable line per event, and the raw stream at
+`run.raw_log_path` (the same name ending `.ndjson`) holds exactly the bytes the
+command printed. `run.run_events` has one row per event, added as they arrive.
+`Harbor::AgentSession::Stream.parse(File.read(…))` reads a raw stream again,
+including the subagents the agent delegated to (`stream.delegations`): Harbor
+returns those as data and records nothing for them.
+
+### Not done yet
+
+- **Queueing.** A run that could not start is returned waiting; when to try
+  again is the host's.
+- **Changing model mid-run.** A session runs on the model it started with.
+- **Slash commands.** The prompt is passed as it is.
+- **MCP servers hosted by Harbor.** `mcp_config:` names servers that exist
+  elsewhere.
+- **`codex`** is built from its documentation and tested against a stand-in;
+  it has not been proven against a real server. It does not continue earlier
+  sessions.
 
 ## Webhooks
 
@@ -715,6 +899,9 @@ Harbor.configure do |c|
   c.env_fallback :workflows_enabled, "MYAPP_WORKFLOWS_ENABLED"
 end
 ```
+
+The hooks for agent sessions (`agent_session_env`, `agent_session_preamble`,
+`agent_session_finished`, `claude_bin`, `codex_bin`) are under Agent sessions.
 
 ### Settings
 

@@ -39,11 +39,11 @@ module Harbor
       attr_reader :environment
 
       # `runner` takes (argv, timeout:) and returns [stdout, stderr, exit
-      # status]; tests pass their own.
+      # status]; tests pass their own, or set Harbor::Orca.runner.
       def initialize(environment: nil, bin: Harbor.config.orca_bin, runner: nil)
         @environment = environment.presence
         @bin = bin
-        @runner = runner || method(:run)
+        @runner = runner || Harbor::Orca.runner || method(:run)
       end
 
       # The server's version and whether it can take work.

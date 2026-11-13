@@ -42,23 +42,27 @@ module Harbor
       file.close unless file.closed?
     end
 
-    # Adds text to the log exactly as given, for output that arrives in
-    # pieces from somewhere else. Nothing happens for a run with no log.
+    # Adds to the log exactly the bytes given, for output that arrives in
+    # pieces from somewhere else: a piece may end in the middle of a
+    # character, and the next one completes it. Nothing happens for a run
+    # with no log.
     def append(relative_path, text)
       return if relative_path.blank? || text.empty?
 
       full = absolute(relative_path)
       FileUtils.mkdir_p(File.dirname(full))
-      File.open(full, "a") { |file| file.write(text) }
+      File.open(full, "ab") { |file| file.write(text) }
     end
 
     def exist?(relative_path) = relative_path.present? && File.file?(absolute(relative_path))
 
-    # The whole log, or nil when nothing has been written.
+    # The whole log as text, or nil when nothing has been written. The file
+    # holds whatever bytes the work printed; they are made valid text here,
+    # where a person reads them, and not before.
     def read(relative_path)
       return nil unless exist?(relative_path)
 
-      File.read(absolute(relative_path))
+      File.binread(absolute(relative_path)).force_encoding(Encoding::UTF_8).scrub("?")
     end
 
     # The end of the log: `{ body:, clipped: }`, or nil when nothing has been

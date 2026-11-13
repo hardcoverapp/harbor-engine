@@ -115,3 +115,122 @@ module HarborDatabasesConfig
 
   def staging_restore(database) = Harbor::DbOps::Database.find!(database).restore_in!("staging")
 end
+
+# Stands in for the orca command for code that builds its own client
+# (Harbor::Orca.runner): a server that makes worktrees and terminals by
+# counting, remembers every command, and can be told to refuse one.
+class FakeOrcaServer
+  attr_reader :calls
+  # Whether a terminal asked about has nothing running in it any more.
+  attr_accessor :exited
+
+  def initialize
+    @calls = []
+    @refusals = {}
+    @terminals = 0
+    @exited = false
+  end
+
+  # Refuse the next `command` ("terminal create") with Orca's error `code`.
+  def refuse(command, code: "runtime_unavailable") = @refusals[command] = code
+
+  def call(argv, timeout:)
+    @calls << argv
+    command = argv[1, 2].join(" ")
+    if (code = @refusals.delete(command))
+      return [ JSON.generate("ok" => false, "error" => { "code" => code, "message" => "refused: #{code}" }), "", 1 ]
+    end
+    [ JSON.generate("ok" => true, "result" => answer(command, argv)), "", 0 ]
+  end
+
+  # The commands run so far, as "worktree create", "terminal close"…
+  def commands = calls.map { |argv| argv[1, 2].join(" ") }
+
+  # The command line given to each terminal, in order.
+  def terminal_commands = calls.select { |argv| argv[1, 2] == %w[terminal create] }.map { |argv| argv[argv.index("--command") + 1] }
+
+  private
+
+  def answer(command, argv)
+    case command
+    when "worktree create"
+      name = argv[argv.index("--name") + 1]
+      { "worktree" => { "id" => "repo-1::/work/#{name}", "path" => "/work/#{name}", "branch" => name } }
+    when "terminal create"
+      { "terminal" => { "handle" => "term-#{@terminals += 1}", "worktreeId" => argv[argv.index("--worktree") + 1] } }
+    when "terminal wait"
+      { "wait" => { "satisfied" => exited, "status" => exited ? "exited" : "running" } }
+    else {}
+    end
+  end
+end
+
+# An agent with a model, a workspace and an Orca runtime to run on, a folder
+# for logs, and a stand-in for Orca. Everything is put back afterwards.
+module HarborAgentSessions
+  HOOKS = %i[agent_session_env agent_session_preamble agent_session_finished claude_bin codex_bin log_location run_reported].freeze
+
+  def self.included(base)
+    base.include HarborTestConfig
+    base.include ActiveJob::TestHelper
+    base.setup do
+      [ Harbor::RunEvent, Harbor::TaskAssignment, Harbor::AgentDocument, Harbor::AgentSetting, Harbor::Agent,
+        Harbor::WorkspaceProfileRuntime, Harbor::WorkspaceProfile, Harbor::DatabaseBackup, Harbor::WebhookEvent, Harbor::Run,
+        Harbor::Runtime, Harbor::ModelChoice, Harbor::ModelAlias, Harbor::ModelProvider ].each(&:delete_all)
+      HARBOR_TEST_REDIS.with { |r| r.call("KEYS", "harbor:test:slots:*").each { |k| r.call("DEL", k) } }
+      Harbor::Setting.set!(:runner_url, "https://harbor.example.com")
+      @harbor_hooks = HOOKS.index_with { |name| Harbor.config.public_send(name) }
+      @logs = Dir.mktmpdir("harbor-logs")
+      Harbor.config.log_location = ->(path) { File.join(@logs, path) }
+      @orca = FakeOrcaServer.new
+      Harbor::Orca.runner = @orca
+
+      @anthropic = Harbor::ModelProvider.create!(key: "anthropic")
+      @openai = Harbor::ModelProvider.create!(key: "openai")
+      @alias = Harbor::ModelAlias.create!(name: "Thinking", model_choices_attributes: [
+        { model_provider: @anthropic, model: "claude-sonnet-5-5", effort: "medium", position: 0 } ])
+      @choice = @alias.model_choices.first
+      @runtime = Harbor::Runtime.create!(key: "laptop", name: "Laptop", backend: "orca", max_concurrent: 2,
+                                         config: { "repo" => "name:app" })
+      @workspace = Harbor::WorkspaceProfile.create!(name: "Default", workspace_profile_runtimes_attributes: [
+        { runtime: @runtime, position: 0 } ])
+      @agent = Harbor::Agent.create!(key: "writer", name: "Writer", system_prompt: "You write.", model_alias: @alias,
+                                     workspace_profile: @workspace, max_agents: 2, max_workspaces: 2,
+                                     tools: { "allowed" => %w[Read Grep Glob] })
+    end
+    base.teardown do
+      Harbor::Orca.runner = nil
+      @harbor_hooks.each { |name, value| Harbor.config.public_send("#{name}=", value) }
+      FileUtils.remove_entry(@logs) if @logs && File.exist?(@logs)
+    end
+  end
+
+  def new_run(**attributes) = Harbor::Run.create!({ agent_key: "writer", skill: "writer.fix", status: "queued" }.merge(attributes))
+
+  # A session started on the stand-in Orca.
+  def start_session(run: new_run, prompt: "Fix the test.", **options)
+    Harbor::AgentSession.start!(run:, agent: @agent, prompt:, runtime: @runtime, choice: @choice, **options)
+  end
+
+  def runner_headers(run, type = "application/octet-stream")
+    { "Authorization" => "Bearer #{Harbor::RunToken.generate(run)}", "Content-Type" => type }
+  end
+
+  # Posts a piece of output as the runner would, at the offset the run is at
+  # unless one is given.
+  def post_output(run, bytes, offset: run.reload.runner_state["received"].to_i, attempt: nil)
+    query = { offset:, attempt: }.compact.to_query
+    post "/harbor/runner/runs/#{run.id}/log?#{query}", params: bytes, headers: runner_headers(run)
+  end
+
+  def post_result(run, exit_status, signalled: false, attempt: nil)
+    post "/harbor/runner/runs/#{run.id}/result#{"?attempt=#{attempt}" if attempt}",
+         params: { exit_status:, signalled: }, headers: { "Authorization" => "Bearer #{Harbor::RunToken.generate(run)}" }, as: :json
+  end
+
+  def ndjson(*events) = events.map { |event| "#{JSON.generate(event)}\n" }.join
+
+  def live_log(run) = Harbor::LiveLog.read(run.live_log_path).to_s
+
+  def raw_stream(run) = File.binread(Harbor::LiveLog.absolute(run.raw_log_path))
+end
