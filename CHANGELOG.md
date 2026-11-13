@@ -2,6 +2,15 @@
 
 ## 0.17.0
 
+- **An agent's allow list is now enforced for claude.** A session given
+  `allowed_tools` (the caller's, or the agent's `tools["allowed"]`) also gets
+  `--tools` with the built-in tools on the list, so the others don't exist for it.
+  Before, the list was only passed as `--allowedTools`, which with permissions skipped
+  (the default mode) restricts nothing: a "read-only" agent could still run Bash. A
+  list that was written as "approved without asking" rather than "everything it may
+  use" now needs every tool the agent should have. MCP tools are not built in and are
+  unaffected.
+
 - **A session's prompt can be a slash command.**
   `Harbor::AgentSession.run!(agent:, slash_command: "/tidy:shelf 12 --fast")` (and
   `start!`) takes, instead of `prompt:`, the name of a prompt kept in the repository

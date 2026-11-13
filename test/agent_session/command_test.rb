@@ -58,12 +58,25 @@ class HarborAgentSessionCommandTest < ActiveSupport::TestCase
                    "--model", "claude-sonnet-5-5", "--effort", "medium",
                    "--append-system-prompt", "You're `careful`.",
                    "--output-format", "stream-json", "--verbose",
-                   "--allowedTools", "Read,Grep,Glob", "--disallowedTools", "Bash,WebFetch",
+                   "--tools", "Read,Grep,Glob", "--allowedTools", "Read,Grep,Glob", "--disallowedTools", "Bash,WebFetch",
                    "--add-dir", "/srv/docs", "--add-dir", "/srv/other",
                    "--mcp-config", "#{ran.env.grep(/\AHARBOR_RUN_DIR=/).first.delete_prefix('HARBOR_RUN_DIR=')}/mcp", "--strict-mcp-config",
                    "--dangerously-skip-permissions", "--resume", "abc-123" ], ran.argv
     assert_includes ran.env, "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0"
     assert_empty ran.stray, "nothing in the prompt was run by the shell"
+  end
+
+  test "an allow list takes the other built-in tools away, which --allowedTools alone does not" do
+    arguments = ->(allowed) { Command.new(cli: "claude", allowed_tools: allowed).arguments }
+    tools = ->(allowed) { arguments.call(allowed).then { |words| words[words.index("--tools") + 1] } }
+
+    assert_equal "Read,Grep,Glob", tools.call(%w[Read Grep Glob])
+    assert_equal "Bash,Read", tools.call([ "Bash(git status)", "Bash(git diff *)", "Read" ]), "a pattern names its tool, once"
+    assert_equal "Read", tools.call(%w[Read mcp__tracker__create_issue]), "an MCP server's tool is not a built-in one"
+    assert_equal "", tools.call(%w[mcp__tracker__create_issue]), "only MCP tools allowed: no built-in tool at all"
+    assert_includes arguments.call(%w[Read mcp__tracker__create_issue]), "Read,mcp__tracker__create_issue", "the whole list is still approved"
+    assert_not_includes arguments.call([]), "--tools", "no allow list: every tool, as before"
+    assert_not_includes Command.new(cli: "claude", disallowed_tools: %w[Bash]).arguments, "--tools"
   end
 
   test "a bare claude command still gets stream-json and an MCP config of its own, strictly" do

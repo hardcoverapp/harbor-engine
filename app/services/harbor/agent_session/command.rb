@@ -122,6 +122,14 @@ module Harbor
           "exec #{line(claude_arguments)}" ].join("; ")
       end
 
+      # The built-in tools an allow list names: "Bash(git *)" is Bash, and a
+      # tool of an MCP server ("mcp__…") is not built in, so --tools has
+      # nothing to say about it. Empty when the list names only MCP tools,
+      # which leaves the session no built-in tool at all.
+      def built_in_tools
+        allowed_tools.map { |tool| tool.sub(/\(.*\z/m, "").strip }.reject { |tool| tool.empty? || tool.start_with?("mcp__") }.uniq
+      end
+
       def claude_arguments
         words = [ "-p", PROMPT ]
         words += [ "--model", model ] if model
@@ -130,9 +138,15 @@ module Harbor
         # --verbose is required with stream-json in print mode. Partial
         # messages are left off: token deltas would flood the log.
         words += [ "--output-format", "stream-json", "--verbose" ]
-        # A denied tool stays denied even when permissions are skipped; an
-        # allow list narrows what is approved without asking.
-        words += [ "--allowedTools", allowed_tools.join(",") ] if allowed_tools.any?
+        # An allow list means "these tools and no others". --allowedTools
+        # alone doesn't do that: it only says what is approved without asking,
+        # and with permissions skipped everything is approved anyway. --tools
+        # is what takes the other built-in tools away. A denied tool stays
+        # denied whatever the mode.
+        if allowed_tools.any?
+          words += [ "--tools", built_in_tools.join(",") ]
+          words += [ "--allowedTools", allowed_tools.join(",") ]
+        end
         words += [ "--disallowedTools", disallowed_tools.join(",") ] if disallowed_tools.any?
         add_dirs.each { |dir| words += [ "--add-dir", dir ] }
         # Always its own MCP config and nothing else: without --strict-mcp-config

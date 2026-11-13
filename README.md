@@ -393,6 +393,15 @@ Harbor::AgentSession.run!(
 )
 ```
 
+**Tools.** `allowed_tools` means "these tools and no others": the session is
+started with claude's `--tools`, so a built-in tool that isn't on the list
+doesn't exist for it. (`--allowedTools` alone would not do that. With
+permissions skipped, which is the default mode, it restricts nothing.) Write
+the list as everything the agent may use, patterns included
+(`"Bash(git status)"` keeps Bash). `disallowed_tools` takes named tools away
+from an agent that otherwise has them all. An MCP server's tools are governed
+by the servers the session is given, not by these lists.
+
 When the agent or every usable runtime is full, or no model is available,
 nothing starts: `run!` gives back what it took and returns the run still
 `queued` (or `waiting_for_model`) with the reason in its log. Call
