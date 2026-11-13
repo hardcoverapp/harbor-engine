@@ -362,8 +362,9 @@ the page renders for each delivery with `event`.
 
 ## Databases
 
-Harbor backs up the databases a site declares and refreshes staging copies of
-them, on the Databases page (`/databases`). Every backup and restore is a run.
+Harbor backs up the databases a site declares and restores them to the
+environments it declares, on the Databases page (`/databases`). Every backup
+and restore is a run.
 
 - **Backups** come in three kinds per database. `full` is everything, for
   disaster recovery. `cleaned` is masked while it is read, so it is safe to hand
@@ -371,9 +372,11 @@ them, on the Databases page (`/databases`). Every backup and restore is a run.
   site that needs more kept than a laptop does. Each dump is a folder
   `<database>/<kind>/<dump id>/`, cataloged in `Harbor::DatabaseBackup` with its
   size and checksum.
-- **Staging refreshes** replace a database's staging copy with a saved masked
-  dump (staging, else cleaned). A full dump is never restored anywhere.
-- MySQL databases get full backups only.
+- **Restore environments** are named sets of databases that get replaced with
+  saved backups: a staging site, two test servers, a recovery drill. Each lists
+  which database's backup, of which kind, replaces the database in which ENV
+  key.
+- MySQL databases get full backups only, and are never restored.
 
 ### What it needs
 
@@ -386,30 +389,100 @@ needed where the jobs run, when a backup or restore runs:
 - `mysqldump`, `mysql` and `gzip`, if a MySQL database is declared.
 - The `aws-sdk-s3` gem in the host's Gemfile, if dumps are copied to a bucket.
 
-### Declaring databases
+### The config file
 
-Connection strings are secrets, so they stay in ENV. A declaration names the
-ENV keys:
+Databases and restore environments are declared in one file in the host,
+`config/harbor.yml`. It is run through ERB and then read as YAML, like
+`config/database.yml`. Connection strings are secrets, so they stay in ENV: the
+file names ENV keys and never holds a URL.
 
-```ruby
-# config/initializers/harbor.rb
-Harbor::Databases.declare "shop",
-  source_env: "SHOP_DATABASE_URL",            # what is backed up; point it at a read-only role
-  staging_env: "SHOP_STAGING_DATABASE_URL",   # optional: what a staging refresh replaces
-  variants_env: "SHOP_BACKUP_VARIANTS",       # optional: an ENV key listing the kinds to make ("full,cleaned")
-  freshness: { "orders" => "created_at" }     # optional: tables whose newest row proves the source is live
+```yaml
+# config/harbor.yml
+databases:
+  ledger:
+    source_env: LEDGER_DB_URL              # the ENV key holding its URL; point it at a read-only role
+    variants_env: LEDGER_BACKUP_VARIANTS   # optional: an ENV key listing the kinds to make ("full,cleaned")
+    label: Ledger                          # optional: its name on the page
+    freshness:                             # optional: tables whose newest row proves the source is live
+      entries: created_at
+  shop:
+    source_env: SHOP_DB_URL
+    variants: [full, cleaned]              # optional: the kinds to make, written here instead of in ENV
+  app:
+    own: true                              # the app's own database
+    owner: Storefront
 
-Harbor::Databases.declare "app", own: true, owner: "Storefront"   # the app's own database
+restore_environments:
+  staging:
+    name: Staging
+    enabled_env: STAGING_RESTORES_ENABLED  # on only when that ENV key is exactly "true"
+    restores:
+      - database: ledger
+        backup: cleaned                    # the kind restored: cleaned, staging or full
+        target_env: LEDGER_STAGING_DB_URL  # the ENV key holding the URL of the database replaced
 ```
 
-A `postgres://` URL is dumped with Greenmask, a `mysql://` one with
+A `postgres://` source is dumped with Greenmask, a `mysql://` one with
 `mysqldump`. `own: true` is the database Rails is connected to: full backups
-only, never a restore target. A database with `freshness:` tables is not backed
+only, never restored anywhere. A database with `freshness:` tables is not backed
 up once its newest row is older than the **Newest write allowed** setting,
 because a source that stopped receiving writes is usually the wrong server.
 
-A list that isn't known until it is asked for is declared in a block, run each
-time the list is read: `Harbor::Databases.declare_each_time { |list| list.declare … }`.
+An environment has a key, a name, a switch and a list of restores. One
+environment may take several databases, and one database may feed several
+environments. The switch is in the file and nowhere else: `enabled: true` (or
+`false`), or `enabled_env:` naming an ENV key that must hold exactly `true`.
+With neither, the environment is off. `backup:` says which kind a restore
+uses; left out, it is the `staging` kind when the database has staging rules,
+otherwise `cleaned`.
+
+Three test servers that each take the cleaned backup of one database, and one
+site that takes a full backup of another:
+
+```yaml
+databases:
+  ledger: { source_env: LEDGER_DB_URL }
+  shop:   { source_env: SHOP_DB_URL }
+
+restore_environments:
+  test-1:
+    enabled: true
+    restores:
+      - { database: ledger, backup: cleaned, target_env: TEST1_LEDGER_DB_URL }
+  test-2:
+    enabled: true
+    restores:
+      - { database: ledger, backup: cleaned, target_env: TEST2_LEDGER_DB_URL }
+  test-3:
+    enabled_env: TEST3_RESTORES_ENABLED
+    restores:
+      - { database: ledger, backup: cleaned, target_env: TEST3_LEDGER_DB_URL }
+  recovery:
+    name: Recovery drill
+    enabled_env: RECOVERY_RESTORES_ENABLED
+    restores:
+      - { database: shop, backup: full, target_env: SHOP_RECOVERY_DB_URL }
+```
+
+The file is read each time it is needed, so what its ERB reads from ENV is
+current. A missing file declares nothing, and nothing fails. Anything else
+wrong with it is never skipped over: invalid YAML, a section or key Harbor
+doesn't know, a URL where an ENV key belongs, a restore of an unknown database
+or of the app's own, an unknown backup kind, a missing `database:` or
+`target_env:`, a database or target listed twice. Each is a
+`Harbor::Databases::Error` naming the file and the entry. It is logged when the
+app boots, shown on the Databases page, and raised by every operation that
+reads the declarations. A mistake under `restore_environments` stops restores;
+valid databases are still backed up.
+
+Another path: `c.config_file = "/etc/myapp/harbor.yml"`. The file's top level
+is where other Harbor configuration will go.
+
+Databases may also be declared in Ruby, by a host that prefers code:
+`Harbor::Databases.declare "ledger", source_env: "LEDGER_DB_URL"`, or
+`Harbor::Databases.declare_each_time { |list| list.declare … }` for a list
+worked out each time it is read. A database declared in the file and in Ruby
+is an error. Restore environments are declared in the file only.
 
 ### Masking rules
 
@@ -465,36 +538,63 @@ Under **Databases** on the Settings page: **Backups kept**, **Parallel dump jobs
 **Newest write allowed**, **Oldest backup a refresh uses**, **Connection
 timeout** and **Upload threads**.
 
-### What a restore will not do
+### What a restore will and will not replace
 
-A restore drops every schema in its target first, so the target is checked
-before anything is queued and again by the job:
+A restore drops every schema in its target first. A database can be a target
+for one reason only: **the config file lists it as the `target_env` of a
+restore, in an environment that file has switched on.** Nothing else makes a
+database replaceable, and nothing about what it is called matters: Harbor never
+looks at a database's or a host's name to decide whether it is safe.
 
-- Staging restores must be allowed on the machine: an ENV key set to exactly
-  `true` (`HARBOR_STAGING_RESTORES_ENABLED`, or the key named by
-  `c.staging_restores_env`). It is not a setting, so nobody enables
-  destructive restores from a browser.
-- The target must not be any declared database's source, the app's own
-  `DATABASE_URL`, or any database in Rails's own configuration. Nothing
-  overrides this.
-- The target's database name or host must contain `staging`. A site whose
-  disposable database is named otherwise sets an ENV key to `true` on the
-  machine: `HARBOR_ALLOW_UNSAFE_RESTORE`, or the key named by
-  `c.unsafe_restore_env`.
-- Two databases may not share a staging target.
-- Only a masked dump is restored, and only after its size and checksum match
-  what was cataloged.
+So nothing in a browser can cause a restore the file doesn't describe. There is
+no setting, form field or request parameter that switches an environment on,
+adds a target, changes a target or changes the kind of backup restored. The
+page sends only which environment, database and backup; the rest is read from
+the file.
 
-While a restore runs, the staging role is made read-only and its other
-connections are closed (`c.staging_lock_role` names a role other than the one
-in the URL; `c.restore_spared_applications` lists application names whose
-connections are left alone).
+On top of that, every restore is checked before it is queued and again by the
+job, and an environment restore checks every one of its entries before it
+replaces the first database. None of these can be overridden:
+
+- The target is never a declared database's source, the app's own
+  `DATABASE_URL`, or any database in Rails's own configuration. Two URLs are
+  the same database when host, port and database name match: hosts without
+  case and without a trailing dot, the port defaulted when a URL names none,
+  names without case and after percent-decoding. The user, password and
+  parameters don't matter. (Two different names for one server, such as an IP
+  address and a DNS name, are not known to be the same; give each database one
+  name.)
+- No target is shared by two restores, anywhere in the file.
+- A target whose ENV key is unset or blank is refused. An environment restore
+  leaves such an entry out and says so in its log; it is never pointed at
+  anything else.
+- A restore uses exactly the kind of backup its entry names. A `full` dump
+  holds everyone's real data, and is restored only where the entry says
+  `backup: full`.
+- The dump's size and checksum must match what was cataloged.
+- The target is PostgreSQL, and so is the dump.
+- An environment restore refuses a backup older than the **Oldest backup a
+  refresh uses** setting.
+
+While a restore runs, the role in the target's URL is made read-only and its
+other connections are closed (`c.staging_lock_role` names another role;
+`c.restore_spared_applications` lists application names whose connections are
+left alone).
+
+### The Environments tab
+
+The Databases page's **Environments** tab lists each environment: whether it is
+on and what decides that (the ENV key's name or the file's line, never a
+value), each restore with its backup kind, its target without the password,
+whether its ENV key is set and why it would be refused if it would be, the
+last restore, and a button to restore it when it is on.
 
 ### Starting operations
 
 The jobs are tracked runs. `Harbor::DatabaseRestoreJob` restores one chosen
-backup. Backing up and refreshing every staging database are jobs the host
-writes on `Harbor::DbOperationJob`, because when they run is the host's
+backup into one environment, and `Harbor::EnvironmentRestoreJob` restores every
+database of an environment from its newest backups. Backing up is a job the
+host writes on `Harbor::DbOperationJob`, because when it runs is the host's
 schedule:
 
 ```ruby
@@ -508,19 +608,26 @@ end
 ```
 
 The page's buttons call the host, which creates the run and queues the job;
-without this the page shows the databases and their backups and starts nothing:
+without this the page shows the databases and their backups and starts nothing.
+The operation is `db-backup`, `database-restore` (its input names the
+environment, the database and the backup), or an environment's own:
+`<environment key>-restore`, with the environment's key in its input.
 
 ```ruby
 Harbor.configure do |c|
-  jobs = { "db-backup" => "DatabaseBackupJob", "database-restore" => "Harbor::DatabaseRestoreJob", "staging-restore" => "StagingRefreshJob" }
+  jobs = { "db-backup" => "DatabaseBackupJob", "database-restore" => "Harbor::DatabaseRestoreJob" }
   c.database_operation = lambda do |operation, user:, input:|
     run = Harbor.run_class.create!(loader: operation, trigger_source: "manual", input: input.merge(loader: operation))
-    jobs.fetch(operation).constantize.perform_later(run.id)
+    jobs.fetch(operation, "Harbor::EnvironmentRestoreJob").constantize.perform_later(run.id)   # "staging-restore", "test-1-restore", …
     run
   end
   c.database_schedule = ->(operation) { MySchedule.next_run_at(operation) }   # optional: "Next: …" on the page
 end
 ```
+
+A scheduled restore of an environment is the same job with the same input:
+a run whose loader is `<key>-restore` and whose input is
+`{ "environment" => "<key>" }`.
 
 A host with a base job of its own for tracked work names it
 (`c.tracked_job = "MyTrackedJob"`); the default is `Harbor::TrackedJob`.
@@ -549,13 +656,17 @@ end
 
 ## Configuring
 
-Harbor is configured in three places, and a value goes in the first one it can:
+Harbor is configured in four places, and a value goes in the first one it can:
 
 1. **Settings in the app.** Everything that is data: switches, limits, and
    later repositories, identities and task types. Edited on the Settings page;
    a change takes effect at once, with no deploy or restart.
 2. **The environment.** Secrets only.
-3. **Ruby**, in a host initializer. Only what is code:
+3. **`config/harbor.yml`.** What must be decided on the machine and never from
+   a browser, because getting it wrong destroys data: which databases are
+   backed up and what may be restored over what (see Databases). It names the
+   ENV keys that hold the secrets.
+4. **Ruby**, in a host initializer. Only what is code:
 
 ```ruby
 # config/initializers/harbor.rb

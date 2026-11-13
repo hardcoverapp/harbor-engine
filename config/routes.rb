@@ -23,7 +23,7 @@ Harbor::Engine.routes.draw do
   resources :databases, only: :index do
     collection do
       post :backup_all
-      post :refresh_staging
+      post "environments/:environment/restore", action: :restore_environment, as: :restore_environment
     end
     member do
       post :backup

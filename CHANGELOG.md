@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.13.0
+
+- **`config/harbor.yml`**, one config file in the host (run through ERB, then YAML;
+  `c.config_file` names another path). It declares the databases and the restore
+  environments, naming ENV keys and never URLs. A missing file declares nothing;
+  anything invalid in it is a `Harbor::Databases::Error` naming the file and the entry,
+  logged at boot, shown on the page and raised by every operation.
+- **Restore environments** replace the single staging copy per database. An environment
+  is a named list of restores (database, backup kind, `target_env`) with its own switch:
+  `enabled: true` or `enabled_env:` naming an ENV key that must be exactly `true`. One
+  database may feed several environments, and an environment may take several
+  databases. `backup: full` restores a full dump; nothing else ever does.
+- **A target is replaceable only because the file lists it** in an environment the file
+  has switched on. No check looks at what a database or host is called any more.
+- The **Environments** tab on the Databases page; `Harbor::EnvironmentRestoreJob`;
+  `Harbor::DbOps::Environment`, `RestoreEntry` and `EnvironmentRestore`.
+- Two URLs are now also the same database when they differ only by a trailing dot on
+  the host or by which name they use for this machine, and Rails's own databases are
+  matched without case.
+
+Upgrading from 0.12.0:
+
+- `Harbor::Databases.declare(staging_env:)` is gone and raises. Move each staging URL to
+  a restore in `config/harbor.yml`:
+  `restore_environments: { staging: { enabled_env: …, restores: [ { database: …, target_env: … } ] } }`.
+  Databases may move to the file too, or stay in Ruby.
+- `c.staging_restores_env` is gone. Name the same ENV key as the environment's
+  `enabled_env`. With no environment declared, nothing is restored.
+- `c.unsafe_restore_env` and the rule it overrode are gone: a target no longer has to
+  have `staging` in its name or host, and `HARBOR_ALLOW_UNSAFE_RESTORE` is not read.
+  Check that every `target_env` in the file is a database you mean to replace.
+- `config.database_operation` is called with `"<environment key>-restore"` and
+  `input: { environment: }` for a whole environment (`"staging-restore"` for one keyed
+  `staging`, as before), and `"database-restore"` now carries `environment:` in its
+  input. `Harbor::DatabaseRestoreJob` refuses a run whose input names no environment.
+- The page's `POST /databases/refresh_staging` is now
+  `POST /databases/environments/:environment/restore`, and `POST /databases/:id/restore`
+  needs an `environment` param.
+- `Harbor::DbOps::Database#staging`, `#staging_env`, `#staging_configured?`,
+  `#staging_variant`, `#validate_staging!`, `#validate_disposable!` and
+  `.staging_restores_enabled?` are gone: use `Database#restore_in(key)` and
+  `Harbor::DbOps::Environment`. `Restore#preflight` and `#apply` take a `RestoreEntry`
+  where they took a database. `Target#assert_safe_to_destroy!` is
+  `Target#assert_distinct_from!(protected)`.
+
 ## 0.12.0
 
 - **Databases** (`/databases`): backups of the databases a host declares and refreshes

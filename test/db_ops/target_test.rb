@@ -1,7 +1,7 @@
 require "test_helper"
 
 # Target is the guard rail in front of a DROP SCHEMA. These tests are the
-# specification for "when may a staging restore destroy this database".
+# specification for "is this target really that protected database".
 class HarborDbOpsTargetTest < ActiveSupport::TestCase
   include HarborDatabasesConfig
 
@@ -68,49 +68,41 @@ class HarborDbOpsTargetTest < ActiveSupport::TestCase
 
   # --- the destroy guard ---
 
-  def test_staging_is_destroyable
-    assert stage.assert_safe_to_destroy!(protected_target: prod)
+  def test_another_database_is_distinct_from_the_protected_one
+    assert stage.assert_distinct_from!(prod)
   end
 
   def test_it_refuses_to_destroy_the_protected_database
-    err = assert_raises(Harbor::DbOps::Target::Error) do
-      prod.assert_safe_to_destroy!(protected_target: prod)
-    end
+    err = assert_raises(Harbor::DbOps::Target::Error) { prod.assert_distinct_from!(prod) }
     assert_match(/refusing to destroy/, err.message)
     assert_match(/same server\+database/, err.message)
   end
 
-  # The nightmare: STAGING_DATABASE_URL pasted with production's details. It
-  # names no "staging" anywhere, so both guards fire.
-  def test_it_refuses_a_database_that_does_not_name_itself_staging
-    other = Harbor::DbOps::Target.new("postgresql://u:p@some-host.example.com:5432/shop_production")
-    err = assert_raises(Harbor::DbOps::Target::Error) do
-      other.assert_safe_to_destroy!(protected_target: prod)
-    end
-    assert_match(/does not look like a disposable environment/, err.message)
+  # What a database is called is no evidence either way: only being the
+  # protected database gets a target refused here.
+  def test_names_are_never_looked_at
+    plain = Harbor::DbOps::Target.new("postgresql://u:p@some-host.example.com:5432/shop_production")
+    assert plain.assert_distinct_from!(prod)
+    assert_not Harbor::DbOps::Target.method_defined?(:looks_disposable?)
   end
 
-  # Same server+db as production must stay refused even with the override on —
-  # the override is only for "this really is disposable, it's just named oddly".
-  def test_the_override_cannot_unlock_the_protected_database
-    with_env("TEST_ALLOW_UNSAFE_RESTORE" => "true") do
-      assert_raises(Harbor::DbOps::Target::Error) do
-        prod.assert_safe_to_destroy!(protected_target: prod)
-      end
+  # One database written several ways is still one database.
+  def test_the_same_database_is_recognised_however_its_url_is_written
+    base = "production-db-follower-1.db.example.com"
+    same = [ "postgres://other:pw@#{base.upcase}:25060/SHOP_Production", "postgresql://x@#{base}.:25060/sh%6Fp_production?sslmode=require" ]
+    same.each do |url|
+      target = Harbor::DbOps::Target.new(url)
+      assert target.same_server_and_db?(prod), url
+      assert_raises(Harbor::DbOps::Target::Error, url) { target.assert_distinct_from!(prod) }
     end
-  end
-
-  def test_the_override_allows_an_oddly_named_disposable_database
-    other = Harbor::DbOps::Target.new("postgresql://u:p@qa-box.example.com:5432/scratch")
-    assert_raises(Harbor::DbOps::Target::Error) { other.assert_safe_to_destroy!(protected_target: prod) }
-    with_env("TEST_ALLOW_UNSAFE_RESTORE" => "true") do
-      assert other.assert_safe_to_destroy!(protected_target: prod)
-    end
-  end
-
-  def test_staging_in_the_host_alone_is_enough
-    t = Harbor::DbOps::Target.new("postgresql://u:p@staging-db.example.com:5432/shop")
-    assert t.assert_safe_to_destroy!(protected_target: prod)
+    default_port = Harbor::DbOps::Target.new("postgres://a@db.example/shop")
+    assert default_port.same_server_and_db?(Harbor::DbOps::Target.new("postgres://b:pw@db.example:5432/shop"))
+    assert_not default_port.same_server_and_db?(Harbor::DbOps::Target.new("postgres://b:pw@db.example:5433/shop"))
+    assert_not default_port.same_server_and_db?(Harbor::DbOps::Target.new("mysql://b:pw@db.example/shop")), "MySQL's default port is another server"
+    local = Harbor::DbOps::Target.new("postgres://a@localhost/shop")
+    assert local.same_server_and_db?(Harbor::DbOps::Target.new("postgres://a@127.0.0.1:5432/shop"))
+    # A trailing slash or a second path segment is not a database URL at all.
+    assert_raises(Harbor::DbOps::Target::Error) { Harbor::DbOps::Target.new("postgres://a@db.example/shop/") }
   end
 
   def test_same_server_but_a_different_database_is_not_the_protected_one
@@ -118,7 +110,7 @@ class HarborDbOpsTargetTest < ActiveSupport::TestCase
       "postgresql://dbadmin:x@production-db-follower-1.db.example.com:25060/shop_staging"
     )
     refute sibling.same_server_and_db?(prod)
-    assert sibling.assert_safe_to_destroy!(protected_target: prod)
+    assert sibling.assert_distinct_from!(prod)
   end
 
   private

@@ -38,42 +38,92 @@ class HarborDbOpsRestoreTest < ActiveSupport::TestCase
     assert_equal File.join(legacy.folder, "time.dump"), @restore.verify(legacy)
   end
 
-  test "preflight refuses another database's backup, full backups and disabled staging" do
-    database = Harbor::DbOps::Database.find!("time")
+  test "preflight refuses another database's backup, full backups and a switched-off environment" do
+    entry = staging_restore("time")
     @backup.update!(database_key: "shop")
-    assert_raises(Harbor::DbOps::Database::Error) { @restore.preflight(database, @backup) }
+    assert_raises(Harbor::DbOps::Database::Error) { @restore.preflight(entry, @backup) }
     @backup.update!(database_key: "time", variant: "full")
-    error = assert_raises(Harbor::DbOps::Database::Error) { @restore.preflight(database, @backup) }
+    error = assert_raises(Harbor::DbOps::Database::Error) { @restore.preflight(entry, @backup) }
     assert_match "Only cleaned or staging", error.message
     @backup.update!(variant: "staging")
-    target = with_stub(Harbor::DbOps::Pg, :server_version_major, 16) { with_stub(Harbor::DbOps::Pg, :assert_client_new_enough!, true) { @restore.preflight(database, @backup) } }
-    assert target.same_server_and_db?(database.staging), "staging backups restore to staging"
+    target = with_stub(Harbor::DbOps::Pg, :server_version_major, 16) { with_stub(Harbor::DbOps::Pg, :assert_client_new_enough!, true) { @restore.preflight(entry, @backup) } }
+    assert target.same_server_and_db?(entry.target), "the target is the one the file names"
     @backup.update!(variant: "cleaned")
-    ENV[Harbor.config.staging_restores_env] = "false"
-    assert_raises(Harbor::DbOps::Database::Error) { @restore.preflight(database, @backup) }
+    ENV[STAGING_SWITCH] = "false"
+    assert_raises(Harbor::DbOps::Database::Error) { @restore.preflight(entry, @backup) }
   end
 
-  test "apply wipes staging and restores the dump under the staging lock" do
-    database = Harbor::DbOps::Database.find!("time")
+  test "preflight refuses a target whose ENV key is unset before asking any server anything" do
+    ENV.delete("TIME_STAGING_DB_URL")
+    asked = []
+    with_stub(Harbor::DbOps::Pg, :server_version_major, ->(*, **) { asked << :version; 16 }) do
+      assert_raises(Harbor::DbOps::Target::Error) { @restore.preflight(staging_restore("time"), @backup) }
+    end
+    assert_empty asked
+  end
+
+  test "apply replaces the target and restores the dump under the lock" do
+    entry = staging_restore("time")
     calls = []
     lock = ->(target, **, &block) { calls << :lock; block.call(target, {}) }
     with_stub(Harbor::DbOps::StagingLock, :with_lock, lock) do
       with_stub(Harbor::DbOps::Pg, :reset_schemas, ->(*, **) { calls << :reset }) do
         with_stub(Harbor::DbOps::Pg, :restore_file, ->(_target, path, **) { calls << [ :restore, path ] }) do
-          @restore.apply(database, @backup, @backup.folder, target: database.staging)
+          @restore.apply(entry, @backup, @backup.folder, target: entry.target)
           @backup.update!(variant: "full")
-          assert_raises(Harbor::DbOps::Database::Error) { @restore.apply(database, @backup, @backup.folder, target: database.staging) }
+          assert_raises(Harbor::DbOps::Database::Error) { @restore.apply(entry, @backup, @backup.folder, target: entry.target) }
           # The guards run again right before the destructive step.
           @backup.update!(variant: "cleaned")
-          ENV[Harbor.config.staging_restores_env] = "false"
-          assert_raises(Harbor::DbOps::Database::Error) { @restore.apply(database, @backup, @backup.folder, target: database.staging) }
+          ENV[STAGING_SWITCH] = "false"
+          assert_raises(Harbor::DbOps::Database::Error) { @restore.apply(entry, @backup, @backup.folder, target: entry.target) }
           enable_staging_restores!
+          # A target handed in that is not the one the file names is refused.
+          elsewhere = Harbor::DbOps::Target.new("postgres://user:secret@staging/somewhere_else")
+          error = assert_raises(Harbor::DbOps::Database::Error) { @restore.apply(entry, @backup, @backup.folder, target: elsewhere) }
+          assert_match "not the one TIME_STAGING_DB_URL names", error.message
+          held = entry.target
+          ENV["TIME_STAGING_DB_URL"] = "postgres://user:secret@staging/time_moved"
+          assert_raises(Harbor::DbOps::Database::Error) { @restore.apply(entry, @backup, @backup.folder, target: held) }
           ENV["TIME_STAGING_DB_URL"] = ENV["TIME_DB_URL"]
-          assert_raises(Harbor::DbOps::Target::Error) { @restore.apply(database, @backup, @backup.folder, target: database.staging) }
+          assert_raises(Harbor::DbOps::Target::Error) { @restore.apply(entry, @backup, @backup.folder, target: entry.target) }
         end
       end
     end
     assert_equal [ :lock, :reset, [ :restore, @backup.folder ] ], calls
+  end
+
+  test "a full backup is restored only by an entry that names full" do
+    declare_environment "recovery", enabled: true, restores: [ { database: "time", backup: "full", target_env: "TIME_RECOVERY_DB_URL" } ]
+    ENV["TIME_RECOVERY_DB_URL"] = "postgres://user:secret@recovery/time"
+    @backup.update!(variant: "full")
+    calls = []
+    lock = ->(target, **, &block) { calls << target.redacted; block.call(target, {}) }
+    with_stub(Harbor::DbOps::StagingLock, :with_lock, lock) do
+      with_stub(Harbor::DbOps::Pg, :reset_schemas, true) do
+        with_stub(Harbor::DbOps::Pg, :restore_file, true) do
+          recovery = Harbor::DbOps::Environment.find!("recovery").restore_of!("time")
+          @restore.apply(recovery, @backup, @backup.folder, target: recovery.target)
+          staging = staging_restore("time")
+          assert_raises(Harbor::DbOps::Database::Error) { @restore.apply(staging, @backup, @backup.folder, target: staging.target) }
+          @backup.update!(variant: "cleaned")
+          assert_raises(Harbor::DbOps::Database::Error) { @restore.apply(recovery, @backup, @backup.folder, target: recovery.target) }
+        end
+      end
+    end
+    assert_equal [ "user@recovery:5432/time" ], calls
+  end
+
+  test "a MySQL dump is never handed to a restore, even where full is named" do
+    declare_environment "recovery", enabled: true, restores: [ { database: "time", backup: "full", target_env: "TIME_RECOVERY_DB_URL" } ]
+    ENV["TIME_RECOVERY_DB_URL"] = "postgres://user:secret@recovery/time"
+    recovery = Harbor::DbOps::Environment.find!("recovery").restore_of!("time")
+    @backup.update!(variant: "full")
+    File.write(File.join(@backup.folder, "time.sql.gz"), "sql")
+    assert_raises(Harbor::DbOps::Database::Error) { recovery.assert_backup!(@backup) }
+    FileUtils.rm(File.join(@backup.folder, "time.sql.gz"))
+    ENV["TIME_DB_URL"] = "mysql://backup:pw@mysql.example/time"
+    error = assert_raises(Harbor::DbOps::Database::Error) { recovery.assert_backup!(@backup) }
+    assert_match "MySQL", error.message
   end
 
   test "shared scratch lock refuses simultaneous database operations" do

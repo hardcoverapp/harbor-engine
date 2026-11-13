@@ -42,14 +42,16 @@ module SingletonStub
   end
 end
 
-# A host with databases, for the Databases tests: the declarations, the ENV
-# keys they name, a backup folder and the masking rules in test/fixtures.
+# A host with databases, for the Databases tests: a config file of its own
+# (written to a temp folder and rewritten as a test declares more), the ENV
+# keys it names, a backup folder and the masking rules in test/fixtures.
 # Everything is put back afterwards, ENV included.
 module HarborDatabasesConfig
-  CONFIG = %i[backup_root backup_host_root masking_rules_path greenmask_bin greenmask_pg_bin_path backup_bucket_env_prefix
-              unsafe_restore_env staging_lock_role restore_application_name restore_spared_applications backup_kind_notes
+  CONFIG = %i[config_file backup_root backup_host_root masking_rules_path greenmask_bin greenmask_pg_bin_path backup_bucket_env_prefix
+              staging_lock_role restore_application_name restore_spared_applications backup_kind_notes
               database_operation database_schedule].freeze
   RULES = File.expand_path("fixtures/masking", __dir__)
+  STAGING_SWITCH = "TEST_STAGING_RESTORES_ENABLED".freeze
 
   def self.included(base)
     base.include HarborTestConfig
@@ -57,13 +59,15 @@ module HarborDatabasesConfig
     base.setup do
       @harbor_env = ENV.to_h
       @harbor_database_config = CONFIG.index_with { |name| Harbor.config.public_send(name) }
+      @config_dir = Dir.mktmpdir("harbor-config")
+      Harbor.config.config_file = File.join(@config_dir, "harbor.yml")
+      @harbor_file = { "databases" => {}, "restore_environments" => {} }
       Harbor::Databases.reset!
       @backup_root = Dir.mktmpdir("harbor-backups")
       Harbor.config.backup_root = @backup_root
       Harbor.config.masking_rules_path = RULES
       Harbor.config.backup_bucket_env_prefix = "TEST_BACKUP_S3"
-      Harbor.config.unsafe_restore_env = "TEST_ALLOW_UNSAFE_RESTORE"
-      ENV.delete("TEST_ALLOW_UNSAFE_RESTORE")
+      ENV.delete(STAGING_SWITCH)
       # The app's own database as a deployed host names it. The suite's own
       # DATABASE_URL names a server with no database, which isn't a target.
       ENV["DATABASE_URL"] = "postgres://app:app-secret@app-db.internal:5432/app_production"
@@ -73,18 +77,41 @@ module HarborDatabasesConfig
       ENV.replace(@harbor_env)
       @harbor_database_config.each { |name, value| Harbor.config.public_send("#{name}=", value) }
       Harbor::Databases.reset!
-      FileUtils.remove_entry(@backup_root) if @backup_root && File.exist?(@backup_root)
+      [ @backup_root, @config_dir ].each { |dir| FileUtils.remove_entry(dir) if dir && File.exist?(dir) }
     end
+  end
+
+  # Write the host's config file: YAML text (ERB and all), or a hash.
+  def write_harbor_file(content)
+    File.write(Harbor.config.config_file, content.is_a?(String) ? content : content.to_yaml)
   end
 
   # "shop" has cleaned and staging rules, "shop_cache" cleaned only, "ledger"
-  # none; each reads its URLs from <KEY>_DB_URL and <KEY>_STAGING_DB_URL.
-  def declare_databases(*keys, **options)
+  # none. Each reads its source from <KEY>_DB_URL and is restored, in the
+  # environment `staging`, to the database in <KEY>_STAGING_DB_URL. The
+  # environment is on when TEST_STAGING_RESTORES_ENABLED is exactly "true".
+  def declare_databases(*keys, restore: true, **options)
     keys.each do |key|
-      Harbor::Databases.declare key, source_env: "#{key.upcase}_DB_URL", staging_env: "#{key.upcase}_STAGING_DB_URL",
-                                     variants_env: "#{key.upcase}_BACKUP_VARIANTS", **options
+      @harbor_file["databases"][key] = { "source_env" => "#{key.upcase}_DB_URL", "variants_env" => "#{key.upcase}_BACKUP_VARIANTS" }
+                                       .merge(options.deep_stringify_keys)
+      declare_restore("staging", key, target_env: "#{key.upcase}_STAGING_DB_URL") if restore
     end
+    write_harbor_file(@harbor_file)
   end
 
-  def enable_staging_restores! = ENV[Harbor.config.staging_restores_env] = "true"
+  def declare_environment(key, **options)
+    defaults = key == "staging" ? { "name" => "Staging", "enabled_env" => STAGING_SWITCH } : {}
+    @harbor_file["restore_environments"][key] = defaults.merge("restores" => []).merge(options.deep_stringify_keys)
+    write_harbor_file(@harbor_file)
+  end
+
+  def declare_restore(environment, database, **options)
+    declare_environment(environment) unless @harbor_file["restore_environments"].key?(environment)
+    @harbor_file["restore_environments"][environment]["restores"] << { "database" => database }.merge(options.deep_stringify_keys)
+    write_harbor_file(@harbor_file)
+  end
+
+  def enable_staging_restores! = ENV[STAGING_SWITCH] = "true"
+
+  def staging_restore(database) = Harbor::DbOps::Database.find!(database).restore_in!("staging")
 end

@@ -3,17 +3,20 @@
 <header class="flex flex-wrap justify-between items-start gap-4 mb-8">
   <div>
     <h1 class="display text-3xl">Databases</h1>
-    <p class="text-sm text-soft mt-2">Greenmask backups, full and masked, plus staging refreshes.</p>
+    <p class="text-sm text-soft mt-2">Greenmask backups, full and masked, plus restores to the environments declared.</p>
   </div>
   <% if @operations_available %><%= button_to "Back up all databases", backup_all_databases_path, class: "btn-primary" %><% end %>
 </header>
 
 <%= render "harbor/shared/page_tabs", label: "Databases", tabs: [
       [ "Databases", databases_path, @tab == :databases ],
+      [ "Environments", databases_path(tab: "environments"), @tab == :environments ],
       [ "Recent operations", databases_path(tab: "operations"), @tab == :operations ] ] %>
 
 <% if @tab == :operations %>
   <%= render "harbor/databases/operations" %>
+<% elsif @tab == :environments %>
+  <%= render "harbor/databases/environments" %>
 <% else %>
   <%= render "harbor/databases/databases" %>
 <% end %>

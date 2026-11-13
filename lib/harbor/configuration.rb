@@ -78,11 +78,17 @@ module Harbor
     # a full path.
     attr_accessor :orca_bin
 
-    # --- Databases (backups and staging refreshes; see README "Databases") ---
+    # The host's Harbor config file (Harbor::ConfigFile): which databases are
+    # backed up and which environments they are restored to. A path or a
+    # callable returning one; `config/harbor.yml` in the app by default.
+    attr_accessor :config_file
+
+    # --- Databases (backups and restores; see README "Databases") ---
     #
     # Where dumps go and what gets run are decided on the machine, not on the
     # Settings page. Each of these may be a value or a callable, which is read
-    # every time it is needed.
+    # every time it is needed. Which databases a restore may replace is not
+    # here at all: that is the config file's, and only the config file's.
 
     # The folder backups are written under, one folder per database and kind.
     attr_accessor :backup_root
@@ -104,18 +110,8 @@ module Harbor
     # _LOCATION, _CLEANED_BUCKET and _FULL_BUCKET.
     attr_accessor :backup_bucket_env_prefix
 
-    # The ENV key that, set to exactly "true", allows staging restores at all.
-    # Deliberately not a setting: a restore destroys its target, so allowing
-    # them is an act on the machine, not a click by whoever is logged in.
-    attr_accessor :staging_restores_env
-
-    # The ENV key that, set to "true", lets a restore replace a database whose
-    # name and host don't say it is disposable. Deliberately not a setting:
-    # turning it on is an act on the machine.
-    attr_accessor :unsafe_restore_env
-
-    # The database role made read-only while a staging database is replaced
-    # (nil: the role in the staging URL).
+    # The database role made read-only while a database is replaced (nil: the
+    # role in the target's URL).
     attr_accessor :staging_lock_role
 
     # The application name restores connect with, and the names of other
@@ -132,9 +128,10 @@ module Harbor
     attr_accessor :tracked_job
 
     # Called with (operation, user:, input:) when someone starts a database
-    # operation from the page ("db-backup", "database-restore" or
-    # "staging-restore"); starts it and returns its run. nil: the page starts
-    # nothing.
+    # operation from the page; starts it and returns its run. The operation
+    # is "db-backup", "database-restore" (input: environment, database,
+    # backup_id) or an environment's own, "<environment key>-restore" (input:
+    # environment). nil: the page starts nothing.
     attr_accessor :database_operation
 
     # Called with an operation's name; returns when it next runs on a schedule,
@@ -168,14 +165,13 @@ module Harbor
         "#{name}/run-#{run.id}#{run.log_attempt_suffix}.log" if name
       end
       @orca_bin = "orca"
+      @config_file = -> { Rails.root.join("config/harbor.yml") }
       @backup_root = -> { Rails.root.join("storage/harbor/backups").to_s }
       @backup_host_root = nil
       @masking_rules_path = -> { Rails.root.join("config/greenmask") }
       @greenmask_bin = "greenmask"
       @greenmask_pg_bin_path = nil
       @backup_bucket_env_prefix = "HARBOR_BACKUP_S3"
-      @staging_restores_env = "HARBOR_STAGING_RESTORES_ENABLED"
-      @unsafe_restore_env = "HARBOR_ALLOW_UNSAFE_RESTORE"
       @staging_lock_role = nil
       @restore_application_name = "harbor-restorer"
       @restore_spared_applications = []

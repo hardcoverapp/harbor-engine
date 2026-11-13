@@ -11,8 +11,8 @@
 
 <% if @databases.empty? && @configuration_errors.empty? %>
   <p class="card p-5 mb-8 text-sm text-soft" data-no-databases>
-    No databases are declared, so there is nothing to back up. A database is declared in an initializer with
-    <span class="font-mono">Harbor::Databases.declare</span>, naming the ENV key that holds its URL.
+    No databases are declared, so there is nothing to back up. A database is declared under
+    <span class="font-mono">databases:</span> in <span class="font-mono"><%= Harbor::ConfigFile.label %></span>, naming the ENV key that holds its URL.
   </p>
 <% end %>
 
@@ -35,11 +35,20 @@
       <p class="meta mt-2">No bucket configured (<%= Harbor.config.backup_bucket_env_prefix %>_*), so nothing leaves the backup drive.</p>
     <% end %>
   </section>
-  <section class="card p-5">
-    <p class="meta mb-2">Staging refresh</p>
-    <p class="display text-xl"><%= @restore_on ? "Enabled" : "Paused" %></p>
-    <p class="meta mt-2">Next: <%= backup_schedule_time(@restore_next) %></p>
-    <% if @operations_available %><%= button_to "Refresh staging", refresh_staging_databases_path, class: "btn-quiet mt-3 !py-1 !px-3 text-xs", disabled: !@restore_on, data: { turbo_confirm: "Replace all configured staging databases with their newest staging backups?" } %><% end %>
+  <%# One environment gets its switch and its button here; several are
+      summarised, and each has its own on the Environments tab. %>
+  <section class="card p-5" data-restore-summary>
+    <% if @environments.one? %>
+      <% environment = @environments.first %>
+      <p class="meta mb-2"><%= environment.name %> refresh</p>
+      <p class="display text-xl"><%= environment.enabled? ? "Enabled" : "Paused" %></p>
+      <p class="meta mt-2">Next: <%= backup_schedule_time(@restore_next[environment]) %></p>
+      <% if @operations_available %><%= button_to "Refresh #{environment.key}", restore_environment_databases_path(environment.key), class: "btn-quiet mt-3 !py-1 !px-3 text-xs", disabled: !environment.enabled?, data: { turbo_confirm: "Replace all configured #{environment.key} databases with their newest backups?" } %><% end %>
+    <% else %>
+      <p class="meta mb-2">Restore environments</p>
+      <p class="display text-xl"><%= @environments.empty? ? "None declared" : "#{@environments.count(&:enabled?)} of #{@environments.size} on" %></p>
+      <p class="meta mt-2"><%= link_to "Environments", databases_path(tab: "environments"), class: "underline" %></p>
+    <% end %>
   </section>
 </div>
 
@@ -54,6 +63,7 @@
 <div class="space-y-4 mb-14">
   <% @databases.each do |database| %>
     <% by_kind = @backups[database.key] || {} %>
+    <% entries = @restores[database.key] || [] %>
     <% configured_kinds = @database_variants.fetch(database) %>
     <% shown = Harbor::DbOps::Database::VARIANTS.select { |kind| configured_kinds.include?(kind) || by_kind.key?(kind) } %>
     <section class="card px-5 py-4" id="database-<%= database.key %>">
@@ -62,7 +72,7 @@
           <h2 class="display text-xl"><%= database.name %></h2>
           <p class="meta">
             <%= database.configured? ? "Source configured" : "Set #{database.source_env}" %> ·
-            <% if database.own? %><%= database.owner.upcase_first %>'s own database · full backups only<% elsif database.mysql? %>MySQL · full backups only<% else %><%= database.staging_configured? ? "Staging configured" : "Staging not configured" %><% end %>
+            <% if database.own? %><%= database.owner.upcase_first %>'s own database · full backups only<% elsif database.mysql? %>MySQL · full backups only<% elsif entries.empty? %>Not restored anywhere<% else %><%= entries.map { |entry| "#{entry.environment.name} #{entry.configured? ? 'configured' : 'not configured'}" }.join(" · ") %><% end %>
           </p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -103,19 +113,28 @@
                   <td class="py-2 px-3 text-center"><%= backup_copy_mark(backup.on_disk? ? :present : :missing, where: "local", name: "the backup drive") %></td>
                   <td class="py-2 px-3 text-center"><%= backup_copy_mark(backup_cloud_state(backup, bucket_configured: @bucket_kinds[kind]), where: "cloud", name: cloud_name) %></td>
                   <td class="py-2 pl-4">
-                    <% if !backup.masked? %><span class="text-faint" title="Full backups are never restored to staging">–</span>
+                    <%# Offered only where the config file restores this kind of this database. %>
+                    <% accepting = entries.select { |entry| entry.accepts?(backup) } %>
+                    <% if accepting.empty? %><span class="text-faint" title="<%= restore_never_title(backup, entries) %>">–</span>
                     <% elsif !backup.on_disk? %><span class="meta">Not on the backup drive</span>
-                    <% elsif database.staging_configured? && @restore_on && @operations_available %>
-                      <details>
-                        <summary class="cursor-pointer text-soft hover:text-ink">Restore to staging</summary>
-                        <%= form_with url: restore_database_path(database.key), class: "mt-2 space-y-2 min-w-56" do |form| %>
-                          <%= form.hidden_field :backup_id, value: backup.id %>
-                          <%= form.label :confirmation, "Type #{database.key} to replace staging", for: "confirmation_#{backup.id}", class: "meta block" %>
-                          <%= form.text_field :confirmation, required: true, autocomplete: "off", id: "confirmation_#{backup.id}", class: "field w-full" %>
-                          <%= form.submit "Replace staging", class: "btn-quiet text-ink-red", data: { turbo_confirm: "Replace #{database.name} staging with this backup?" } %>
-                        <% end %>
-                      </details>
-                    <% else %><span class="meta">Staging restore paused</span><% end %>
+                    <% else %>
+                      <% accepting.each do |entry| %>
+                        <% environment = entry.environment %>
+                        <% if entry.configured? && environment.enabled? && @operations_available %>
+                          <details>
+                            <summary class="cursor-pointer text-soft hover:text-ink">Restore to <%= environment.key %></summary>
+                            <%= form_with url: restore_database_path(database.key), class: "mt-2 space-y-2 min-w-56" do |form| %>
+                              <%= form.hidden_field :backup_id, value: backup.id %>
+                              <%= form.hidden_field :environment, value: environment.key, id: nil %>
+                              <% field = "confirmation_#{backup.id}#{"_#{environment.key}" if accepting.many?}" %>
+                              <%= form.label :confirmation, "Type #{database.key} to replace #{environment.key}", for: field, class: "meta block" %>
+                              <%= form.text_field :confirmation, required: true, autocomplete: "off", id: field, class: "field w-full" %>
+                              <%= form.submit "Replace #{environment.key}", class: "btn-quiet text-ink-red", data: { turbo_confirm: "Replace #{database.name} #{environment.key} with this backup?" } %>
+                            <% end %>
+                          </details>
+                        <% else %><span class="meta block"><%= environment.name %> restore paused</span><% end %>
+                      <% end %>
+                    <% end %>
                   </td>
                 </tr>
               <% end %>

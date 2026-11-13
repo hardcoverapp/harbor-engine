@@ -1,0 +1,86 @@
+<%# The restore environments the config file declares: whether each is on and
+    what decides that, what it restores where, and its last restore. Nothing
+    here is editable: an environment is switched on, and a target named, in
+    the file. No URL is shown with its password, and no ENV value at all. %>
+<% @configuration_errors.each do |error| %>
+  <p role="alert" class="bg-pale-yellow text-ink-yellow rounded-lg p-4 mb-5 text-sm"><%= error %></p>
+<% end %>
+
+<p class="text-sm text-soft mb-5" data-environments-rule>
+  A restore replaces everything in its target. A database can be a target for one reason only:
+  <span class="font-mono"><%= Harbor::ConfigFile.label %></span> lists it in an environment that file has switched on.
+  A declared database's source, this app's own databases and a target two restores share are always refused.
+</p>
+
+<% if @environments.empty? && @configuration_errors.empty? %>
+  <p class="card p-5 mb-8 text-sm text-soft" data-no-environments>
+    No restore environments are declared, so nothing is ever restored. An environment is declared under
+    <span class="font-mono">restore_environments:</span> in <span class="font-mono"><%= Harbor::ConfigFile.label %></span>,
+    listing which database's backup replaces the database in which ENV key.
+  </p>
+<% end %>
+
+<div class="space-y-4 mb-14">
+  <% @environments.each do |environment| %>
+    <% on = environment.enabled? %>
+    <% last = @last_restore[environment] %>
+    <section class="card px-5 py-4" id="environment-<%= environment.key %>" data-environment="<%= environment.key %>" data-enabled="<%= on %>">
+      <div class="flex flex-wrap justify-between items-start gap-3">
+        <div>
+          <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 class="display text-xl"><%= environment.name %></h2>
+            <span class="pill <%= on ? "bg-pale-green text-ink-green" : "bg-bone text-soft" %>" data-environment-state><%= on ? "On" : "Off" %></span>
+            <span class="meta font-mono"><%= environment.key %></span>
+          </div>
+          <p class="meta mt-1" data-environment-switch><%= on ? "On because" : "Off. To turn it on," %> <%= environment.switch %>.</p>
+          <p class="meta mt-1" data-environment-last>
+            Last restore:
+            <% if last %><%= harbor_run_link(last, class: "underline") %> <%= harbor_status_pill(last.status) %> <%= time_ago_in_words(last.created_at) %> ago<% else %>never<% end %>
+            · Next: <%= backup_schedule_time(@restore_next[environment]) %>
+          </p>
+        </div>
+        <% if on && @operations_available %>
+          <%= button_to "Restore #{environment.key}", restore_environment_databases_path(environment.key), class: "btn-quiet !py-1 !px-3 text-xs",
+                        data: { turbo_confirm: "Replace every configured #{environment.key} database with its newest backup?" } %>
+        <% end %>
+      </div>
+      <% restores = environment.restores %>
+      <% if restores.empty? %>
+        <p class="meta mt-3">This environment lists no restores.</p>
+      <% else %>
+        <div class="overflow-x-auto mt-3">
+          <table class="w-full text-sm text-left">
+            <thead class="meta">
+              <tr>
+                <th class="py-1.5 pr-4 font-normal">Database</th>
+                <th class="py-1.5 pr-4 font-normal">Backup restored</th>
+                <th class="py-1.5 pr-4 font-normal">Target</th>
+                <th class="py-1.5 pr-4 font-normal">ENV key</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-hairline border-t border-hairline">
+              <% restores.each do |entry| %>
+                <% shown = restore_target_shown(entry) %>
+                <tr data-restore="<%= entry.database.key %>">
+                  <td class="py-2 pr-4"><%= entry.database.name %></td>
+                  <td class="py-2 pr-4">
+                    <% if entry.named_kind %><%= backup_kind_chip(entry.named_kind) %>
+                    <% else %><span class="meta">staging if it has staging rules, else cleaned</span><% end %>
+                  </td>
+                  <td class="py-2 pr-4 font-mono text-xs break-all" data-restore-target>
+                    <%= shown[:target] || "–" %>
+                    <% if shown[:refusal] %><span class="block font-sans text-ink-red" data-restore-refused><%= shown[:refusal] %></span><% end %>
+                  </td>
+                  <td class="py-2 pr-4 whitespace-nowrap">
+                    <span class="font-mono text-xs"><%= entry.target_env %></span>
+                    <span class="meta" data-restore-env="<%= entry.configured? ? "set" : "unset" %>">· <%= entry.configured? ? "set" : "not set, so not restored" %></span>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% end %>
+    </section>
+  <% end %>
+</div>

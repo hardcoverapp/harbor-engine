@@ -13,9 +13,8 @@ module Harbor
     #    logged-in user. Callers get #url_without_password + #pgpass_line
     #    (see DbOps::Pg.with_pgpass) and #redacted for logging.
     #
-    # 2. Answer "is it safe to destroy this one?". A staging restore drops
-    #    every schema before restoring; pointed at the wrong URL that is an
-    #    unrecoverable production wipe. See #assert_safe_to_destroy!.
+    # 2. Answer "is this the same database as that one?", so a restore can
+    #    refuse a target that is really a source. See #assert_distinct_from!.
     class Target
       Error = Class.new(StandardError)
 
@@ -93,38 +92,42 @@ module Harbor
           .join(":")
       end
 
+      LOOPBACK = %w[localhost 127.0.0.1 ::1 [::1]].freeze
+
+      # The host as two URLs for one server are compared: without case, without
+      # the trailing dot of a fully qualified name, and with every spelling of
+      # this machine as one. Two different names for one server (an IP address
+      # and a DNS name, say) are not known to be the same.
+      def server = self.class.server_name(host)
+
+      def self.server_name(host)
+        name = host.to_s.downcase.chomp(".")
+        LOOPBACK.include?(name) ? "localhost" : name
+      end
+
+      # The same database on the same server: host (see #server), port (the
+      # engine's default when the URL names none) and database name, the name
+      # without case and after percent-decoding. The user, password and
+      # connection parameters play no part.
       def same_server_and_db?(other)
-        other.is_a?(Target) && host.casecmp?(other.host) && port == other.port &&
+        other.is_a?(Target) && server == other.server && port == other.port &&
           database.casecmp?(other.database)
       end
 
-      # Does this look like a throwaway environment? Deliberately conservative:
-      # the name has to SAY so. A DB that merely isn't the configured production
-      # one is not automatically safe (there is more than one production system).
-      def looks_disposable?(hint: "staging")
-        h = hint.to_s.downcase
-        database.downcase.include?(h) || host.downcase.include?(h)
-      end
-
-      # Gate for anything that drops schemas. Raises unless the target both
-      # (a) isn't the protected database, and (b) names itself disposable.
-      # The ENV switch the host names (`config.unsafe_restore_env`) set to
-      # "true" overrides (b) only; (a) is absolute.
-      def assert_safe_to_destroy!(protected_target: nil, hint: "staging")
-        if protected_target && same_server_and_db?(protected_target)
-          raise Error, "refusing to destroy #{redacted}: it is the same server+database as " \
-                       "#{protected_target.label || 'the protected database'} " \
-                       "(#{protected_target.redacted}). Check the URLs — this would have " \
-                       "dropped the production schema."
-        end
-        return true if looks_disposable?(hint:)
-        override = Harbor.config.unsafe_restore_env.to_s
-        if override.present? && ENV[override].to_s == "true"
-          return true
-        end
-        raise Error, "refusing to destroy #{redacted}: neither the database name nor the host " \
-                     "contains #{hint.inspect}, so this does not look like a disposable " \
-                     "environment.#{" Set #{override}=true if it really is." if override.present?}"
+      # Refuse to replace this database when it is the protected one. A restore
+      # drops every schema first; pointed at the wrong URL that is an
+      # unrecoverable production wipe. Nothing overrides this.
+      #
+      # This is the only thing a target itself is asked. What it is called
+      # proves nothing, so its name is never looked at: a database may be
+      # replaced because the config file lists it, and for no other reason
+      # (see DbOps::RestoreEntry#validate!).
+      def assert_distinct_from!(protected_target)
+        return true unless same_server_and_db?(protected_target)
+        raise Error, "refusing to destroy #{redacted}: it is the same server+database as " \
+                     "#{protected_target.label || 'the protected database'} " \
+                     "(#{protected_target.redacted}). Check the URLs — this would have " \
+                     "dropped the production schema."
       end
 
       # Redact any password that appears in text destined for a log.

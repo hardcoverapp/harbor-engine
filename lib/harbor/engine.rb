@@ -32,6 +32,16 @@ module Harbor
       app.config.importmap.cache_sweepers << root.join("app/javascript")
     end
 
+    # A mistake in the config file is said as the app boots, not left for the
+    # first backup to find. It is logged, not raised: the page shows the same
+    # message and every operation refuses to run, while the rest of the app
+    # stays up.
+    initializer "harbor.config_file" do |app|
+      app.config.after_initialize do
+        Harbor::Databases.problems.each { |problem| Rails.logger&.error("[harbor] #{problem}") }
+      end
+    end
+
     initializer "harbor.nav_helper" do
       ActiveSupport.on_load(:action_controller_base) do
         helper Harbor::NavHelper

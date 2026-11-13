@@ -24,9 +24,10 @@ Harbor::Settings.declare :runner_url,
   description: "Where work running on another machine reaches this app to send its log and result: the app's public address " \
                "(https://…), with the path Harbor is mounted at when that isn't the root. Runs can't be placed on Orca until this is set."
 
-# Databases: backups and staging refreshes (Harbor::DbOps). Where dumps go and
-# what is run are `Harbor.config` values, set on the machine, and so is the
-# switch that allows staging restores; these are the numbers.
+# Databases: backups and restores (Harbor::DbOps). Where dumps go and what is
+# run are `Harbor.config` values, set on the machine. What may be restored
+# where, and whether it is switched on, is the config file's and is never a
+# setting. These are the numbers.
 Harbor::Settings.declare :database_backups_kept,
   type: :integer, default: 4, min: 1, max: 365, group: "Databases", label: "Backups kept",
   description: "How many of the newest backups are kept for each database and kind, in the backup folder and in each bucket. Older ones are deleted after a backup."
@@ -46,7 +47,7 @@ Harbor::Settings.declare :database_max_source_age_days,
 
 Harbor::Settings.declare :database_max_backup_age_days,
   type: :integer, default: 8, min: 1, group: "Databases", label: "Oldest backup a refresh uses (days)",
-  description: "A scheduled staging refresh is refused when a database's newest masked backup is older than this."
+  description: "Restoring an environment is refused when a database's newest backup of the kind it restores is older than this."
 
 Harbor::Settings.declare :database_connect_timeout,
   type: :integer, default: 15, min: 1, max: 600, group: "Databases", label: "Connection timeout (seconds)",

@@ -4,7 +4,7 @@ module Harbor
     # the Databases page so the three are told apart at a glance.
     BACKUP_KINDS = {
       "full" => { label: "Full", tone: "bg-pale-blue text-ink-blue",
-                  about: "Everything, for disaster recovery. Never restored to staging or given to developers.",
+                  about: "Everything, for disaster recovery. Restored only where the config file names it; never given to developers.",
                   # a shield
                   icon: '<path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6l-7-3z"/><path d="m9 12 2 2 4-4"/>' },
       "cleaned" => { label: "Cleaned", tone: "bg-pale-green text-ink-green",
@@ -51,6 +51,22 @@ module Harbor
     def backup_cloud_state(backup, bucket_configured:)
       return :present if backup.copies.except(Harbor::DatabaseBackup::LOCAL).any?
       bucket_configured ? :missing : :none
+    end
+
+    # Why a backup's row offers no restore, for the dash's hover text.
+    def restore_never_title(backup, entries)
+      return "No restore environment takes this database" if entries.empty?
+      where = entries.map { |entry| entry.environment.key }.to_sentence
+      backup.masked? ? "#{backup.variant.upcase_first} backups are not what #{where} restores" : "Full backups are never restored to #{where}"
+    end
+
+    # A restore's target as the page may show it: user@host:port/database,
+    # never the password; and why the restore would be refused, if it would.
+    def restore_target_shown(entry)
+      return {} unless entry.configured?
+      { target: entry.target.redacted, refusal: entry.refusal }
+    rescue Harbor::DbOps::Target::Error => error
+      { refusal: Harbor::DbOps::Target.scrub(error.message) }
     end
 
     # When a scheduled operation next runs, as the page shows it.

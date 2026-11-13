@@ -35,7 +35,7 @@ module Harbor
       [ "toc.dat", "#{database_key}.dump", DbOps::Mysql.dump_name(database_key) ].any? { |name| File.file?(File.join(folder, name)) }
     end
     def cleaned? = variant == "cleaned"
-    # Made with masking rules, so it may be restored to staging.
+    # Made with masking rules: what a restore that names no kind may use.
     def masked? = DbOps::Database::MASKED.include?(variant)
     def dump_id = File.basename(path)
 
