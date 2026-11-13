@@ -49,7 +49,7 @@ class HarborDbOpsRestoreTest < ActiveSupport::TestCase
     target = with_stub(Harbor::DbOps::Pg, :server_version_major, 16) { with_stub(Harbor::DbOps::Pg, :assert_client_new_enough!, true) { @restore.preflight(database, @backup) } }
     assert target.same_server_and_db?(database.staging), "staging backups restore to staging"
     @backup.update!(variant: "cleaned")
-    Harbor::Setting.set!(:database_staging_restores, "false")
+    ENV[Harbor.config.staging_restores_env] = "false"
     assert_raises(Harbor::DbOps::Database::Error) { @restore.preflight(database, @backup) }
   end
 
@@ -65,7 +65,7 @@ class HarborDbOpsRestoreTest < ActiveSupport::TestCase
           assert_raises(Harbor::DbOps::Database::Error) { @restore.apply(database, @backup, @backup.folder, target: database.staging) }
           # The guards run again right before the destructive step.
           @backup.update!(variant: "cleaned")
-          Harbor::Setting.set!(:database_staging_restores, "false")
+          ENV[Harbor.config.staging_restores_env] = "false"
           assert_raises(Harbor::DbOps::Database::Error) { @restore.apply(database, @backup, @backup.folder, target: database.staging) }
           enable_staging_restores!
           ENV["TIME_STAGING_DB_URL"] = ENV["TIME_DB_URL"]

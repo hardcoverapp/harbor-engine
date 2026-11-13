@@ -50,10 +50,10 @@ class HarborDatabasesTest < ActiveSupport::TestCase
   end
 
   test "the Databases settings are declared with safe defaults" do
-    defaults = %w[database_staging_restores database_backups_kept database_backup_jobs database_backup_min_free_gb
+    defaults = %w[database_backups_kept database_backup_jobs database_backup_min_free_gb
                   database_max_source_age_days database_max_backup_age_days database_connect_timeout database_upload_threads]
                .index_with { |key| Harbor::Setting.get(key) }
-    assert_equal [ false, 4, 2, 40, 7, 8, 15, 4 ], defaults.values
+    assert_equal [ 4, 2, 40, 7, 8, 15, 4 ], defaults.values
     defaults.each_key { |key| assert_equal "Databases", Harbor::Settings.find(key).group }
     assert_raises(ArgumentError) { Harbor::Setting.set!(:database_backups_kept, "0") }
   end

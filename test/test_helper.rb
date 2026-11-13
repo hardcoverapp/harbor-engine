@@ -86,5 +86,5 @@ module HarborDatabasesConfig
     end
   end
 
-  def enable_staging_restores! = Harbor::Setting.set!(:database_staging_restores, "true")
+  def enable_staging_restores! = ENV[Harbor.config.staging_restores_env] = "true"
 end

@@ -104,6 +104,11 @@ module Harbor
     # _LOCATION, _CLEANED_BUCKET and _FULL_BUCKET.
     attr_accessor :backup_bucket_env_prefix
 
+    # The ENV key that, set to exactly "true", allows staging restores at all.
+    # Deliberately not a setting: a restore destroys its target, so allowing
+    # them is an act on the machine, not a click by whoever is logged in.
+    attr_accessor :staging_restores_env
+
     # The ENV key that, set to "true", lets a restore replace a database whose
     # name and host don't say it is disposable. Deliberately not a setting:
     # turning it on is an act on the machine.
@@ -169,6 +174,7 @@ module Harbor
       @greenmask_bin = "greenmask"
       @greenmask_pg_bin_path = nil
       @backup_bucket_env_prefix = "HARBOR_BACKUP_S3"
+      @staging_restores_env = "HARBOR_STAGING_RESTORES_ENABLED"
       @unsafe_restore_env = "HARBOR_ALLOW_UNSAFE_RESTORE"
       @staging_lock_role = nil
       @restore_application_name = "harbor-restorer"

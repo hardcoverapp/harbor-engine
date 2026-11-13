@@ -25,13 +25,8 @@ Harbor::Settings.declare :runner_url,
                "(https://…), with the path Harbor is mounted at when that isn't the root. Runs can't be placed on Orca until this is set."
 
 # Databases: backups and staging refreshes (Harbor::DbOps). Where dumps go and
-# what is run are `Harbor.config` values, set on the machine; these are the
-# numbers and the one switch.
-Harbor::Settings.declare :database_staging_restores,
-  type: :boolean, default: false, group: "Databases", label: "Staging restores",
-  description: "Lets a staging database be replaced with a saved masked backup, from the Databases page or on a schedule. " \
-               "Off, every restore is refused and scheduled refreshes are skipped. Backups are unaffected."
-
+# what is run are `Harbor.config` values, set on the machine, and so is the
+# switch that allows staging restores; these are the numbers.
 Harbor::Settings.declare :database_backups_kept,
   type: :integer, default: 4, min: 1, max: 365, group: "Databases", label: "Backups kept",
   description: "How many of the newest backups are kept for each database and kind, in the backup folder and in each bucket. Older ones are deleted after a backup."

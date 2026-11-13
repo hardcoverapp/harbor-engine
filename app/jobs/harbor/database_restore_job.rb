@@ -5,7 +5,7 @@ module Harbor
     self.loader_slug = "database-restore"
 
     def operate(directory:, logger:)
-      raise self.class::Skipped, "Staging restores are switched off (Settings, Databases)" unless DbOps::Database.staging_restores_enabled?
+      raise self.class::Skipped, DbOps::Database.staging_restores_off_message unless DbOps::Database.staging_restores_enabled?
       input = @operation_run.input
       database = DbOps::Database.find!(input.fetch("database"))
       backup = Harbor::DatabaseBackup.find(input.fetch("backup_id"))

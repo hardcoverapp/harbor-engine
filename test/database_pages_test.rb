@@ -188,7 +188,7 @@ class HarborDatabasePagesTest < ActionDispatch::IntegrationTest
   end
 
   test "with staging restores off nothing can be restored or refreshed, and the page says paused" do
-    Harbor::Setting.set!(:database_staging_restores, "false")
+    ENV[Harbor.config.staging_restores_env] = "false"
     get harbor.databases_path
     assert_select "p.display", text: "Paused"
     assert_select "input[name='confirmation']", count: 0

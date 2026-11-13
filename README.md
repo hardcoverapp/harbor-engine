@@ -461,8 +461,7 @@ folder's layout, so `greenmask restore latest` works against either.
 
 ### Settings
 
-Under **Databases** on the Settings page: **Staging restores** (off by
-default), **Backups kept**, **Parallel dump jobs**, **Free space needed**,
+Under **Databases** on the Settings page: **Backups kept**, **Parallel dump jobs**, **Free space needed**,
 **Newest write allowed**, **Oldest backup a refresh uses**, **Connection
 timeout** and **Upload threads**.
 
@@ -471,7 +470,10 @@ timeout** and **Upload threads**.
 A restore drops every schema in its target first, so the target is checked
 before anything is queued and again by the job:
 
-- **Staging restores** must be switched on.
+- Staging restores must be allowed on the machine: an ENV key set to exactly
+  `true` (`HARBOR_STAGING_RESTORES_ENABLED`, or the key named by
+  `c.staging_restores_env`). It is not a setting, so nobody enables
+  destructive restores from a browser.
 - The target must not be any declared database's source, the app's own
   `DATABASE_URL`, or any database in Rails's own configuration. Nothing
   overrides this.

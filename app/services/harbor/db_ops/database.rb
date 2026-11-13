@@ -99,10 +99,21 @@ module Harbor
         Freshness.assert_fresh!(source, probes: freshness_probes, max_age_days: Harbor::Setting.get(:database_max_source_age_days), logger:)
       end
 
-      def self.staging_restores_enabled? = Harbor::Setting.get(:database_staging_restores) == true
+      # Only the exact string "true" in the ENV key the host names.
+      def self.staging_restores_enabled?
+        key = Harbor.config.staging_restores_env.to_s
+        key.present? && ENV[key] == "true"
+      end
+
+      OFF = "Staging restores are switched off".freeze
+
+      def self.staging_restores_off_message
+        key = Harbor.config.staging_restores_env.to_s
+        key.present? ? "#{OFF}: #{key} must be true where this app runs" : OFF
+      end
 
       def self.assert_staging_restores_enabled!
-        raise Error, "Staging restores are switched off (Settings, Databases)" unless staging_restores_enabled?
+        raise Error, staging_restores_off_message unless staging_restores_enabled?
       end
 
       def validate_staging!

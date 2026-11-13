@@ -134,19 +134,18 @@ class HarborDbOpsDatabaseTest < ActiveSupport::TestCase
     assert Harbor::DbOps::Database.find!("ledger").validate_staging!
   end
 
-  test "staging restores are off until switched on, by the setting or the ENV key a host names for it" do
+  test "staging restores are off until the ENV key the host names is exactly true; no setting turns them on" do
     ENV["LEDGER_STAGING_DB_URL"] = "postgres://admin:pw@staging/ledger"
-    Harbor::Setting.reset!(:database_staging_restores)
-    assert_not Harbor::DbOps::Database.staging_restores_enabled?
+    key = Harbor.config.staging_restores_env
+    [ nil, "false", "TRUE", "1", "yes", " true" ].each do |value|
+      value.nil? ? ENV.delete(key) : ENV[key] = value
+      assert_not Harbor::DbOps::Database.staging_restores_enabled?, value.inspect
+    end
     error = assert_raises(Harbor::DbOps::Database::Error) { Harbor::DbOps::Database.find!("ledger").validate_staging! }
-    assert_match "switched off", error.message
+    assert_match "Staging restores are switched off: #{key} must be true", error.message
+    assert_not Harbor::Settings.declared?(:database_staging_restores)
 
-    Harbor.config.env_fallback :database_staging_restores, "TEST_STAGING_RESTORES"
-    ENV["TEST_STAGING_RESTORES"] = "false"
-    assert_not Harbor::DbOps::Database.staging_restores_enabled?
-    ENV["TEST_STAGING_RESTORES"] = "maybe"
-    assert_not Harbor::DbOps::Database.staging_restores_enabled?, "an unreadable value is off"
-    ENV["TEST_STAGING_RESTORES"] = "true"
+    ENV[key] = "true"
     assert Harbor::DbOps::Database.find!("ledger").validate_staging!
   end
 

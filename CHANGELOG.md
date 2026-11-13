@@ -13,9 +13,11 @@
   only when a backup or restore runs. With no database declared the page says so.
 - Config, set on the machine: `backup_root`, `backup_host_root`, `masking_rules_path`,
   `greenmask_bin`, `greenmask_pg_bin_path`, `backup_bucket_env_prefix`,
-  `unsafe_restore_env`, `staging_lock_role`, `restore_application_name`,
+  `staging_restores_env`, `unsafe_restore_env`, `staging_lock_role`, `restore_application_name`,
   `restore_spared_applications`, `backup_kind_notes`.
-- Settings, under Databases: staging restores (off by default), backups kept, parallel
+- Staging restores are allowed only by an ENV key on the machine
+  (`staging_restores_env`), never by a setting.
+- Settings, under Databases: backups kept, parallel
   dump jobs, free space needed, newest write allowed, oldest backup a refresh uses,
   connection timeout, upload threads.
 - **`Harbor::TrackedJob`**, a job whose life is one run, and `config.tracked_job` for a
