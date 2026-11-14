@@ -44,7 +44,7 @@ module Harbor
       [ "Runtimes",      :runtimes_path,              { key: :runtimes,    group: :infrastructure, scope: :harbor } ],
       [ "Workspaces",    :workspace_profiles_path,    { key: :workspaces,  group: :infrastructure, scope: :harbor } ],
       [ "Databases",     :databases_path,             { key: :database,    group: :infrastructure, scope: :harbor } ],
-      [ "Review policy", :reviews_path,               { key: :reviews,     group: :quality } ],
+      [ "Review policy", :reviews_path,               { key: :reviews,     group: :quality, scope: :harbor } ],
       [ "Scorers",       :scorers_path,               { key: :scorers,     group: :quality, scope: :harbor } ],
       [ "Proposals",     :proposals_path,             { key: :proposals,   group: :quality, scope: :harbor } ],
       # No key: the page the switches are on can't be switched off.

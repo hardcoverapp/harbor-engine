@@ -1,0 +1,64 @@
+<% content_for :title, "Review dashboard" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="mb-8">
+  <p class="meta"><%= link_to "Review policy", reviews_path, class: "hover:underline" %> / dashboard</p>
+  <h1 class="display text-3xl mt-1">What reviews cost, and what they catch</h1>
+  <p class="text-sm text-soft mt-1.5">Since <%= @since.to_date.to_fs(:long) %> ·
+    <% [7, 30, 90].each do |d| %><%= link_to "#{d}d", review_dashboard_path(days: d), class: "underline mr-1" %><% end %></p>
+</header>
+
+<%# "Code review" is what the host says the reviews themselves cost
+    (config.review_cost); with nothing said the tile is left out. %>
+<% tiles = [ [ "Rounds", @rounds ], [ "PRs", @prs ], [ "Rounds per PR", @rounds_per_pr ],
+             [ "Evidence", "$#{format('%.2f', @evidence_cost)}" ],
+             (@review_cost && [ "Code review", "$#{format('%.2f', @review_cost)}" ]),
+             [ "Median to approval", @median_minutes ? "#{@median_minutes} min" : "—" ] ].compact %>
+<section class="grid gap-4 sm:grid-cols-3 <%= tiles.size == 6 ? "lg:grid-cols-6" : "lg:grid-cols-5" %> mb-10">
+  <% tiles.each do |label, value| %>
+    <div class="border border-hairline rounded-xl bg-surface p-4">
+      <div class="meta"><%= label %></div><div class="text-2xl mt-1"><%= value %></div>
+    </div>
+  <% end %>
+</section>
+<p class="text-sm text-soft mb-10"><%= @reused %> check <%= "result".pluralize(@reused) %> reused instead of re-run.</p>
+
+<section class="mb-10">
+  <h2 class="meta uppercase tracking-[0.05em] mb-3">Checks: cost, results, precision</h2>
+  <table class="w-full text-sm">
+    <thead class="text-left meta"><tr><th class="py-2">Check</th><th>Runs</th><th>Cost</th><th>Passed</th><th>Failed</th><th>Couldn't run</th><th>Useful</th></tr></thead>
+    <tbody class="divide-y divide-hairline">
+      <% @by_check.each do |c| %>
+        <% p = @precision[c[:key]] %>
+        <tr><td class="py-1.5 font-medium"><%= c[:key] %></td><td><%= c[:runs] %></td><td>$<%= format("%.2f", c[:cost]) %></td>
+          <td><%= c[:passed] %></td><td><%= c[:failed] %></td><td><%= c[:errored] %></td>
+          <td><%= p&.dig(:precision) ? "#{p[:precision]}% (#{p[:useful]}/#{p[:useful] + p[:noise]})" : "—" %></td></tr>
+      <% end %>
+    </tbody>
+  </table>
+</section>
+
+<section class="mb-10 grid gap-8 lg:grid-cols-2">
+  <div>
+    <h2 class="meta uppercase tracking-[0.05em] mb-3">Evidence cost by risk</h2>
+    <% @by_risk.each do |risk, usd| %><div class="text-sm py-0.5"><span class="font-medium"><%= risk %></span> · $<%= format("%.2f", usd) %></div><% end %>
+    <% if @by_risk.empty? %><p class="text-sm text-faint">No rounds yet.</p><% end %>
+  </div>
+  <div>
+    <h2 class="meta uppercase tracking-[0.05em] mb-3">Finding categories</h2>
+    <% @finding_categories.each do |k, p| %>
+      <div class="text-sm py-0.5"><span class="font-medium"><%= k %></span> · useful <%= p[:useful] %>, dismissed <%= p[:noise] %></div>
+    <% end %>
+  </div>
+</section>
+
+<section>
+  <h2 class="meta uppercase tracking-[0.05em] mb-3">Escaped bugs</h2>
+  <% if @escapes.empty? %><p class="text-sm text-faint">None recorded.</p><% end %>
+  <% @escapes.each do |e| %>
+    <div class="border border-hairline rounded-xl bg-surface p-4 mb-3 text-sm">
+      <div><span class="font-medium">#<%= e.pr_number %></span> · <%= e.source.humanize %> · <%= e.note %>
+        <% if e.review_round %> · <%= link_to "round #{e.review_round.round}", review_round_path(e.review_round), class: "underline" %><% end %></div>
+      <% if e.analysis.present? %><p class="text-soft mt-2"><%= e.analysis %></p><% end %>
+    </div>
+  <% end %>
+</section>

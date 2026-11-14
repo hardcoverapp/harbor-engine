@@ -79,6 +79,37 @@ module Harbor
     # request's `params[:automation]`, unfiltered. nil: nothing happens.
     attr_accessor :automation_edited
 
+    # --- Review policy (see README "Review policy") ---
+
+    # The classes Harbor finds review rules and their versions with, by name:
+    # Harbor's own or a host's subclasses of them.
+    attr_accessor :review_rule_class, :review_rule_version_class
+
+    # What this site calls the document a review round is read as (its
+    # `schema`), for whatever reads the round's .json address.
+    attr_accessor :review_document_schema
+
+    # Called with (repository, number); returns the address of that pull
+    # request, for the links on a round's page and in a rule's preview. The
+    # repository is a round's or a rule's `repo`, which for a rule may be "*".
+    # nil: pull requests are named, not linked.
+    attr_accessor :review_pull_request_url
+
+    # Called with (rule, definition, user:) when someone asks what a risk or
+    # a sign-off, as saved or as being edited, would have matched: starts a
+    # run that tries it on recent pull requests and returns the run, whose
+    # output has `message` and `matches` (each with `number`, `title` and
+    # `reasons`). nil: the pages offer no preview.
+    attr_accessor :review_rule_preview
+
+    # What that preview is tried on, in words ("the last 50 merged PRs").
+    attr_accessor :review_rule_preview_sample
+
+    # Called with a time; returns what the reviews themselves (the reading of
+    # the code, not the checks) have cost since then, in dollars. nil: the
+    # dashboard shows what the checks cost and leaves this out.
+    attr_accessor :review_cost
+
     # The classes Harbor finds runtimes and workspaces with, by name.
     attr_accessor :runtime_class, :workspace_profile_class
 
@@ -314,6 +345,13 @@ module Harbor
       @automation_agent_run = nil
       @automation_params = []
       @automation_edited = nil
+      @review_rule_class = "Harbor::ReviewRule"
+      @review_rule_version_class = "Harbor::ReviewRuleVersion"
+      @review_document_schema = "harbor.review/v1"
+      @review_pull_request_url = nil
+      @review_rule_preview = nil
+      @review_rule_preview_sample = "recent pull requests"
+      @review_cost = nil
       @runtime_class = "Harbor::Runtime"
       @workspace_profile_class = "Harbor::WorkspaceProfile"
       @workflow_class = "Harbor::Workflow"

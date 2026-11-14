@@ -11,6 +11,7 @@ require "harbor/proposals"
 require "harbor/runtimes"
 require "harbor/automations"
 require "harbor/workflows"
+require "harbor/reviews"
 require "harbor/config_file"
 require "harbor/databases"
 require "harbor/runner"
@@ -83,6 +84,10 @@ module Harbor
     def task_assignment_class = config.task_assignment_class.constantize
 
     def automation_class = config.automation_class.constantize
+
+    def review_rule_class = config.review_rule_class.constantize
+
+    def review_rule_version_class = config.review_rule_version_class.constantize
 
     def runtime_class = config.runtime_class.constantize
 

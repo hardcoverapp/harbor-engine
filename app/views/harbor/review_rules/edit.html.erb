@@ -1,0 +1,14 @@
+<% content_for :title, "Edit #{@rule.name} · Review policy" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="mb-8">
+  <p class="meta"><%= link_to "Review policy", reviews_path, class: "hover:underline" %> / <%= link_to @rule.name, review_rule_path(@rule), class: "hover:underline" %> / edit</p>
+  <h1 class="display text-3xl mt-1"><%= @rule.name %> <span class="text-soft text-xl">v<%= @rule.version_number %></span></h1>
+</header>
+<%= render "harbor/review_rules/form", rule: @rule, definition_json: @definition_json %>
+<%# Only where the host has a preview (config.review_rule_preview). %>
+<% if harbor_review_preview?(@rule) %>
+  <%= form_with url: preview_review_rule_path(@rule), class: "mt-6" do %>
+    <%= hidden_field_tag :definition, @definition_json %>
+    <%= submit_tag "Preview the saved version on #{Harbor.config.review_rule_preview_sample}", class: "btn-secondary" %>
+  <% end %>
+<% end %>

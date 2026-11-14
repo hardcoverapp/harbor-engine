@@ -1578,6 +1578,202 @@ menu, each start with the same guide to how they fit together
 (`render "harbor/shared/quality_guide", current: :scorers, steps: […]`), which lists the
 ones this site has switched on.
 
+## Review policy
+
+The review policy is the rules a site reviews pull requests by, and the record of each
+review. **Harbor keeps the records, checks what a rule says and serves the pages. It does
+not run reviews itself yet.** Deciding which rules a pull request owes, running the
+checks, reading the code and publishing the result is the site's own code, which writes
+rounds and their checks into Harbor's records; the pages then show them. A site with no
+code of its own can write and version its rules today, and sees rounds as soon as
+something records them.
+
+### The records
+
+Harbor's migration creates the six tables.
+
+- **`Harbor::ReviewRule`** (`review_rules`): one rule. Its `kind` is `risk` (what kind of
+  change a pull request is), `check` (a piece of evidence that kind of change owes) or
+  `signoff` (a person who must approve). Its `mode` is `live` (it counts), `shadow` (it
+  runs and is recorded, and affects nothing) or `off`. `repo` is the repository it is
+  for, or `*` for every one; `key` is unique within a kind and repository.
+- **`Harbor::ReviewRuleVersion`** (`review_rule_versions`): one saved definition of a
+  rule. Every save is a new version and none is ever edited, so a check run can name the
+  version it ran and a bad edit is one click back. `rule.save_definition!(hash, user:)`
+  returns `[version, errors]` and saves nothing when there are errors or when nothing
+  changed; `rule.roll_back_to!(number)` saves an earlier definition as the newest
+  version. `rule.definition` is the current one.
+- **`Harbor::ReviewRound`** (`review_rounds`): one review of a pull request at one head
+  commit: `repo`, `pr_number`, `head_sha`, `round`, its `phase` (`triage`, `evidence`,
+  `gate`, `review`, `signoffs`, then `published`, `cancelled` or `failed`), and what the
+  review found, as JSON the site fills in: `risks` (each with `key` and `reasons`),
+  `gaps`, `gate` (`result`, `blocking_failures`), `signoffs` (each with `name`, `who`,
+  `message`, `status`) and `review` (`verdict`, `tldr`, `findings`, `why`). The database
+  allows one unfinished round per pull request. `round.cancel!(reason:)` cancels it and
+  the checks still under way.
+- **`Harbor::ReviewCheckRun`** (`review_check_runs`): one check in one round: the rule
+  and the version it ran, its `status` (`queued`, `running`, `passed`, `failed`,
+  `errored`, `skipped`, `reused`, `cancelled`), `summary`, `outputs`, `routed`, progress,
+  the run that did the work (`run_id`) and, when an earlier result was reused, the check
+  run it came from.
+- **`Harbor::ReviewFeedback`** (`review_feedbacks`): one signal about a review's output
+  (`useful`, `noise`, `accepted`, `overridden`) on a check or a kind of finding.
+  `Harbor::ReviewFeedback.precision_by("check")` rolls them up per key.
+- **`Harbor::ReviewEscape`** (`review_escapes`): a bug that got through, with the round
+  that approved it.
+
+`Harbor::Reviews::Document.for(round)` is the round as one Hash (its checks, progress,
+cost, risks, sign-offs and review): what the round's page shows and what its `.json`
+address serves. `Harbor::Reviews::Document.title(doc)` is where the round is in a line
+("Evidence 2 of 5 · 40%", "Approved"). The cost counts the runs of the round's checks,
+and the run the site names in the round's `input` as `code_review_run_id`.
+
+Every saved version is also handed to `config.export`, when the host has one, as
+`reviews/<kind>s/<repo>/<key>.json` (`Harbor::Reviews::Export`).
+
+### A rule's definition
+
+A definition is JSON, checked by `Harbor::Reviews::RuleDefinition` before it is saved.
+
+```json
+{ "label": "risk: billing", "description": "Money moves.",
+  "detector": { "paths": ["(\\A|/)app/billing/"], "patch": ["update_all"], "words": "refund" } }
+```
+
+A **risk** has a `label` and a `detector`: regular expressions over the changed paths
+(`paths`), over the patch (`patch`) and over the pull request's words (`words`), at least
+one of them; or `{ "builtin": name }`, a detector that is the site's own code and that it
+declared (below).
+
+```json
+{ "description": "No page gets slower.", "mitigates": ["perf"], "kind": "command",
+  "run": { "command": "bin/page-budgets --json" },
+  "outputs": [{ "name": "pages_over", "type": "list" }],
+  "pass_when": { "path": "outputs.pages_over", "op": "blank" },
+  "then": [{ "when": { "path": "outputs.pages_over", "op": "present" }, "action": "note", "message": "Pages over budget" }],
+  "gate": "blocking", "stage": "evidence", "watch_paths": ["app/views/**"] }
+```
+
+A **check** names the risks it `mitigates` (`"*"` for every pull request), its `kind`
+(`ci` with `run.job`, `command` with `run.command`, `agent` with `run.prompt`), its
+`outputs` (each a `name` and a `type`: `bool`, `number`, `string`, `list`, `object`),
+`pass_when` (a condition, or `exit_zero`, `ci_success` or `agent_verdict`; the default
+for its kind when left out), `then` rows (an `action` of `block`, `note`, `signoff`,
+`run` or `tell_reviewer`, with a `when`), a `gate` (`blocking` or `advisory`), a `stage`
+(`evidence`, `after_approval` or `after_deploy`) and `watch_paths`, path globs
+(`Harbor::Reviews::Glob`: `**/`, `**`, `*`, `?`, `{a,b}`).
+
+A condition (`Harbor::Reviews::Condition`) is a leaf, `{ "path", "op", "value" }` with
+`op` one of `eq ne in not_in contains present blank gt gte lt lte`, or leaves combined
+with `{ "all": [...] }`, `{ "any": [...] }` and `{ "not": {...} }`. Harbor checks one and
+puts it in words; deciding whether it holds for a check's outputs belongs to what runs
+the check.
+
+```json
+{ "who": ["sam"], "message": "Approve the schema change", "when": { "paths": ["(\\A|/)db/migrate/"] } }
+```
+
+A **sign-off** names `who` and a `message`, and `when` it applies (`risks`, `paths`); a
+check's `then` row can also ask for it.
+
+### The pages
+
+Under `Harbor.path` like the rest, behind the "Review policy" entry in the menu and its
+switch on the Settings page (`page_reviews`):
+
+- **The policy** (`/factory/reviews`, `harbor.reviews_path`): one row per risk with the
+  checks that mitigate it and the sign-offs it triggers, a red "gap" where a risk has no
+  check, the checks every pull request gets, the sign-offs, and the 25 most recent
+  rounds.
+- **A rule** (`/factory/reviews/rules/7`): what it says in words, a check's recent
+  results and pass rate (and, in shadow, how many it would have blocked), and its last
+  20 versions with "Roll back to this" (`POST …/rules/7/rollback?number=2`).
+- **The form** (`…/rules/new?kind=check`, `…/rules/7/edit`): kind, key and repository
+  (set once), name, mode and the definition as JSON. A new rule starts in shadow with a
+  definition for its kind that can be saved as it is. What can't be saved is shown again
+  with why.
+- **A round** (`/factory/reviews/rounds/12`): its checks with their status, summary and
+  run, why they were asked for, the sign-offs, the review, and the document. It
+  refreshes itself while the round is unfinished. `/factory/reviews/rounds/12.json` is
+  the document.
+- **The dashboard** (`/factory/reviews/dashboard?days=30`): rounds, pull requests,
+  rounds per pull request, what the checks cost, the median time to approval, how many
+  results were reused, each check's runs, cost, results and precision, evidence cost by
+  risk, feedback by kind of finding, and escaped bugs.
+
+### What a host declares and configures
+
+All optional:
+
+```ruby
+# config/initializers/harbor.rb
+Harbor::Reviews.detector "risk: migration"
+Harbor::Reviews.finding_category "caching"
+
+Harbor.configure do |c|
+  c.review_rule_class = "ReviewRule"                 # the host's subclass of Harbor::ReviewRule
+  c.review_rule_version_class = "ReviewRuleVersion"  # and of Harbor::ReviewRuleVersion
+  c.review_document_schema = "acme.review/v1"
+  c.review_pull_request_url = ->(repo, number) { "https://git.example.com/#{repo}/pulls/#{number}" }
+  c.review_rule_preview = ->(rule, definition, user:) { RulePreviewJob.start(rule, definition, user:) }
+  c.review_rule_preview_sample = "the last 50 merged pull requests"
+  c.review_cost = ->(since) { Run.where(task_type: "code_review", created_at: since..).sum(:cost_usd_actual).to_f }
+end
+```
+
+- **`Harbor::Reviews.detector`**: a way of spotting a risk that is the host's own code. A
+  risk may name it as `{ "builtin": name }`; one that names a detector nobody declared
+  is refused.
+- **`Harbor::Reviews.finding_category`**: a kind of finding the host records feedback
+  under (`subject_kind: "finding"`). The dashboard lists the declared ones; with none
+  declared it lists every kind that has feedback.
+- **`review_rule_class`**: a subclass on the same table. Two class methods it can
+  override: `page_defaults` (what a new rule starts with on the form, such as its
+  `repo`) and `definition_template(kind)` (the definition a new rule of that kind starts
+  with).
+- **`review_rule_version_class`**: a subclass on the same table. `created_by_user_id` is
+  set from whoever saved the version; a host whose users are records declares the
+  association and overrides `author_label`, which the rule's page shows beside the
+  version.
+- **`review_document_schema`**: what the round's document calls its format
+  (`harbor.review/v1` unless set), for whatever reads the `.json` address.
+- **`review_pull_request_url`**: called with (repository, number); the address of that
+  pull request. Without it a round's page names the pull request and doesn't link it.
+  A rule for every repository passes `"*"`.
+- **`review_rule_preview`**: called with (rule, definition, `user:`) when someone asks
+  what a risk or a sign-off would have matched, as saved or as being edited. It starts a
+  run that tries it on recent pull requests and returns the run; the rule's page shows
+  the run's output when it finishes: `message`, and `matches`, each with `number`,
+  `title` and `reasons`. Without it the pages have no Preview buttons, and a request for
+  one starts nothing and says so. `review_rule_preview_sample` is what the buttons say
+  it is tried on.
+- **`review_cost`**: called with a time; what the reviews themselves (reading the code,
+  not the checks) have cost since then, in dollars, shown on the dashboard as "Code
+  review". Without it the tile is left out.
+
+Two partials in the host's views, rendered when the file exists:
+
+| Partial | Where | Locals |
+|---|---|---|
+| `harbor/reviews/_round_review.html.erb` | A round's page, inside the Review section, in place of Harbor's plain reading of the round's `review` | `round`, `doc` |
+| `harbor/shared/_quality_guide.html.erb` | The top of the policy page: how the Quality pages fit together and how to use this one | `current` (`:reviews`), `steps`, `open` |
+
+### What a host's review flow does
+
+Until Harbor runs reviews, a host that reviews pull requests does this itself, with
+Harbor's records:
+
+1. Makes a `Harbor::ReviewRound` for the pull request's head commit, and decides which
+   of `Harbor.review_rule_class.running.for_repo(repo)` apply (the risks' detectors, the
+   checks that mitigate them).
+2. Makes a `Harbor::ReviewCheckRun` per check, with the rule's `version_number` as
+   `check_version` and the rule's `mode`, runs it as a tracked run (`run_id`), and ends
+   it with `check_run.finish!(status:, summary:, outputs:, routed:)`.
+3. Moves the round through its phases, fills in `gate`, `signoffs` and `review`, and
+   sets `finished_at` when it is `published`, `cancelled` or `failed`.
+4. Records `Harbor::ReviewFeedback` and `Harbor::ReviewEscape` as it learns what
+   happened afterwards.
+
 ## Webhooks
 
 `Harbor::WebhookEvent` is the record of every inbound delivery, and the
@@ -1957,6 +2153,9 @@ What workflows take (`workflow_class`, `workflow_run_class`, `user_class` and th
 `workflow_*` hooks) is under Workflows.
 What scoring and proposals take (`scorer_judge`, `scorer_judge_wait`, `proposal_drafter`,
 `site_name`, `scorer_class`, `proposal_class`) is under Scorers and Proposals.
+What Review policy takes (`review_rule_class`, `review_rule_version_class`,
+`review_document_schema`, `review_pull_request_url`, `review_rule_preview`, `review_cost`,
+and what a host declares with `Harbor::Reviews`) is under Review policy.
 
 ### Settings
 

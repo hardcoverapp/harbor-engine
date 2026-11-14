@@ -1,0 +1,12 @@
+<% content_for :title, "New review rule" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="mb-8">
+  <p class="meta"><%= link_to "Review policy", reviews_path, class: "hover:underline" %> / new <%= @rule.kind %></p>
+  <h1 class="display text-3xl mt-1">+ Rule</h1>
+  <p class="text-sm text-soft mt-1.5 max-w-2xl">
+    New rules start in <strong>shadow</strong>: they run and record on every round, and change nothing on GitHub
+    until you switch them to live.<% if Harbor.config.review_rule_preview %> After saving a risk or sign-off, <em>Preview</em> shows which recent PRs it
+    would have matched.<% end %>
+  </p>
+</header>
+<%= render "harbor/review_rules/form", rule: @rule, definition_json: @definition_json %>

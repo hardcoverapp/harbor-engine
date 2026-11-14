@@ -59,9 +59,9 @@ class HarborNavTest < ActiveSupport::TestCase
   end
 
   test "an item whose route the host doesn't have is left out" do
-    labels = @nav.links(View.new("/", %i[velocity_path reviews_path])).map(&:label)
+    labels = @nav.links(View.new("/", %i[velocity_path factory_path])).map(&:label)
     assert_not_includes labels, "Velocity"
-    assert_not_includes labels, "Review policy"
+    assert_not_includes labels, "Overview"
     assert_includes labels, "Runs"
     assert_includes labels, "Settings"
   end

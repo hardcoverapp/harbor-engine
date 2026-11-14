@@ -1,0 +1,4 @@
+<%# A site that has the Quality guide. %>
+<section data-quality-guide="<%= current %>"<%= " data-open" if local_assigns[:open] %>>
+  <ol><% steps.each do |step| %><li><%= step %></li><% end %></ol>
+</section>

@@ -42,6 +42,21 @@ Harbor::Engine.routes.draw do
       collection { post :check }
     end
 
+    # Review policy: the rules (every save a version, with roll back and a
+    # preview where the host has one), a round with its checks, and the
+    # dashboard.
+    get "reviews", to: "reviews#index", as: :reviews
+    scope "reviews" do
+      get "dashboard", to: "review_dashboards#show", as: :review_dashboard
+      resources :rounds, controller: "review_rounds", as: :review_rounds, only: :show
+      resources :rules, controller: "review_rules", as: :review_rules, except: :destroy do
+        member do
+          post :rollback
+          post :preview
+        end
+      end
+    end
+
     # Agents: the list with its task routing and shared context tabs, an
     # agent's page and form, and its avatar. A task type is given to an agent
     # with a PATCH to task_assignments/<task type>.

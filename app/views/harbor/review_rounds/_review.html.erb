@@ -1,0 +1,17 @@
+<%# The review a round recorded, plainly: its verdict, the short version, the
+    findings and why. locals: review (the round's `review`, a Hash). %>
+<p class="font-medium" data-review-verdict><%= review["verdict"].presence&.humanize || review["status"].to_s.humanize %></p>
+<% if Array(review["tldr"]).any? %>
+  <ul class="mt-2 list-disc pl-5">
+    <% Array(review["tldr"]).each do |line| %><li><%= line %></li><% end %>
+  </ul>
+<% end %>
+<% if Array(review["findings"]).any? %>
+  <ul class="mt-3 grid gap-1" data-review-findings>
+    <% Array(review["findings"]).each do |finding| %>
+      <li><span class="pill bg-hairline text-soft"><%= finding["severity"] %></span> <%= finding["title"] %>
+        <% if finding["path"].present? %><code class="text-xs"><%= [ finding["path"], finding["line"] ].compact.join(":") %></code><% end %></li>
+    <% end %>
+  </ul>
+<% end %>
+<% if review["why"].present? %><p class="mt-3 text-soft"><%= review["why"] %></p><% end %>

@@ -1,0 +1,86 @@
+<% content_for :title, "#{@rule.name} · Review policy" %>
+<% if @preview && !@preview.finished? %><div data-controller="harbor--poll" data-harbor--poll-interval-value="3" hidden></div><% end %>
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-8 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <p class="meta"><%= link_to "Review policy", reviews_path, class: "hover:underline" %> / <%= @rule.kind %></p>
+    <h1 class="display text-3xl mt-1"><%= @rule.name %> <span class="text-soft text-xl">v<%= @rule.version_number %></span></h1>
+    <p class="text-sm text-soft mt-1.5"><code><%= @rule.key %></code> · <%= @rule.repo %> · <%= harbor_review_mode_pill(@rule.mode) %></p>
+  </div>
+  <div class="flex gap-2">
+    <%= link_to "Edit", edit_review_rule_path(@rule), class: "btn-primary" %>
+    <%# Only where the host has a preview (config.review_rule_preview). %>
+    <% if harbor_review_preview?(@rule) %>
+      <%= button_to "Preview on recent PRs", preview_review_rule_path(@rule), class: "btn-secondary" %>
+    <% end %>
+  </div>
+</header>
+
+<% d = @rule.definition %>
+<section class="mb-10 grid gap-6 lg:grid-cols-2">
+  <div class="border border-hairline rounded-xl bg-surface p-5 text-sm grid gap-2">
+    <% if d["description"].present? %><p><%= d["description"] %></p><% end %>
+    <% case @rule.kind %>
+    <% when "check" %>
+      <p><span class="meta">Mitigates</span> <%= Array(d["mitigates"]).join(", ") %></p>
+      <p><span class="meta">Runs</span> <%= d["kind"] %> · <code><%= d.dig("run", "command") || d.dig("run", "job") || "prompt" %></code></p>
+      <p><span class="meta">Passes when</span> <%= harbor_review_condition(d["pass_when"]) %></p>
+      <p><span class="meta">Gate</span> <%= d["gate"] %> · <span class="meta">Stage</span> <%= d["stage"].humanize.downcase %></p>
+      <% if d["outputs"].present? %>
+        <p><span class="meta">Outputs</span> <%= d["outputs"].map { |o| "#{o['name']} (#{o['type']})" }.join(", ") %></p>
+      <% end %>
+      <% Array(d["then"]).each do |row| %>
+        <p><span class="meta">Then</span> <%= harbor_review_condition(row["when"]) %> → <strong><%= row["action"] %></strong> <%= row["signoff"] || row["check"] || row["message"] %></p>
+      <% end %>
+    <% when "risk" %>
+      <p><span class="meta">Label</span> <code><%= d["label"] %></code></p>
+      <p><span class="meta">Detector</span> <code><%= d["detector"].to_json %></code></p>
+    <% when "signoff" %>
+      <p><span class="meta">Who</span> <%= Array(d["who"]).join(", ") %></p>
+      <p><span class="meta">Message</span> <%= d["message"] %></p>
+      <p><span class="meta">When</span> <code><%= d["when"].to_json %></code> (also when a check's then-row asks for it)</p>
+    <% end %>
+  </div>
+
+  <div class="text-sm">
+    <% if @rule.kind == "check" %>
+      <h2 class="meta uppercase tracking-[0.05em] mb-2">Recent results</h2>
+      <p class="mb-3"><%= @pass_rate ? "#{@pass_rate}% passed" : "No results yet" %>
+        <% if @rule.shadow? && @recent.any? %> · in shadow, would have blocked <%= @shadow_blocking %> of <%= @recent.size %><% end %></p>
+      <% @recent.each do |c| %>
+        <div class="py-0.5"><%= harbor_review_status_icon(c.status) %>
+          <%= link_to "##{c.review_round.pr_number} round #{c.review_round.round}", review_round_path(c.review_round), class: "hover:underline" %>
+          <span class="text-faint">· v<%= c.check_version %> · <%= c.summary.to_s.truncate(70) %></span></div>
+      <% end %>
+    <% end %>
+    <% if @preview %>
+      <h2 class="meta uppercase tracking-[0.05em] mb-2 mt-4">Preview</h2>
+      <% if @preview.finished? %>
+        <p class="mb-2"><%= @preview.output["message"] || @preview.error %></p>
+        <% Array(@preview.output["matches"]).each do |m| %>
+          <div class="py-0.5"><%= harbor_review_pull_request("##{m['number']}", @rule.repo, m["number"], class: "hover:underline") %>
+            <span class="text-soft"><%= m["title"].to_s.truncate(60) %></span>
+            <span class="text-faint">· <%= Array(m["reasons"]).first %></span></div>
+        <% end %>
+      <% else %>
+        <p class="text-faint">Checking <%= Harbor.config.review_rule_preview_sample %>…</p>
+      <% end %>
+    <% end %>
+  </div>
+</section>
+
+<section>
+  <h2 class="meta uppercase tracking-[0.05em] mb-3">Versions</h2>
+  <% @versions.each do |v| %>
+    <div class="flex items-center gap-3 text-sm py-1">
+      <span class="font-medium">v<%= v.number %></span>
+      <span class="text-faint"><%= v.created_at.to_fs(:short) %><%= " · #{v.author_label}" if v.author_label.present? %></span>
+      <% if v.number != @rule.version_number %>
+        <%= button_to "Roll back to this", rollback_review_rule_path(@rule, number: v.number), class: "text-xs underline text-soft" %>
+      <% else %>
+        <span class="pill bg-hairline text-soft">current</span>
+      <% end %>
+    </div>
+  <% end %>
+</section>

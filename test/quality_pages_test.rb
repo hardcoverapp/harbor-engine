@@ -201,9 +201,9 @@ class HarborQualityPagesTest < ActionDispatch::IntegrationTest
   test "the page explains the loop it is part of, with the Quality pages this site has, and how to start" do
     get harbor.scorers_path
     assert_select "section[data-quality-guide=scorers]", count: 1
-    assert_equal [ [ "1 · After an agent finishes", "Scorers" ], [ "2 · When the same failure repeats", "Proposals" ] ], guide_parts,
-                 "this site has no Review policy page, so the loop has two steps"
-    assert_select "section[data-quality-guide] ol.grid.lg\\:grid-cols-2", count: 1
+    assert_equal [ [ "1 · Before a PR merges", "Review policy" ], [ "2 · After an agent finishes", "Scorers" ], [ "3 · When the same failure repeats", "Proposals" ] ], guide_parts,
+                 "the loop has a step for each Quality page the site has switched on"
+    assert_select "section[data-quality-guide] ol.grid.lg\\:grid-cols-3", count: 1
     assert_select "section[data-quality-guide] [aria-current=step]", text: "Scorers", count: 1
     assert_select "section[data-quality-guide] li a[href=?]", harbor.proposals_path, text: "Proposals"
     assert_select "section[data-quality-guide] details[open] summary", text: "How to use this page"
@@ -216,7 +216,8 @@ class HarborQualityPagesTest < ActionDispatch::IntegrationTest
 
     Harbor::Setting.set!(:page_proposals, "false")
     get harbor.scorers_path
-    assert_equal [ [ "1 · After an agent finishes", "Scorers" ] ], guide_parts, "a page switched off leaves the loop"
+    assert_equal [ [ "1 · Before a PR merges", "Review policy" ], [ "2 · After an agent finishes", "Scorers" ] ], guide_parts,
+                 "a page switched off leaves the loop"
   end
 
   test "the list says when the site has no judge, and stops saying it when it has" do
@@ -535,7 +536,7 @@ class HarborQualityPagesTest < ActionDispatch::IntegrationTest
 
   test "the proposals page explains the loop and how to use it, unfolded while there is nothing to read" do
     get harbor.proposals_path
-    assert_equal [ [ "1 · After an agent finishes", "Scorers" ], [ "2 · When the same failure repeats", "Proposals" ] ], guide_parts
+    assert_equal [ [ "1 · Before a PR merges", "Review policy" ], [ "2 · After an agent finishes", "Scorers" ], [ "3 · When the same failure repeats", "Proposals" ] ], guide_parts
     assert_select "section[data-quality-guide=proposals] [aria-current=step]", text: "Proposals", count: 1
     assert_select "section[data-quality-guide] li a[href=?]", harbor.scorers_path, text: "Scorers"
     assert_select "section[data-quality-guide] details[open] ol li", count: 4
@@ -710,10 +711,10 @@ class HarborQualityPagesTest < ActionDispatch::IntegrationTest
     assert_select "#run-scores", count: 1
   end
 
-  test "the menu's Quality group holds both pages, at Harbor's own addresses" do
+  test "the menu's Quality group holds its pages, at Harbor's own addresses" do
     get harbor.scorers_path
     quality = css_select("[data-harbor-nav] [data-nav-group=quality] a").map { |a| [ a.text.strip, a["href"] ] }
-    assert_equal [ [ "Scorers", "/factory/scorers" ], [ "Proposals", "/factory/proposals" ] ], quality
+    assert_equal [ [ "Review policy", "/factory/reviews" ], [ "Scorers", "/factory/scorers" ], [ "Proposals", "/factory/proposals" ] ], quality
   end
 
   test "someone logged out is sent to log in" do

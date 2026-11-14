@@ -1,0 +1,97 @@
+<% content_for :title, "Review policy" %>
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-10 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="display text-3xl">Review policy</h1>
+    <p class="text-sm text-soft mt-1.5 max-w-2xl">
+      The rules the PR reviewer follows. A <strong class="text-body">risk</strong> spots what kind of change a PR is
+      from its files, a <strong class="text-body">check</strong> is the proof that kind of change owes, and a
+      <strong class="text-body">sign-off</strong> names a person who has to approve it. A PR only runs the checks
+      its risks call for, so a small change gets a fast review and a risky one can't merge without evidence.
+    </p>
+  </div>
+  <div class="flex gap-2">
+    <%= link_to "Dashboard", review_dashboard_path, class: "btn-secondary" %>
+    <%= link_to "+ Risk", new_review_rule_path(kind: "risk"), class: "btn-secondary" %>
+    <%= link_to "+ Check", new_review_rule_path(kind: "check"), class: "btn-primary" %>
+    <%= link_to "+ Sign-off", new_review_rule_path(kind: "signoff"), class: "btn-secondary" %>
+  </div>
+</header>
+
+<%# How the Quality pages fit together and how to use this one, where the
+    site has that guide (harbor/shared/_quality_guide). %>
+<% if lookup_context.exists?("harbor/shared/quality_guide", [], true) %>
+  <%= render "harbor/shared/quality_guide", current: :reviews, open: @rounds.empty?, steps: [
+        "Read a row below left to right: when a PR matches the risk, it has to pass those checks and get those sign-offs. A red “gap” means that kind of change is spotted but nothing is asked of it.",
+        safe_join([ "Something slipped through a review? Add a ", link_to("risk", new_review_rule_path(kind: "risk"), class: "underline"), " that recognises that kind of change (by path, by what the patch contains, or by words in the PR), then a ", link_to("check", new_review_rule_path(kind: "check"), class: "underline"), " that would have caught it." ]),
+        "New rules start in shadow mode. They run on every review and record what they would have said, and block nothing. Watch a few rounds under Recent rounds, then switch the rule to live.",
+        safe_join([ "The ", link_to("dashboard", review_dashboard_path, class: "underline"), " shows which checks fail most and which never fail, which is where to tighten or drop a rule." ])
+      ] %>
+<% end %>
+
+<section class="mb-12" data-reveal>
+  <h2 class="meta uppercase tracking-[0.05em] mb-3">Risks → checks → sign-offs</h2>
+  <div class="grid gap-3">
+    <% @risks.each do |risk| %>
+      <% checks = @checks.select { |c| Array(c.definition["mitigates"]).include?(risk.key) } %>
+      <% signoffs = @signoffs.select { |s| Array(s.definition.dig("when", "risks")).include?(risk.key) } %>
+      <div id="risk-<%= risk.id %>" class="border border-hairline rounded-xl bg-surface p-5 grid gap-4 lg:grid-cols-[1fr_1.4fr_1fr]">
+        <div>
+          <div class="flex items-center gap-2">
+            <%= link_to risk.name, review_rule_path(risk), class: "font-medium text-ink hover:underline" %>
+            <%= harbor_review_mode_pill(risk.mode) %>
+          </div>
+          <p class="text-xs text-soft mt-1"><code><%= risk.definition["label"] %></code> · <%= risk.definition.dig("detector", "builtin") ? "built-in detector" : "paths / patch / words" %></p>
+        </div>
+        <div class="text-sm">
+          <% if checks.empty? %>
+            <span class="pill bg-pale-red text-ink-red">gap: no check</span>
+          <% else %>
+            <% checks.each do |c| %>
+              <div><%= link_to c.name, review_rule_path(c), class: "hover:underline" %>
+                <span class="text-faint">· <%= c.definition["kind"] %> · <%= c.definition["gate"] %><%= " · after approval" if c.definition["stage"] == "after_approval" %></span>
+                <%= harbor_review_mode_pill(c.mode) unless c.live? %></div>
+            <% end %>
+          <% end %>
+        </div>
+        <div class="text-sm text-soft">
+          <% signoffs.each do |s| %><div><%= link_to s.name, review_rule_path(s), class: "hover:underline" %></div><% end %>
+          <% if signoffs.empty? %><span class="text-faint">—</span><% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</section>
+
+<section class="mb-12 grid gap-8 lg:grid-cols-2" data-reveal>
+  <div>
+    <h2 class="meta uppercase tracking-[0.05em] mb-3">On every PR</h2>
+    <% @every_pr.each do |c| %>
+      <div class="text-sm py-1"><%= link_to c.name, review_rule_path(c), class: "hover:underline" %> <span class="text-faint">· <%= c.definition["stage"].humanize %></span> <%= harbor_review_mode_pill(c.mode) %></div>
+    <% end %>
+  </div>
+  <div>
+    <h2 class="meta uppercase tracking-[0.05em] mb-3">Sign-offs</h2>
+    <% @signoffs.each do |s| %>
+      <div class="text-sm py-1"><%= link_to s.name, review_rule_path(s), class: "hover:underline" %>
+        <span class="text-faint">· <%= Array(s.definition["who"]).join(", ") %> · <%= s.definition["message"] %></span></div>
+    <% end %>
+  </div>
+</section>
+
+<section data-reveal>
+  <h2 class="meta uppercase tracking-[0.05em] mb-3">Recent rounds</h2>
+  <% if @rounds.empty? %><p class="text-sm text-faint">No review rounds yet.</p><% end %>
+  <div class="grid gap-1">
+    <% @rounds.each do |r| %>
+      <%= link_to review_round_path(r), class: "flex flex-wrap gap-x-3 text-sm py-1.5 hover:bg-hover rounded px-2 -mx-2" do %>
+        <span class="font-medium">#<%= r.pr_number %></span>
+        <span class="text-soft">round <%= r.round %> · <code><%= r.head_sha.first(7) %></code></span>
+        <span><%= r.phase %><%= " · dry run" if r.dry_run %></span>
+        <span class="text-soft"><%= r.review["verdict"] %></span>
+        <span class="text-faint ml-auto"><%= time_ago_in_words(r.created_at) %> ago</span>
+      <% end %>
+    <% end %>
+  </div>
+</section>

@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.25.0
+
+- **Review policy is Harbor's**: the records (`Harbor::ReviewRule` and
+  `Harbor::ReviewRuleVersion`, `Harbor::ReviewRound` and `Harbor::ReviewCheckRun`,
+  `Harbor::ReviewFeedback` and `Harbor::ReviewEscape`, on the `review_*` tables, which
+  Harbor's migration creates), what a rule may say (`Harbor::Reviews::RuleDefinition`,
+  with its conditions and path globs), a round as one document
+  (`Harbor::Reviews::Document`) and the pages (`/factory/reviews`: the policy, a rule's
+  page and form with its versions and roll back, a round with its checks, the
+  dashboard). A site with no code of its own writes and versions its rules on the page
+  and sees a round with its checks once something records one. The menu's Review policy
+  entry is Harbor's own route now. See README "Review policy".
+- **Harbor does not run reviews yet.** Deciding which rules a pull request owes,
+  running the checks and publishing the result stay with the host, which writes rounds
+  into these records (README "What a host's review flow does").
+- **What a host declares** (`Harbor::Reviews`): `detector` (a risk detector that is its
+  own code, which a rule may then name) and `finding_category` (the kinds of finding
+  the dashboard lists).
+- **What a host configures**: `config.review_rule_class`,
+  `config.review_rule_version_class`, `config.review_document_schema`,
+  `config.review_pull_request_url` (links to pull requests),
+  `config.review_rule_preview` with `config.review_rule_preview_sample` (the Preview
+  buttons; absent without it) and `config.review_cost` (the dashboard's "Code review"
+  tile; absent without it).
+- **Places for a host on the pages**: `harbor/reviews/_round_review` (the review on a
+  round's page, in the host's words) and `harbor/shared/_quality_guide` (the guide at
+  the top of the policy page).
+- Every saved rule version is handed to `config.export` as
+  `reviews/<kind>s/<repo>/<key>.json`.
+
+Upgrading from 0.24:
+
+- A host that already has the `review_*` tables keeps them: the migration creates each
+  table, index and foreign key only when it is missing.
+- A host that had its own review rule, round, check run, feedback and escape models
+  makes them Harbor's: `class ReviewRule < Harbor::ReviewRule` (named with
+  `c.review_rule_class`) where it adds something, `ReviewRound = Harbor::ReviewRound`
+  where it doesn't. A version that belongs to a user is a subclass that declares the
+  association and `author_label`, named with `c.review_rule_version_class`.
+- A host that had its own review controllers and views removes them, and removes its
+  routes under `reviews`: a host route at an address Harbor serves is matched first and
+  hides Harbor's page. To keep `reviews_path`, `review_rule_path` and the rest working
+  without naming the engine, define them with `direct` in the host's routes, as for the
+  Runs, Agents and Automations pages.
+- A host with a page of its own at `reviews_path` in Harbor's menu: the entry is the
+  engine's route now (`scope: :harbor`), so the host's page is no longer linked.
+- A host whose risk rules name a built-in detector declares each one
+  (`Harbor::Reviews.detector`), or those rules can no longer be saved.
+- A host whose rounds are read as a document under its own schema name sets
+  `c.review_document_schema`; unset, the document says `harbor.review/v1`.
+- Nothing is linked, previewed or costed until the host says how:
+  `c.review_pull_request_url`, `c.review_rule_preview`, `c.review_cost`.
+
 ## 0.24.0
 
 - **The Scorers pages are Harbor's**: the list (`/factory/scorers`), a scorer's page with

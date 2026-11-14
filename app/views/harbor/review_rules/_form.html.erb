@@ -1,0 +1,33 @@
+<%= form_with model: rule, scope: :review_rule, url: (rule.persisted? ? review_rule_path(rule) : review_rules_path), class: "grid gap-5 max-w-3xl" do |f| %>
+  <% unless rule.persisted? %>
+    <div class="grid gap-4 sm:grid-cols-3">
+      <label class="grid gap-1 text-sm"><span class="meta">Kind</span>
+        <%= f.select :kind, Harbor::ReviewRule::KINDS, {}, class: "input" %></label>
+      <label class="grid gap-1 text-sm"><span class="meta">Key</span>
+        <%= f.text_field :key, placeholder: "page-budgets", class: "input", required: true %></label>
+      <label class="grid gap-1 text-sm"><span class="meta">Repo</span>
+        <%= f.text_field :repo, class: "input" %></label>
+    </div>
+  <% end %>
+  <div class="grid gap-4 sm:grid-cols-[2fr_1fr]">
+    <label class="grid gap-1 text-sm"><span class="meta">Name</span>
+      <%= f.text_field :name, class: "input", required: true %></label>
+    <label class="grid gap-1 text-sm"><span class="meta">Mode</span>
+      <%= f.select :mode, Harbor::ReviewRule::MODES, {}, class: "input" %></label>
+  </div>
+  <label class="grid gap-1 text-sm">
+    <span class="meta">Definition</span>
+    <%= text_area_tag :definition, definition_json, rows: 24, class: "input font-mono text-xs", spellcheck: false %>
+    <span class="text-xs text-faint">
+      Risks: <code>label</code>, <code>detector</code> (paths / patch / words, or a built-in).
+      Checks: <code>mitigates</code>, <code>kind</code> (ci · command · agent), <code>run</code>, <code>outputs</code>,
+      <code>pass_when</code> (a condition over outputs), <code>then</code> rows (block · note · signoff · run · tell_reviewer),
+      <code>gate</code>, <code>stage</code> (evidence · after_approval · after_deploy), <code>watch_paths</code>.
+      Sign-offs: <code>who</code>, <code>message</code>, <code>when</code>. Every save is a new version.
+    </span>
+  </label>
+  <div class="flex gap-3">
+    <%= f.submit (rule.persisted? ? "Save version" : "Create in #{rule.mode}"), class: "btn-primary" %>
+    <%= link_to "Cancel", (rule.persisted? ? review_rule_path(rule) : reviews_path), class: "btn-secondary" %>
+  </div>
+<% end %>

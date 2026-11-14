@@ -167,6 +167,119 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_160000) do
     t.index ["key"], name: "index_model_providers_on_key", unique: true
   end
 
+  create_table "review_check_runs", force: :cascade do |t|
+    t.bigint "review_round_id", null: false
+    t.bigint "review_rule_id", null: false
+    t.string "check_key", null: false
+    t.integer "check_version", null: false
+    t.string "stage", default: "evidence", null: false
+    t.string "gate", default: "blocking", null: false
+    t.string "mode", default: "live", null: false
+    t.string "status", default: "queued", null: false
+    t.integer "progress_done"
+    t.integer "progress_total"
+    t.string "progress_note"
+    t.string "summary"
+    t.jsonb "outputs", default: {}, null: false
+    t.jsonb "artifacts", default: [], null: false
+    t.jsonb "details", default: {}, null: false
+    t.jsonb "routed", default: [], null: false
+    t.bigint "run_id"
+    t.bigint "reused_from_id"
+    t.string "watch_digest"
+    t.datetime "started_at"
+    t.datetime "finished_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["check_key", "status"], name: "index_review_check_runs_on_check_key_and_status"
+    t.index ["review_round_id", "check_key"], name: "index_review_check_runs_on_review_round_id_and_check_key", unique: true
+    t.index ["review_round_id"], name: "index_review_check_runs_on_review_round_id"
+  end
+
+  create_table "review_escapes", force: :cascade do |t|
+    t.bigint "review_round_id"
+    t.string "repo", null: false
+    t.integer "pr_number", null: false
+    t.string "source", null: false
+    t.string "ref"
+    t.text "note"
+    t.text "analysis"
+    t.bigint "analysis_run_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["repo", "pr_number"], name: "index_review_escapes_on_repo_and_pr_number"
+    t.index ["source", "ref"], name: "index_review_escapes_on_source_and_ref", unique: true
+  end
+
+  create_table "review_feedbacks", force: :cascade do |t|
+    t.bigint "review_round_id", null: false
+    t.string "subject_kind", null: false
+    t.string "subject_key", null: false
+    t.string "signal", null: false
+    t.string "detail"
+    t.string "by"
+    t.bigint "github_comment_id"
+    t.datetime "created_at", null: false
+    t.index ["github_comment_id", "detail"], name: "index_review_feedbacks_on_github_comment_id_and_detail", unique: true, where: "(github_comment_id IS NOT NULL)"
+    t.index ["subject_kind", "subject_key"], name: "index_review_feedbacks_on_subject_kind_and_subject_key"
+  end
+
+  create_table "review_rounds", force: :cascade do |t|
+    t.string "repo", null: false
+    t.integer "pr_number", null: false
+    t.string "head_sha", null: false
+    t.integer "round", default: 1, null: false
+    t.string "phase", default: "triage", null: false
+    t.string "trigger_source", default: "webhook", null: false
+    t.bigint "run_id"
+    t.bigint "parent_run_id"
+    t.bigint "workflow_run_id"
+    t.boolean "dry_run", default: false, null: false
+    t.boolean "awaiting_join", default: false, null: false
+    t.jsonb "risks", default: [], null: false
+    t.jsonb "gaps", default: [], null: false
+    t.jsonb "signoffs", default: [], null: false
+    t.jsonb "gate", default: {}, null: false
+    t.jsonb "review", default: {}, null: false
+    t.jsonb "input", default: {}, null: false
+    t.jsonb "document", default: {}, null: false
+    t.string "patch_id"
+    t.bigint "github_check_run_id"
+    t.bigint "github_review_id"
+    t.string "published_digest"
+    t.datetime "published_at"
+    t.string "superseded_by_sha"
+    t.text "error"
+    t.datetime "finished_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["repo", "pr_number", "head_sha"], name: "index_review_rounds_on_repo_and_pr_number_and_head_sha"
+    t.index ["repo", "pr_number", "round"], name: "index_review_rounds_on_repo_and_pr_number_and_round"
+    t.index ["repo", "pr_number"], name: "index_review_rounds_one_open_per_pr", unique: true, where: "((phase)::text <> ALL ((ARRAY['published'::character varying, 'cancelled'::character varying, 'failed'::character varying])::text[]))"
+  end
+
+  create_table "review_rule_versions", force: :cascade do |t|
+    t.bigint "review_rule_id", null: false
+    t.integer "number", null: false
+    t.jsonb "definition", default: {}, null: false
+    t.bigint "created_by_user_id"
+    t.datetime "created_at", null: false
+    t.index ["review_rule_id", "number"], name: "index_review_rule_versions_on_review_rule_id_and_number", unique: true
+    t.index ["review_rule_id"], name: "index_review_rule_versions_on_review_rule_id"
+  end
+
+  create_table "review_rules", force: :cascade do |t|
+    t.string "kind", null: false
+    t.string "key", null: false
+    t.string "repo", default: "*", null: false
+    t.string "name", null: false
+    t.string "mode", default: "live", null: false
+    t.bigint "current_version_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["kind", "repo", "key"], name: "index_review_rules_on_kind_and_repo_and_key", unique: true
+  end
+
   create_table "run_events", force: :cascade do |t|
     t.bigint "run_id", null: false
     t.integer "seq", null: false
@@ -455,6 +568,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_160000) do
   add_foreign_key "improvement_proposals", "scorers", on_delete: :nullify
   add_foreign_key "model_choices", "model_aliases"
   add_foreign_key "model_choices", "model_providers"
+  add_foreign_key "review_check_runs", "review_rounds"
+  add_foreign_key "review_rule_versions", "review_rules"
   add_foreign_key "run_events", "runs"
   add_foreign_key "runs", "automations", on_delete: :nullify
   add_foreign_key "runs", "runtimes"

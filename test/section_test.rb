@@ -14,11 +14,11 @@ class HarborSectionTest < ActionDispatch::IntegrationTest
     assert_select "main.harbor-shell > div.harbor-page h1", text: "Reports"
     groups = css_select("[data-harbor-nav] [data-nav-group]").map { |group| [ group["data-nav-group"], group.css("a").map { |a| a.text.strip } ] }
     assert_equal [ [ "flows", %w[Workflows Automations Reports] ], [ "activity", %w[Runs Webhooks] ], [ "agents", %w[Agents Models] ],
-                   [ "infrastructure", %w[Runtimes Workspaces Databases] ], [ "quality", %w[Scorers Proposals] ],
+                   [ "infrastructure", %w[Runtimes Workspaces Databases] ], [ "quality", [ "Review policy", "Scorers", "Proposals" ] ],
                    [ "settings", %w[Settings] ] ], groups
     assert_select "[data-harbor-nav] .harbor-nav-heading", count: 5
-    assert_select "[data-harbor-nav] a.harbor-nav-item svg.harbor-icon[aria-hidden=true]", count: 13
-    assert_select "[data-harbor-nav] a.harbor-nav-item[title]", count: 13
+    assert_select "[data-harbor-nav] a.harbor-nav-item svg.harbor-icon[aria-hidden=true]", count: 14
+    assert_select "[data-harbor-nav] a.harbor-nav-item[title]", count: 14
     assert_select "[data-harbor-nav] a[aria-current=page]", text: "Reports", count: 1
     assert_select "[data-harbor-nav] button[data-action='harbor--side-nav#toggle'][aria-expanded=true]", count: 1
   end

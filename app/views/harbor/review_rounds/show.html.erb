@@ -1,0 +1,77 @@
+<% content_for :title, "PR ##{@round.pr_number} round #{@round.round} · Review policy" %>
+<% turbo_refreshes_with method: :morph, scroll: :preserve if respond_to?(:turbo_refreshes_with) %>
+<% unless @round.finished? %><div data-controller="harbor--poll" data-harbor--poll-interval-value="5" hidden></div><% end %>
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-8">
+  <p class="meta"><%= link_to "Review policy", reviews_path, class: "hover:underline" %> / round</p>
+  <h1 class="display text-3xl mt-1">
+    <%= harbor_review_pull_request("PR ##{@round.pr_number}", @round.repo, @round.pr_number, class: "hover:underline") %>
+    · round <%= @round.round %>
+  </h1>
+  <p class="text-sm text-soft mt-1.5">
+    <code><%= @round.head_sha.first(7) %></code> · <%= @round.phase %><%= " · dry run" if @round.dry_run %>
+    · started by <%= @round.trigger_source %>
+    <% if @round.run %> · <%= link_to "Run ##{@round.run_id}", run_path(@round.run), class: "underline" %><% end %>
+    · <%= @doc["cost"] %>
+    · <%= link_to "JSON", review_round_path(@round, format: :json), class: "underline" %>
+  </p>
+</header>
+
+<section id="round-progress" class="mb-10 border border-hairline rounded-xl bg-surface p-6">
+  <h2 class="font-medium mb-1"><%= Harbor::Reviews::Document.title(@doc) %></h2>
+  <p class="text-xs text-faint mb-4"><%= @doc.dig("progress", "percent") %>%</p>
+  <div class="grid gap-2 text-sm">
+    <% @doc["checks"].each do |c| %>
+      <div id="check-<%= c["key"] %>" class="flex flex-wrap gap-x-2">
+        <span><%= harbor_review_status_icon(c["status"]) %></span>
+        <span class="font-medium"><%= c["name"] %></span>
+        <span class="text-soft">· <%= c["summary"].presence || c["status"] %></span>
+        <% if c["mode"] == "shadow" %><%= harbor_review_mode_pill("shadow") %><% end %>
+        <% if c["stage"] != "evidence" %><span class="pill bg-hairline text-soft"><%= c["stage"].humanize.downcase %></span><% end %>
+        <% if c["run_id"] %><%= link_to "run", run_path(c["run_id"]), class: "text-faint underline" %><% end %>
+        <% Array(c["routed"]).each do |row| %><span class="text-faint">→ <%= row["action"] %> <%= row["signoff"] || row["message"] %></span><% end %>
+      </div>
+    <% end %>
+    <% if @doc["checks"].empty? %><p class="text-faint">No checks apply to this change.</p><% end %>
+  </div>
+</section>
+
+<section class="mb-10 grid gap-8 lg:grid-cols-2">
+  <div>
+    <h2 class="meta uppercase tracking-[0.05em] mb-3">Why these checks</h2>
+    <% @doc["risks"].each do |r| %>
+      <div class="text-sm py-1"><span class="font-medium"><%= r["key"] %></span>
+        <span class="text-soft">← <%= Array(r["reasons"]).first(3).join(", ") %></span></div>
+    <% end %>
+    <% if @doc["gaps"].any? %><p class="text-sm mt-2"><span class="pill bg-pale-red text-ink-red">gaps</span> <%= @doc["gaps"].join(", ") %></p><% end %>
+  </div>
+  <div>
+    <h2 class="meta uppercase tracking-[0.05em] mb-3">Sign-offs</h2>
+    <% @doc["signoffs"].each do |s| %>
+      <div class="text-sm py-1"><%= s["status"] == "waiting" ? "🙋" : "✅" %> <span class="font-medium"><%= s["name"] %></span>
+        <span class="text-soft">· <%= Array(s["who"]).join(", ") %> · <%= s["message"] %><%= " · #{s["how"]} by #{s["by"]}" if s["by"] %></span></div>
+    <% end %>
+    <% if @doc["signoffs"].empty? %><p class="text-sm text-faint">None.</p><% end %>
+  </div>
+</section>
+
+<% if @round.review.present? %>
+  <section class="mb-10">
+    <h2 class="meta uppercase tracking-[0.05em] mb-3">Review</h2>
+    <div class="border border-hairline rounded-xl bg-surface p-6 prose-sm">
+      <%# The review as the host words it (its harbor/reviews/_round_review
+          partial), else what the round recorded. %>
+      <% if harbor_reviews_partial?("round_review") %>
+        <%= render "harbor/reviews/round_review", round: @round, doc: @doc %>
+      <% else %>
+        <%= render "harbor/review_rounds/review", review: @doc["review"].to_h %>
+      <% end %>
+    </div>
+  </section>
+<% end %>
+
+<details class="mb-10">
+  <summary class="meta uppercase tracking-[0.05em] cursor-pointer">Document (<%= @doc["schema"] %>)</summary>
+  <pre class="mt-3 text-xs bg-surface border border-hairline rounded-xl p-4 overflow-x-auto"><%= JSON.pretty_generate(@doc) %></pre>
+</details>
