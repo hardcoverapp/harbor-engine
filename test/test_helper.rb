@@ -325,3 +325,50 @@ module HarborWorkflows
 
   def said = Recorder.seen
 end
+
+# A model alias to judge with, an agent whose runs are judged, a folder for
+# logs, and the hooks and registry a host fills, put back afterwards.
+module HarborQuality
+  HOOKS = %i[scorer_class proposal_class scorer_judge scorer_judge_wait proposal_drafter site_name log_location log_path].freeze
+
+  def self.included(base)
+    base.include HarborTestConfig
+    base.include ActiveJob::TestHelper
+    base.setup do
+      [ Harbor::ScorerResult, Harbor::Proposal, Harbor::Scorer, Harbor::RunEvent, Harbor::TaskAssignment, Harbor::AgentDocument,
+        Harbor::Agent, Harbor::WebhookEvent, Harbor::DatabaseBackup, Harbor::Run, Harbor::ModelChoice, Harbor::ModelAlias,
+        Harbor::ModelProvider ].each(&:delete_all)
+      Harbor::Proposals.reset!
+      @quality_hooks = HOOKS.index_with { |name| Harbor.config.public_send(name) }
+      @logs = Dir.mktmpdir("harbor-logs")
+      Harbor.config.log_location = ->(path) { File.join(@logs, path) }
+      @provider = Harbor::ModelProvider.create!(key: "anthropic")
+      @alias = Harbor::ModelAlias.create!(name: "Quick", model_choices_attributes: [ { model_provider: @provider, model: "claude-haiku-5-5" } ])
+      @agent = Harbor::Agent.create!(key: "writer", name: "Wren", system_prompt: "Be careful.", model_alias: @alias)
+    end
+    base.teardown do
+      clear_enqueued_jobs
+      Harbor::Proposals.reset!
+      @quality_hooks.each { |name, value| Harbor.config.public_send("#{name}=", value) }
+      FileUtils.remove_entry(@logs) if @logs && File.exist?(@logs)
+    end
+  end
+
+  def new_scorer(**attributes)
+    Harbor::Scorer.create!({ name: "Ran the tests #{SecureRandom.hex(3)}", judge_instructions: "Did it run the tests?", model_alias: @alias,
+                             sample_rate: 0, pass_threshold: 1.0,
+                             classifications: [ { "label" => "pass", "score" => 1.0 }, { "label" => "partial", "score" => 0.5 },
+                                                { "label" => "fail", "score" => 0.0 } ] }.merge(attributes))
+  end
+
+  # A finished agent run with a transcript: one a scorer can judge.
+  def agent_run(**attributes)
+    Harbor::Run.create!({ agent_key: "writer", task_type: "review", skill: "writer.review", status: "ok",
+                          raw_log_path: "writer/run.ndjson" }.merge(attributes))
+  end
+
+  def failure(scorer, agent_key: "writer", scored_at: 1.day.ago, **attributes)
+    Harbor::ScorerResult.create!({ scorer:, run: agent_run(agent_key:), status: "ok", passed: false, classification: "fail", score: 0,
+                                   reasoning: "No test run after the last edit.", scored_at: }.merge(attributes))
+  end
+end

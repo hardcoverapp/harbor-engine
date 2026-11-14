@@ -1,0 +1,2 @@
+<%# A host's button for a proposal of its own kind. locals: proposal %>
+<% if proposal.target_kind == "handbook_page" && proposal.proposed? %><a href="/handbook/<%= proposal.document_path %>" data-host-action>Edit the page</a><% end %>

@@ -64,8 +64,15 @@
 
 <%= render "harbor/runs/details", run: @run %>
 
-<%# A host's own sections about a run (what judged it, say), above the runs it
-    delegated, its events and its log. %>
+<%# What the scorers made of the run. A verdict arrives after the run is over,
+    so the page keeps refreshing until it does. %>
+<% if @run.awaiting_verdict? && !live %>
+  <div data-controller="harbor--poll" data-harbor--poll-interval-value="5" hidden></div>
+<% end %>
+<% if @run.scorable? || @run.scorer_results.any? %><%= render "harbor/runs/scores", run: @run %><% end %>
+
+<%# A host's own sections about a run, above the runs it delegated, its events
+    and its log. %>
 <% if harbor_runs_partial?("show_extras") %><%= render "harbor/runs/show_extras", run: @run %><% end %>
 
 <% delegated = @run.delegated_runs %>

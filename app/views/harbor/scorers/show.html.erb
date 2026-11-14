@@ -1,0 +1,72 @@
+<% content_for :title, "#{@scorer.name} · Scorers" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="mb-8">
+  <div class="flex justify-between items-start gap-4">
+    <h1 class="display text-3xl min-w-0 [overflow-wrap:anywhere]"><%= @scorer.name %></h1>
+    <%= link_to "Edit scorer", edit_scorer_path(@scorer), class: "btn-primary shrink-0 whitespace-nowrap" %>
+  </div>
+  <p class="text-sm text-soft mt-2"><%= @scorer.description %></p>
+</header>
+
+<dl class="card p-6 grid sm:grid-cols-4 gap-6 mb-8 text-sm">
+  <% { "Judge" => @scorer.model_alias.name, "Sample rate" => "#{@scorer.sample_rate}%", "Pass threshold" => @scorer.pass_threshold,
+       "Status" => @scorer.enabled? ? "Enabled" : "Disabled",
+       "Evaluates" => [ *@scorer.agent_keys, *@scorer.task_types ].presence&.join(", ") || "every agent run",
+       "Judged" => @totals[:scored], "Passed" => @totals[:passed], "Judge errors" => @totals[:errors] }.each do |label, value| %>
+    <div><dt class="meta mb-1"><%= label %></dt><dd><%= value %></dd></div>
+  <% end %>
+</dl>
+
+<section class="card p-6 mb-8" data-reveal>
+  <div class="flex items-baseline gap-2 mb-4">
+    <span class="meta uppercase tracking-[0.05em]">Pass rate per week</span>
+    <span class="meta">last 12 weeks · % of judged runs that passed</span>
+  </div>
+  <% if @series.any? { |_, pct| pct.positive? } || @totals[:scored].positive? %>
+    <%= render "harbor/shared/bar_series", series: @series, label: "% pass", height: 56, color: "green", weekly: true %>
+  <% else %>
+    <p class="text-sm text-faint">Nothing judged yet. Open a finished agent run and click "Score now".</p>
+  <% end %>
+</section>
+
+<h2 class="display text-xl mb-3">Judge instructions</h2>
+<pre class="card p-6 whitespace-pre-wrap break-words text-sm mb-8"><%= @scorer.judge_instructions %></pre>
+
+<h2 class="display text-xl mb-3">Classifications</h2>
+<ul class="card p-6 text-sm mb-8 space-y-1">
+  <% @scorer.classifications.each do |c| %>
+    <li><span class="pill <%= c['score'].to_f >= @scorer.pass_threshold.to_f ? "bg-pale-green text-ink-green" : "bg-pale-red text-ink-red" %>"><%= c["label"] %></span> <span class="meta">score <%= c["score"] %></span></li>
+  <% end %>
+</ul>
+
+<h2 class="display text-xl mb-3">Recent verdicts</h2>
+<div class="lg:overflow-x-auto" data-reveal>
+  <table class="w-full text-sm bg-surface border border-hairline rounded-xl">
+    <thead class="text-left"><tr class="border-b border-hairline">
+      <th class="px-4 py-2.5 meta uppercase tracking-[0.05em] font-medium">Run</th>
+      <th class="px-4 py-2.5 meta uppercase tracking-[0.05em] font-medium">Verdict</th>
+      <th class="px-4 py-2.5 meta uppercase tracking-[0.05em] font-medium">Reasoning</th>
+      <th class="px-4 py-2.5 meta uppercase tracking-[0.05em] font-medium">Judge</th>
+      <th class="px-4 py-2.5 meta uppercase tracking-[0.05em] font-medium">When</th>
+    </tr></thead>
+    <tbody class="divide-y divide-hairline">
+      <% if @results.empty? %><tr><td colspan="5" class="px-4 py-3 text-faint">No verdicts yet.</td></tr><% end %>
+      <% @results.each do |r| %>
+        <tr>
+          <td class="px-4 py-2.5"><%= link_to "##{r.run_id} #{r.run.label}", run_path(r.run), class: "text-ink hover:underline decoration-hairline underline-offset-4" %>
+            <span class="meta"><%= r.run.agent_key %></span></td>
+          <td class="px-4 py-2.5">
+            <% if r.scored? %>
+              <span class="pill <%= r.passed ? "bg-pale-green text-ink-green" : "bg-pale-red text-ink-red" %>"><%= r.classification %> · <%= r.score %></span>
+            <% elsif r.status == "queued" %><span class="pill bg-pale-blue text-ink-blue">judging…</span>
+            <% else %><span class="pill bg-pale-yellow text-ink-yellow" title="<%= r.error %>">error</span><% end %>
+          </td>
+          <td class="px-4 py-2.5 text-body max-w-md"><%= (r.reasoning.presence || r.error).to_s.truncate(200) %></td>
+          <td class="px-4 py-2.5"><% if r.judge_run %><%= link_to "##{r.judge_run.id}", run_path(r.judge_run), class: "meta hover:text-ink underline decoration-hairline underline-offset-4" %>
+            <% if r.judge_run.cost_usd %><span class="meta">$<%= "%.3f" % r.judge_run.cost_usd %></span><% end %><% end %></td>
+          <td class="px-4 py-2.5 meta"><%= time_ago_in_words(r.scored_at || r.updated_at) %> ago</td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

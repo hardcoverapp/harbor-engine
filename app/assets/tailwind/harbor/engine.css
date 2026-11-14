@@ -37,6 +37,10 @@
   --harbor-nav-width: 13.5rem;
   --harbor-nav-rail-width: 3.5rem;
   --harbor-nav-top: 0px;
+
+  /* The bubble over a bar of a chart */
+  --harbor-tip-bg: #111111;
+  --harbor-tip-text: #FFFFFF;
 }
 
 /* ── The section's shell ──────────────────────────────────────────────────
@@ -91,3 +95,20 @@ html[data-harbor-nav-state="collapsed"] .harbor-nav-group + .harbor-nav-group { 
   color: var(--harbor-nav-text); border-bottom: 2px solid transparent; transition: color .15s; }
 .harbor-tab:hover { color: var(--harbor-nav-text-hover); }
 .harbor-tab[aria-current="page"] { color: var(--harbor-nav-active-text); border-bottom-color: var(--harbor-nav-active-text); font-weight: 500; }
+
+/* ── Bar charts ───────────────────────────────────────────────────────────
+   harbor/shared/_bar_series: a row of columns, each showing its figure in a
+   bubble while the pointer is on it. In the base layer, so a host's own
+   .spark rules, layered or not, win over these. */
+@layer base {
+  .spark { position: relative; }
+  .spark-col { position: relative; cursor: default; }
+  .spark-tip { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 30; display: none;
+    width: max-content; max-width: 14rem; padding: .3rem .5rem; border-radius: 4px; background: var(--harbor-tip-bg); color: var(--harbor-tip-text);
+    font-size: .6875rem; line-height: 1.35; white-space: nowrap; pointer-events: none; }
+  .spark-tip b { font-weight: 600; }
+  .spark-tip i { display: block; font-style: normal; opacity: .62; }
+  .spark-col:hover .spark-tip { display: block; }
+  .spark-col:nth-child(-n+3) .spark-tip { left: 0; transform: none; }
+  .spark-col:nth-last-child(-n+3) .spark-tip { left: auto; right: 0; transform: none; }
+}

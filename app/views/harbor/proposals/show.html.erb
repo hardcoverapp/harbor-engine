@@ -1,0 +1,79 @@
+<% content_for :title, "Proposal ##{@proposal.id}" %>
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-8">
+  <%= link_to "All proposals", proposals_path, class: "meta hover:text-ink transition-colors duration-200" %>
+  <h1 class="display text-3xl mt-2 flex flex-wrap items-center gap-3">
+    <%= @proposal.summary.to_s.lines.first.to_s.strip %>
+    <span class="pill <%= { "proposed" => "bg-pale-blue text-ink-blue", "applied" => "bg-pale-green text-ink-green", "dismissed" => "bg-bone text-faint border border-hairline" }[@proposal.status] %>"><%= @proposal.status %></span>
+  </h1>
+  <p class="text-sm text-soft mt-2">
+    <%= @proposal.target_label %>
+    <% if @proposal.scorer %> · from <%= link_to @proposal.scorer.name, scorer_path(@proposal.scorer), class: "underline decoration-hairline underline-offset-4 hover:text-ink" %><% end %>
+    <% if @proposal.run %> · proposed by <%= link_to "run ##{@proposal.run.id}", run_path(@proposal.run), class: "underline decoration-hairline underline-offset-4 hover:text-ink" %><% end %>
+    · <%= time_ago_in_words(@proposal.created_at) %> ago
+    <% if @proposal.applied_at %> · applied <%= time_ago_in_words(@proposal.applied_at) %> ago<% applied_by = @proposal.applied_by_name %><%= " by #{applied_by}" unless applied_by.nil? %><% end %>
+  </p>
+</header>
+
+<% if @proposal.summary.to_s.lines.size > 1 %>
+  <p class="text-sm text-body mb-6 whitespace-pre-wrap"><%= @proposal.summary %></p>
+<% end %>
+
+<div class="flex flex-wrap gap-3 mb-8" data-proposal-actions>
+  <% if @proposal.applicable? %>
+    <% if @proposal.drifted? %>
+      <span class="pill bg-pale-yellow text-ink-yellow">the current text changed since this was proposed — dismiss and run the check again</span>
+    <% else %>
+      <%= button_to "Apply to #{@proposal.agent_key}", apply_proposal_path(@proposal), method: :post, class: "btn-primary",
+            data: { turbo_confirm: "Write this change onto #{@proposal.target_label}? It applies to the agent's next run." } %>
+    <% end %>
+  <% end %>
+  <%# A host's own buttons, for a proposal of a kind that is its own. %>
+  <% if harbor_proposals_partial?("show_actions") %><%= render "harbor/proposals/show_actions", proposal: @proposal %><% end %>
+  <% if @proposal.proposed? %>
+    <%= button_to "Dismiss", dismiss_proposal_path(@proposal), method: :post, class: "btn-quiet" %>
+  <% end %>
+</div>
+
+<%# A host's own sections about a proposal, above what it addresses. %>
+<% if harbor_proposals_partial?("show_extras") %><%= render "harbor/proposals/show_extras", proposal: @proposal %><% end %>
+
+<% if @proposal.regressions_addressed.present? %>
+  <section class="mb-8" data-reveal>
+    <h2 class="text-sm font-medium text-soft uppercase tracking-[0.05em] mb-3">Regressions addressed</h2>
+    <p class="card p-5 text-sm text-body whitespace-pre-wrap"><%= @proposal.regressions_addressed %></p>
+  </section>
+<% end %>
+
+<% if @diff %>
+  <section class="mb-8" data-reveal>
+    <h2 class="text-sm font-medium text-soft uppercase tracking-[0.05em] mb-3">
+      The change
+    </h2>
+    <div class="card overflow-x-auto">
+      <pre class="text-xs leading-5 p-4 font-mono"><% @diff.each do |kind, line| %><span class="block <%= { del: "bg-pale-red text-ink-red", add: "bg-pale-green text-ink-green", same: "text-body" }[kind] %>"><%= { del: "− ", add: "+ ", same: "  " }[kind] %><%= line %></span><% end %></pre>
+    </div>
+    <% unless Harbor::Proposals::LineDiff.changed?(@diff) %><p class="meta mt-2">No line changed.</p><% end %>
+  </section>
+<% elsif harbor_proposals_partial?("change") %>
+  <%# What a proposal of a host's own kind would change: a whole section. %>
+  <%= render "harbor/proposals/change", proposal: @proposal %>
+<% end %>
+
+<section class="mb-8" data-reveal>
+  <h2 class="text-sm font-medium text-soft uppercase tracking-[0.05em] mb-3">Evidence · <%= @results.size %> failed runs</h2>
+  <ul class="card divide-y divide-hairline overflow-hidden">
+    <% if @results.empty? %><li class="px-5 py-3 text-faint text-sm">No scorer results linked.</li><% end %>
+    <% @results.each do |r| %>
+      <li class="px-5 py-3 text-sm">
+        <div class="flex flex-wrap items-center gap-3">
+          <%= link_to "run ##{r.run_id} · #{r.run&.label}", run_path(r.run_id), class: "text-ink hover:underline decoration-hairline underline-offset-4" %>
+          <span class="pill bg-pale-red text-ink-red"><%= r.classification %> · <%= r.score %></span>
+          <% if r.scored_at %><span class="meta"><%= time_ago_in_words(r.scored_at) %> ago</span><% end %>
+        </div>
+        <% if r.reasoning.present? %><p class="meta mt-1"><%= r.reasoning %></p><% end %>
+      </li>
+    <% end %>
+  </ul>
+</section>

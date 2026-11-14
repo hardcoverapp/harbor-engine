@@ -1,0 +1,63 @@
+<%#
+  A compact bar chart for a daily/weekly series — "is this going up or down"
+  at a glance, not a precision instrument.
+
+  Hovering a column shows the exact figure immediately. The native `title`
+  attribute can't do that (the browser waits ~1s before showing it and styles
+  it as an OS tooltip), so the readout is a CSS-only popover on a wrapper that
+  spans the full height: a hit target of the whole column, not just the few
+  pixels of a short bar.
+
+  Locals:
+    series — Array of [Date, Integer], oldest first.
+    height — px height of the bars (default 40).
+    label  — optional unit for the readout ("% pass", "runs").
+    color  — which of the host's colours the bars take (default "brand"):
+             brand, accent, teal, purple, green, blue, orange or ink.
+    weekly — true to label points as week-of rather than a single day.
+%>
+<%
+  series = Array(local_assigns[:series]).compact
+  height = local_assigns[:height] || 40
+  unit   = local_assigns[:label]
+  color  = local_assigns[:color] || "brand"
+  weekly = local_assigns[:weekly]
+  max    = series.map(&:last).max.to_i
+  fills  = {
+    "brand"  => "bg-brand/75",
+    "accent" => "bg-brand-accent/80",
+    "teal"   => "bg-ink-teal/70",
+    "purple" => "bg-ink-purple/70",
+    "green"  => "bg-ink-green/70",
+    "blue"   => "bg-ink-blue/70",
+    "orange" => "bg-ink-orange/70",
+    "ink"    => "bg-ink/70"
+  }
+  fill = fills[color.to_s] || fills["brand"]
+%>
+<% if series.any? %>
+  <div class="spark flex items-end gap-px" style="height: <%= height %>px;">
+    <% series.each do |date, count| %>
+      <%
+        # A zero day still gets a hairline so the axis reads as continuous
+        # rather than looking like missing data.
+        pct = max.zero? ? 0 : (count.to_f / max * 100)
+        h   = count.zero? ? 1.5 : [ (pct / 100.0 * height).round(1), 2 ].max
+        when_label = weekly ? "week of #{date.strftime('%b %-d')}" : date.strftime("%a %b %-d")
+      %>
+      <span class="spark-col flex-1 flex items-end" style="height: <%= height %>px;">
+        <span class="w-full rounded-t-[1px] <%= count.zero? ? 'bg-hairline' : fill %>"
+              style="height: <%= h %>px;"></span>
+        <span class="spark-tip" role="tooltip">
+          <b><%= number_with_delimiter(count) %></b><%= " #{unit}" if unit %>
+          <i><%= when_label %></i>
+        </span>
+      </span>
+    <% end %>
+  </div>
+  <div class="flex justify-between meta mt-1.5">
+    <span><%= series.first.first.strftime("%b %-d") %></span>
+    <span class="text-faint">peak <%= number_with_delimiter(max) %></span>
+    <span><%= series.last.first.strftime("%b %-d") %></span>
+  </div>
+<% end %>

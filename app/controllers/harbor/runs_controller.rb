@@ -42,5 +42,32 @@ module Harbor
       end
       redirect_back fallback_location: run_path(run), notice: notice
     end
+
+    # Judge this run now with one scorer (scorer_id) or every enabled scorer
+    # that applies to it. Re-scoring replaces the earlier verdict.
+    def score
+      run = Harbor.run_class.find(params[:id])
+      unless run.scorable?
+        return redirect_back fallback_location: run_path(run),
+                             alert: "Only a finished, top-level agent run with a transcript can be scored."
+      end
+      scorers = params[:scorer_id].present? ? [ Harbor.scorer_class.find(params[:scorer_id]) ] : Harbor.scorer_class.applicable_to(run)
+      return redirect_back fallback_location: run_path(run), alert: "No enabled scorer applies to this run." if scorers.empty?
+
+      # One judge per (scorer, run) at a time: the claim is made here, before
+      # anything is enqueued, so a double click or a replayed POST can't start
+      # a second paid judgement.
+      claimed = scorers.select { |scorer| Harbor::ScorerResult.claim!(scorer:, run:) }
+      if claimed.empty?
+        return redirect_back fallback_location: run_path(run),
+                             notice: "Run ##{run.id} is already being judged by #{scorers.map(&:name).to_sentence} — the verdict appears here shortly."
+      end
+      claimed.each do |scorer|
+        Harbor::Scorers::EvaluateJob.perform_later(scorer_id: scorer.id, run_id: run.id, trigger_source: "manual",
+                                                   triggered_by_user_id: harbor_current_user.try(:id))
+      end
+      redirect_back fallback_location: run_path(run),
+                    notice: "Judging run ##{run.id} with #{claimed.map(&:name).to_sentence} — the verdict appears here shortly."
+    end
   end
 end

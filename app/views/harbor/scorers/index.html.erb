@@ -1,0 +1,90 @@
+<% content_for :title, "Scorers" %>
+
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-10 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="display text-3xl">Scorers</h1>
+    <p class="text-sm text-soft mt-1.5 max-w-2xl">
+      A scorer answers one question about an agent's finished run, such as “did it run the tests before
+      opening the PR?”. A cheap model reads the run's transcript and picks a label, and the labels add up
+      to a pass rate. That number tells you whether an agent is getting better or worse when you change
+      its instructions or its model, without you reading transcripts.
+    </p>
+  </div>
+  <%= link_to "New scorer", new_scorer_path, class: "btn-primary" %>
+</header>
+
+<%= render "harbor/shared/quality_guide", current: :scorers, open: @scorers.empty?, steps: [
+      safe_join([ "Pick one mistake you have seen an agent make more than once. ", link_to("Create a scorer", new_scorer_path, class: "underline"), " for that agent, and write what the judge should look for and what counts as a pass." ]),
+      "Leave the sample rate at 0 and try it by hand first: open a finished run, and under Scores choose the scorer and press “Score now”. Check that you agree with its answer on a handful of runs, and fix the instructions if you don't.",
+      "Raise the sample rate so it judges a share of new runs by itself. Each judgement is its own small run with a cost, so 10 to 25% is usually enough to see a trend.",
+      safe_join([ "Watch the pass rate here. To have repeated failures turned into suggested fixes, tick “Self-improvement” on the scorer; they arrive under ", link_to("Proposals", proposals_path, class: "underline"), "." ])
+    ] %>
+
+<% if Harbor.config.scorer_judge.nil? %>
+  <%# A site that hasn't said how a judge runs: scorers can be written, and nothing is judged. %>
+  <p role="note" class="mb-8 rounded-xl bg-pale-yellow text-ink-yellow p-4 text-sm" data-no-judge>
+    No judge is configured, so nothing is scored yet: scoring a run by hand ends as an error that says so, and no run is sampled.
+    This site has to say how a judge runs (<code class="chip">config.scorer_judge</code>).
+  </p>
+<% end %>
+
+<div class="lg:overflow-x-auto" data-reveal>
+  <table role="table" class="block lg:table lg:table-fixed w-full text-sm lg:min-w-[52rem] lg:bg-surface lg:border border-hairline lg:rounded-xl">
+    <thead class="hidden lg:table-header-group text-left">
+      <tr class="border-b border-hairline">
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium w-[36%]">Scorer</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium w-[20%]">Evaluates</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Judge</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Sample</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Pass rate · 30d</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Enabled</th>
+      </tr>
+    </thead>
+    <tbody class="grid gap-4 lg:table-row-group lg:divide-y lg:divide-hairline">
+      <% if @scorers.empty? %>
+        <tr><td colspan="6" class="px-5 py-4 text-faint">No scorers yet.</td></tr>
+      <% end %>
+      <% @scorers.each do |scorer| %>
+        <% stats = @stats[scorer] %>
+        <tr id="scorer-<%= scorer.id %>" class="grid gap-3 p-5 border border-hairline rounded-xl bg-surface lg:table-row lg:p-0 lg:border-0 lg:rounded-none <%= "opacity-55" unless scorer.enabled? %>">
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top">
+            <div class="flex flex-wrap items-center gap-2">
+              <%= link_to scorer.name, scorer_path(scorer), class: "font-medium text-ink hover:underline" %>
+              <% if scorer.self_improvement? %><%= link_to "self-improve", proposals_path, class: "pill bg-pale-purple text-ink-purple" %><% end %>
+            </div>
+            <p class="text-soft mt-1 text-[13px] leading-snug"><%= scorer.description %></p>
+          </td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top">
+            <span class="block lg:hidden meta mb-1">Evaluates</span>
+            <% if scorer.agent_keys.blank? && scorer.task_types.blank? %>
+              <span class="text-soft">every agent run</span>
+            <% else %>
+              <% scorer.agent_keys.each do |k| %><span class="pill bg-pale-purple text-ink-purple mr-1"><%= k %></span><% end %>
+              <% scorer.task_types.each do |t| %><code class="chip mr-1"><%= t %></code><% end %>
+            <% end %>
+          </td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top text-body"><span class="block lg:hidden meta mb-1">Judge</span><%= scorer.model_alias.name %></td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top text-body"><span class="block lg:hidden meta mb-1">Sample</span><%= scorer.sample_rate %>%</td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top">
+            <span class="block lg:hidden meta mb-1">Pass rate</span>
+            <% if stats[:pass_rate] %>
+              <span class="text-ink"><%= stats[:pass_rate] %>%</span> <span class="meta">of <%= stats[:scored] %></span>
+            <% else %>
+              <span class="meta">nothing judged</span>
+            <% end %>
+          </td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top">
+            <span class="block lg:hidden meta mb-1">Enabled</span>
+            <%= button_to toggle_scorer_path(scorer), method: :patch, form_class: "inline",
+                  class: "pill cursor-pointer " + (scorer.enabled? ? "bg-pale-green text-ink-green" : "bg-bone text-faint border border-hairline"),
+                  aria: { label: "#{scorer.enabled? ? 'Disable' : 'Enable'} #{scorer.name}" } do %>
+              <%= scorer.enabled? ? "on" : "off" %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

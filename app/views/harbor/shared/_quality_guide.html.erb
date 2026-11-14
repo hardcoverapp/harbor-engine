@@ -1,0 +1,41 @@
+<%# What the Quality pages are for, shown at the top of each. They are one
+    loop, so each page shows all of them and marks where you are. A page the
+    site doesn't have, or has switched off, is left out. A host's own Quality
+    page renders this too.
+    locals: current (:reviews, :scorers or :proposals), steps (this page's
+    "start here" list, as strings; may contain links), open (the list starts
+    unfolded). %>
+<% pages = harbor_nav_links.index_by(&:key)
+   parts = [
+     [ :reviews, "Review policy", "Before a PR merges",
+       "Decides what proof a pull request owes. A PR that touches a migration has to show the migration ran; a copy change doesn't.",
+       "You write the rules. The reviewer runs them on every PR." ],
+     [ :scorers, "Scorers", "After an agent finishes",
+       "Grades the agent's work against one question, such as “did it run the tests before opening the PR?”, and keeps a pass rate.",
+       "You write the question. A cheap model reads the transcript and answers." ],
+     [ :proposals, "Proposals", "When the same failure repeats",
+       "Reads a scorer's failed runs and drafts a fix to the agent's instructions, with the runs that prompted it.",
+       "You read the draft and apply it, or dismiss it." ]
+   ].select { |key, *| pages[key] }
+   columns = { 1 => "lg:grid-cols-1", 2 => "lg:grid-cols-2", 3 => "lg:grid-cols-3" }.fetch(parts.size, "lg:grid-cols-3") %>
+<section class="mb-10" aria-label="How the Quality pages fit together" data-quality-guide="<%= current %>">
+  <ol class="grid gap-3 <%= columns %>">
+    <% parts.each_with_index do |(key, name, moment, does, yours), i| %>
+      <li class="rounded-xl border p-4 <%= key == current ? "border-ink bg-surface" : "border-hairline" %>">
+        <p class="meta uppercase tracking-[0.05em]"><%= i + 1 %> · <%= moment %></p>
+        <p class="mt-1.5 font-medium text-ink">
+          <% if key == current %><span aria-current="step"><%= name %></span>
+          <% else %><%= link_to name, pages[key].path, class: "hover:underline" %><% end %>
+        </p>
+        <p class="mt-1 text-sm text-body"><%= does %></p>
+        <p class="mt-2 text-sm text-soft"><%= yours %></p>
+      </li>
+    <% end %>
+  </ol>
+  <details class="mt-3 rounded-xl border border-hairline bg-surface px-4 py-3 text-sm" <%= "open" if local_assigns[:open] %>>
+    <summary class="cursor-pointer font-medium text-ink">How to use this page</summary>
+    <ol class="mt-3 grid gap-2 list-decimal pl-5 text-body max-w-3xl">
+      <% steps.each do |step| %><li><%= step %></li><% end %>
+    </ol>
+  </details>
+</section>

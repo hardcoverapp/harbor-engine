@@ -16,7 +16,16 @@ class HarborHostClassesTest < ActiveSupport::TestCase
       [ Harbor::Agent, :workspace_profile ] => "::Harbor::WorkspaceProfile",
       [ Harbor::Runtime, :runs ] => "::Harbor::Run",
       [ Harbor::WorkspaceProfileRuntime, :workspace_profile ] => "::Harbor::WorkspaceProfile",
-      [ Harbor::WorkspaceProfileRuntime, :runtime ] => "::Harbor::Runtime"
+      [ Harbor::WorkspaceProfileRuntime, :runtime ] => "::Harbor::Runtime",
+      [ Harbor::Scorer, :model_alias ] => "::Harbor::ModelAlias",
+      [ Harbor::ModelAlias, :scorers ] => "::Harbor::Scorer",
+      [ Harbor::ScorerResult, :scorer ] => "::Harbor::Scorer",
+      [ Harbor::ScorerResult, :run ] => "::Harbor::Run",
+      [ Harbor::ScorerResult, :judge_run ] => "::Harbor::Run",
+      [ Harbor::ScorerResult, :proposal ] => "::Harbor::Proposal",
+      [ Harbor::Proposal, :scorer ] => "::Harbor::Scorer",
+      [ Harbor::Proposal, :agent ] => "::Harbor::Agent",
+      [ Harbor::Proposal, :run ] => "::Harbor::Run"
     }.each do |(model, name), class_name|
       assert_equal class_name, model.reflect_on_association(name).class_name, "#{model}##{name}"
     end

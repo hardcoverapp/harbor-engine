@@ -128,8 +128,8 @@ class HarborNavTest < ActiveSupport::TestCase
   end
 
   test "a group with no page to show is left out, heading and all" do
-    missing = %i[reviews_path scorers_path improvement_proposals_path]
-    assert_not_includes groups(@nav, "/", missing).map(&:first), :quality
+    missing = %i[factory_path velocity_path]
+    assert_not_includes groups(@nav, "/", missing).map(&:first), :overview
   end
 
   test "Workflows is current on its runs pages, which sit outside its path" do

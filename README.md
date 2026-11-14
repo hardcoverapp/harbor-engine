@@ -182,7 +182,8 @@ the host's stylesheet: `card`, `pill`, `meta`, `display`, `field`, `btn-quiet`,
 `chip` (a short piece of code in a sentence), `log-pre` (a block of log or JSON),
 and the colour utilities `bg-pale-green`, `text-ink-green`, `bg-pale-red`,
 `text-ink-red`, `text-soft`, `text-ink`, `border-hairline`. Without them they
-work and look plain.
+work and look plain. A bar chart's hover bubble (`spark`, `spark-col`, `spark-tip`) comes
+with Harbor's styles, in the base layer, so a host's own rules for those names win.
 
 ### 7. Check it
 
@@ -252,7 +253,8 @@ it. On a phone a row is two lines.
 A run's page has its name and status; the skill, when it started and how long it took;
 its agent, model, cost, tokens and session; what it is, where it ran (runtime and
 runner), its command, what started it and its timings; progress, when the work reports
-any; the runs it delegated with what each cost; its parsed events (`Harbor::RunEvent`),
+any; what the scorers made of it, with "Score now" (see Scorers); the runs it delegated
+with what each cost; its parsed events (`Harbor::RunEvent`),
 folded away; its live log; its error; and its input and output. While the run is under
 way the page refreshes itself every five seconds (a morph, with Turbo), and the log is a
 window that stays on its newest line.
@@ -304,7 +306,7 @@ Three methods of `Harbor::Run` that a host's subclass (`c.run_class`) can overri
   A host overrides it to add a filter of its own (`/factory/runs?mine=1`) or to load what
   its partials show.
 - `run.delegated_runs`: the child runs listed in the cost breakdown. Harbor's is every
-  child run.
+  child run but a scorer's judge, which has a bill of its own.
 - `run.raw_log_file`: the file the raw download sends. Harbor's is `raw_log_path` under
   the log location, which is where agent sessions keep it.
 
@@ -1333,6 +1335,249 @@ Without `workflow_run_url`, a run's address is its page's path after the **Runne
 address** setting. Without `workflow_run_cancel`, a step's Run is stopped the way
 the Runs page's Stop does.
 
+## Scorers
+
+A `Harbor::Scorer` is a judge over finished agent runs: one question you write ("Did the
+agent run the tests before opening the PR?"), a list of labels each carrying a score from
+0 to 1, and a threshold a run's score has to reach to pass. A scorer applies to every
+agent run, or only to the agents and task types it names. A share of the runs it applies
+to (`sample_rate` %) is judged when they finish; any run can be judged by hand.
+
+A `Harbor::ScorerResult` is one scorer's verdict on one run: the label the judge chose,
+its score, whether that passes, and the judge's reasoning. Judging a run again replaces
+the row. The judge itself is a `Run`, a child of the run it grades (`skill` "scorer",
+`result.judge_run`), so its model, cost, log and outcome are kept like any run's. A run a
+scorer can judge is `run.scorable?`: a top-level agent run that ended `ok`, `error` or
+`timeout` and kept a transcript (`raw_log_path`).
+
+Two jobs do the work. `Harbor::Scorers::SampleJob` runs when a scorable run finishes and
+queues a judge for each enabled scorer that applies and whose sample rate picks it.
+`Harbor::Scorers::EvaluateJob` judges one run with one scorer: it makes the judge run and
+the result, asks the judge, reads the verdict out of the answer
+(`Harbor::Scorers::Verdict`) and records it. One judge holds a scorer and run at a time
+(`Harbor::ScorerResult.claim!`), so a double click, a replayed request and the sampler
+can't start two.
+
+### The judge
+
+**Harbor does not run the model that judges.** Running one over a transcript safely is
+specific to a site: the transcript has to reach wherever the model runs, and the model
+has to be kept to that one file, because a transcript can carry text written by anyone
+who could comment on the work. Harbor's own way of running an agent (Agent sessions)
+starts a named agent in a checkout of a repository and fetches a fixed set of files, so a
+judge built on it would see the repository and not the transcript. Until Harbor has a
+confined judge of its own, the host supplies it:
+
+```ruby
+# config/initializers/harbor.rb
+Harbor.configure do |c|
+  c.scorer_judge = ->(judgement) do
+    choice = judgement.scorer.model_alias.resolve          # the model to judge with
+    judgement.judge.update!(model: choice.model, command: "my-judge --model #{choice.model}")
+    judgement.judge.start!
+    judgement.log("judging run ##{judgement.run.id} with #{choice.model}")
+    MyJudge.read(judgement.transcript_file, prompt: judgement.prompt(transcript: "transcript.ndjson"), model: choice.model)
+  end
+  c.scorer_judge_wait = 15.minutes   # longer than a judge ever takes
+  c.site_name = "Acme Factory"       # "grading one finished agent run for Acme Factory"
+end
+```
+
+The hook is called with a `Harbor::Scorers::Judgement`:
+
+| | |
+|---|---|
+| `scorer`, `run` | The scorer, and the run being graded |
+| `judge` | The judge's own run. Put its model, command, cost and tokens on it |
+| `result` | The `ScorerResult` the verdict will be written to |
+| `prompt(transcript:)` | What to ask the model: the run, the scorer's question, its labels and the shape of the answer. `transcript` is the transcript's file name as the model will find it in the directory it runs in |
+| `transcript_file` | The graded run's transcript on this machine (`run.raw_log_file`) |
+| `log(line)` | Writes a line to the judge run's live log |
+| `attempt` | How many times this judgement has been put off as busy |
+
+and ends one of these ways:
+
+- **It returns the model's final text.** Harbor reads the verdict from it: the last
+  fenced JSON block (or bare object) whose `classification` is one of the scorer's labels.
+  The result becomes `ok`, with the label, its score, pass or fail and the reasoning, and
+  the judge run finishes `ok`. Text with no usable verdict is an error on both.
+- **It calls `judgement.answer!(text, output: { … })` itself**, to add to what the judge
+  run keeps as its output, and returns nothing.
+- **It calls `judgement.fail!(message, status: "error")`** when it can't judge: nothing
+  to read, the judge switched off. `status` is how the judge run ends (`"error"`,
+  `"skipped"`, `"timeout"`, `"canceled"`); the result is an error with the message.
+- **It raises `Harbor::Scorers::Judgement::Busy`** when it can only take so many at once.
+  The job runs again in two minutes, up to ten times, with the claim still held.
+- **It returns nothing and answers later**, when what it started reports back:
+  `Harbor::Scorers::Judgement.for(judge_run)&.answer!(text)`. Until then the verdict
+  shows as pending. A judgement pending longer than `scorer_judge_wait` can be claimed by
+  another.
+- **It raises anything else.** The message is the error on both, and the job doesn't die.
+  A model alias with nothing available (`Harbor::ModelAlias::Unavailable`) ends the judge
+  run `skipped`.
+
+With no `scorer_judge`, the pages all work and nothing is judged: no run is sampled, the
+Scorers page says so, and scoring a run by hand ends as an error on the result and the
+judge run naming the setting.
+
+### The Scorers pages
+
+Under `Harbor.path` like the rest, in `Harbor::ScorersController`: **the list**
+(`/factory/scorers`), with each scorer's question, what it judges, its judge, sample
+rate, pass rate over thirty days and its on/off switch; **a scorer's page**
+(`/factory/scorers/3`), with its pass rate week by week, its instructions and labels and
+its last fifty verdicts, each linked to the run and the judge's run; and **the form**
+that creates and edits one. A scorer is a card on a phone.
+
+**A run's page** shows what the scorers made of it, between its details and its log:
+each verdict with its reasoning, the judge's run, the proposal that reviewed it, and
+"Score now" (`POST /factory/runs/12/score`, with `scorer_id` for one scorer or without
+for every one that applies). While a verdict is pending the page refreshes itself.
+
+A host with more on its scorers subclasses the record and names it
+(`c.scorer_class = "Scorer"`). Two class methods are meant to be overridden:
+`Scorer.task_types`, the task types the form offers (Harbor's are the declared ones), and
+`Scorer.draft`, what the New scorer form starts with (a model alias, say).
+
+One part of the form is a partial a host can replace with its own, by having a partial of
+the same name in its `app/views/harbor/scorers/`:
+
+| Partial | Harbor's |
+|---|---|
+| `_self_improvement_note.html.erb` | What ticking Self-improvement does, beside the checkbox: failures become proposals to change the agent's instructions |
+
+## Proposals
+
+A `Harbor::Proposal` is a change drafted from a batch of one scorer's failures on one
+agent, with the runs behind it. Nothing is adopted without a person. Harbor's own
+targets are text it holds, each kept as it was and as proposed:
+
+| `target_kind` | Changes | Applied |
+|---|---|---|
+| `agent_prompt` | The agent's system prompt | On the page, with a click (`proposal.apply!(by: user)`) |
+| `agent_document` | One of the agent's documents (`document_path`), created if new | The same |
+
+Applying refuses when the text has changed since the proposal was made. A proposal is
+`proposed`, then `applied` or `dismissed`.
+
+### Where proposals come from
+
+A scorer with **Self-improvement** ticked has its failures collected.
+`Harbor::Proposals::CheckJob` groups each such scorer's unreviewed failures by agent, and
+hands a group over once it has `improvement_min_failures` of them, or one older than
+`improvement_max_age_days`; a check a person started takes any group. A group is claimed
+as it is handed over, so two checks never hand over the same failure, and is at most
+`Harbor::Proposals::BATCH` (25) failures. The check runs as a `Run` made beforehand:
+`CheckJob.perform_later(run.id)`. "Run the check now" on the Proposals page does that; so
+does a schedule of the host's.
+
+**Harbor does not run the agent that drafts**, for the reason it doesn't run the judge:
+that run reads transcripts, so it has to be read-only in a way a site decides. The host
+supplies the drafter, and hands its answer back:
+
+```ruby
+# config/initializers/harbor.rb
+Harbor.configure do |c|
+  c.proposal_drafter = ->(scorer:, agent_key:, result_ids:, check_run:) do
+    DraftProposalsJob.perform_later(scorer.id, agent_key, result_ids, check_run.id)
+  end
+end
+
+# In that job, when its read-only agent run has finished ok:
+results = Harbor::ScorerResult.where(id: result_ids, reviewed_at: nil).includes(:run)
+Harbor::Proposals::Recorder.call(run: run, scorer: scorer, agent: agent, results: results, text: final_text)
+# …and when it didn't, so the next check takes the failures again:
+Harbor::Proposals::Recorder.release!(results)
+```
+
+The answer `Recorder` reads is the last fenced JSON block holding a `proposals` list
+(`Harbor::Proposals::Verdict`):
+
+```json
+{"pattern": "<the shared cause>",
+ "proposals": [
+   {"target": "agent_prompt", "summary": "<one line>", "after": "<the full new system prompt>"},
+   {"target": "agent_document", "path": "<document path>", "summary": "<one line>", "after": "<the full new body>"}
+ ]}
+```
+
+Each entry becomes a proposal with the text as it is now, the runs and results it was
+drafted from (`evidence`) and the pattern; an entry that changes nothing is dropped. The
+failures the run was shown are marked reviewed (`reviewed_at`, `proposal_id`), and the
+run's output names the proposals. An empty list is an answer too: the failures are
+reviewed and nothing is proposed. With no such block the run is finished as an error and
+the failures are released. Writing the prompt for that run is the host's.
+
+With no `proposal_drafter`, the pages work, the page offers no "Run the check now", and a
+check ends as an error naming the setting, having claimed nothing.
+
+### A host's own targets
+
+A host whose proposals reach further than an agent's text (a file in a repository, a page
+of a handbook) registers the target:
+
+```ruby
+# config/initializers/harbor.rb
+Harbor::Proposals.register_target "handbook_page",
+  label: ->(proposal) { "handbook · #{proposal.document_path}" },
+  build: ->(entry, draft) { { document_path: entry["path"], after: entry["after"] } if entry["after"].present? }
+```
+
+`label` is what the target is called on the pages (text, or a callable given the
+proposal). `build` is called when a drafting run's answer has an entry with this target:
+it is given the entry and the draft (`run`, `scorer`, `agent`, `results`, `pattern`,
+`evidence`) and returns the proposal's attributes beyond scorer, agent, run, target and
+summary, or nil to record nothing. An entry is untrusted text: check it there. A target
+with no `build` is only ever recorded by the host. Harbor lists and shows a proposal of a
+host's kind and offers Dismiss; what else can be done with it is the host's, through the
+partials below.
+
+### The Proposals pages
+
+In `Harbor::ProposalsController`: **the list** (`/factory/proposals`), by status with a
+count of each; and **a proposal's page** (`/factory/proposals/7`), with the change line
+by line, what it addresses, the failed runs behind it, and **Apply** and **Dismiss**
+(`POST …/apply`, `POST …/dismiss`). "Run the check now" is `POST /factory/proposals/check`.
+
+A host adds to the pages with partials in its own `app/views/harbor/proposals/`, rendered
+where the page has a place for them, when the file exists:
+
+| Partial | Where | Locals |
+|---|---|---|
+| `_proposal_badges.html.erb` | The list, after a proposal's summary: a mark of the host's own | `proposal` |
+| `_show_actions.html.erb` | A proposal's page, between Apply and Dismiss: the host's buttons for its own kinds | `proposal` |
+| `_show_extras.html.erb` | A proposal's page, below the buttons: whole sections | `proposal` |
+| `_change.html.erb` | A proposal's page, in place of the diff, for a proposal that isn't one of Harbor's kinds: a whole section showing what it would change | `proposal` |
+
+and replaces three of Harbor's with its own of the same name:
+
+| Partial | Harbor's | Locals |
+|---|---|---|
+| `_intro.html.erb` | The sentence under the heading saying what a proposal is | |
+| `_index_actions.html.erb` | "Run the check now", when there is a drafter | |
+| `_guide.html.erb` | "How to use this page" (it renders `harbor/shared/quality_guide`) | `proposals`, `status` |
+
+A button in a partial posts to a route of the host's, which can sit at the same address:
+
+```ruby
+# config/routes.rb, above the engine's mount
+scope Harbor.path do
+  resources :proposals, only: [] do
+    member { post :publish }
+  end
+end
+```
+
+A host with more on its proposals subclasses the record and names it
+(`c.proposal_class = "Proposal"`). `proposal.applied_by_name` is meant to be overridden:
+Harbor keeps the id of the host's user who applied a proposal (`applied_by_user_id`) and
+has no user to ask for a name.
+
+The Scorers and Proposals pages, and a host's Review policy page if it has one in the
+menu, each start with the same guide to how they fit together
+(`render "harbor/shared/quality_guide", current: :scorers, steps: […]`), which lists the
+ones this site has switched on.
+
 ## Webhooks
 
 `Harbor::WebhookEvent` is the record of every inbound delivery, and the
@@ -1710,6 +1955,8 @@ What automations take (`automation_class`, `automation_params`, `automation_edit
 Automations.
 What workflows take (`workflow_class`, `workflow_run_class`, `user_class` and the
 `workflow_*` hooks) is under Workflows.
+What scoring and proposals take (`scorer_judge`, `scorer_judge_wait`, `proposal_drafter`,
+`site_name`, `scorer_class`, `proposal_class`) is under Scorers and Proposals.
 
 ### Settings
 

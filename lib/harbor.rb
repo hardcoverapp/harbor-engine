@@ -7,6 +7,7 @@ require "harbor/agent_helper"
 require "harbor/pages"
 require "harbor/settings"
 require "harbor/task_types"
+require "harbor/proposals"
 require "harbor/runtimes"
 require "harbor/automations"
 require "harbor/workflows"
@@ -90,6 +91,10 @@ module Harbor
     def workflow_class = config.workflow_class.constantize
 
     def workflow_run_class = config.workflow_run_class.constantize
+
+    def scorer_class = config.scorer_class.constantize
+
+    def proposal_class = config.proposal_class.constantize
 
     # Tell the host that where or on what work can run has changed (a runtime
     # switched on, a workspace reordered), so anything waiting can look again.

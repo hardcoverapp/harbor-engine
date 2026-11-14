@@ -14,6 +14,7 @@ Harbor::Engine.routes.draw do
       member do
         get :raw
         post :stop
+        post :score
       end
     end
 
@@ -24,6 +25,21 @@ Harbor::Engine.routes.draw do
         post :run
         patch :toggle
       end
+    end
+
+    # Scorers: judges over finished agent runs, and their verdicts. Proposals:
+    # the changes drafted from a scorer's repeated failures, applied or
+    # dismissed by a person. A run is judged by hand with a POST to
+    # runs/<id>/score.
+    resources :scorers, except: :destroy do
+      member { patch :toggle }
+    end
+    resources :proposals, only: %i[index show] do
+      member do
+        post :apply
+        post :dismiss
+      end
+      collection { post :check }
     end
 
     # Agents: the list with its task routing and shared context tabs, an

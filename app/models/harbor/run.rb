@@ -38,6 +38,14 @@ module Harbor
     # workflow on.
     after_update_commit :complete_workflow_step, if: -> { workflow_run_id && saved_change_to_status? && finished? }
 
+    # Scorers' verdicts on this run. A judge runs as a child run of the run it
+    # grades (Harbor::Scorers::EvaluateJob).
+    has_many :scorer_results, class_name: "Harbor::ScorerResult", foreign_key: :run_id, dependent: :destroy, inverse_of: :run
+
+    # A finished agent run with a transcript may be sampled by the scorers.
+    after_update_commit :sample_for_scoring,
+                        if: -> { saved_change_to_status? && scorable? && Harbor.config.scorer_judge && Harbor.scorer_class.enabled.exists? }
+
     enum :status, STATUSES.index_with(&:itself)
     enum :trigger_source, TRIGGER_SOURCES.index_with(&:itself), prefix: :trigger
 
@@ -76,9 +84,24 @@ module Harbor
     def cost_usd = cost_usd_actual || cost_usd_estimate
 
     # Child runs this run's session spawned and billed into its total, for the
-    # cost breakdown on the run's page. A host whose runs have children with a
-    # bill of their own overrides this to leave those out.
-    def delegated_runs = child_runs.to_a
+    # cost breakdown on the run's page. A scorer's judge is a child too (for
+    # the link) but a session with a bill of its own, so it is left out. A
+    # host whose runs have other children with their own bill overrides this
+    # to leave those out as well.
+    def delegated_runs = child_runs.reject { |child| child.skill == Harbor::Scorer::JUDGE_SKILL }
+
+    # The judges that graded this run.
+    def judge_runs = child_runs.select { |child| child.skill == Harbor::Scorer::JUDGE_SKILL }
+
+    # Something a scorer can judge: a top-level agent run that ran to a result
+    # and left a transcript. Judge runs themselves are never scored.
+    def scorable?
+      %w[ok error timeout].include?(status) && parent_run_id.nil? && agent_key.present? &&
+        skill != Harbor::Scorer::JUDGE_SKILL && raw_log_path.present?
+    end
+
+    # A verdict is on its way: the run's page keeps refreshing.
+    def awaiting_verdict? = scorer_results.any? { |r| r.queued? && r.updated_at > Harbor::ScorerResult.stale_claim_after.ago }
 
     # What this run cost without its delegated runs: its total is the whole
     # session's, so its own share is the total less the children's estimates.
@@ -153,5 +176,7 @@ module Harbor
 
     private
       def complete_workflow_step = Harbor::Workflows::StepCompletion.from_run(self)
+
+      def sample_for_scoring = Harbor::Scorers::SampleJob.perform_later(id)
   end
 end

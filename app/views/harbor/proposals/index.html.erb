@@ -1,0 +1,56 @@
+<% content_for :title, "Proposals" %>
+
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-8 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="display text-3xl">Proposals</h1>
+    <p class="text-sm text-soft mt-1.5 max-w-2xl">
+      <%= render "harbor/proposals/intro" %>
+    </p>
+  </div>
+  <%= render "harbor/proposals/index_actions" %>
+</header>
+
+<%= render "harbor/proposals/guide", proposals: @proposals, status: @status %>
+
+<div class="flex flex-wrap gap-2 mb-6">
+  <% Harbor::Proposal::STATUSES.each do |status| %>
+    <%= link_to "#{status.humanize} #{@counts[status].to_i}", proposals_path(status:),
+          class: "pill !px-3.5 !py-1.5 text-sm " + (status == @status ? "bg-ink text-surface" : "bg-surface text-soft border border-hairline hover:text-ink") %>
+  <% end %>
+</div>
+
+<div class="lg:overflow-x-auto" data-reveal>
+  <table role="table" class="block lg:table lg:table-fixed w-full text-sm lg:min-w-[52rem] lg:bg-surface lg:border border-hairline lg:rounded-xl">
+    <thead class="hidden lg:table-header-group text-left">
+      <tr class="border-b border-hairline">
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium w-[44%]">Proposal</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Target</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Scorer</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Evidence</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">When</th>
+      </tr>
+    </thead>
+    <tbody class="grid gap-4 lg:table-row-group lg:divide-y lg:divide-hairline">
+      <% if @proposals.empty? %>
+        <tr><td colspan="5" class="px-5 py-4 text-faint">No <%= @status %> proposals.</td></tr>
+      <% end %>
+      <% badges = harbor_proposals_partial?("proposal_badges") %>
+      <% @proposals.each do |p| %>
+        <tr id="proposal-<%= p.id %>" class="grid gap-3 p-5 border border-hairline rounded-xl bg-surface lg:table-row lg:p-0 lg:border-0 lg:rounded-none">
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top">
+            <%= link_to p.summary.to_s.truncate(140), proposal_path(p), class: "font-medium text-ink hover:underline" %>
+            <%# A host's own marks on a proposal of a kind that is its own. %>
+            <% if badges %><%= render "harbor/proposals/proposal_badges", proposal: p %><% end %>
+          </td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top text-body"><span class="block lg:hidden meta mb-1">Target</span><%= p.target_label %></td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top"><span class="block lg:hidden meta mb-1">Scorer</span>
+            <% if p.scorer %><%= link_to p.scorer.name, scorer_path(p.scorer), class: "text-body hover:underline" %><% else %><span class="meta">—</span><% end %></td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top text-body"><span class="block lg:hidden meta mb-1">Evidence</span><%= Array(p.evidence["run_ids"]).size %> runs</td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top meta"><span class="block lg:hidden mb-1">When</span><%= time_ago_in_words(p.created_at) %> ago</td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

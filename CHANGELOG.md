@@ -1,5 +1,82 @@
 # Changelog
 
+## 0.24.0
+
+- **The Scorers pages are Harbor's**: the list (`/factory/scorers`), a scorer's page with
+  its pass rate by week and its last fifty verdicts, and the form that creates and edits
+  one, in `Harbor::ScorersController`. The records are `Harbor::Scorer` and
+  `Harbor::ScorerResult`, on the tables `scorers` and `scorer_results`.
+- **The Proposals pages are Harbor's**: the list by status (`/factory/proposals`), a
+  proposal's page with the change line by line and the failed runs behind it, Apply and
+  Dismiss, in `Harbor::ProposalsController`. The record is `Harbor::Proposal`, on the
+  table `improvement_proposals`. Harbor applies a proposal to an agent's system prompt or
+  to one of its documents.
+- **A run's page shows its scores**, between its details and its log, with "Score now"
+  (`POST /factory/runs/:id/score`); the page refreshes itself while a verdict is pending.
+- **The menu's Scorers and Proposals entries are Harbor's own routes.** A site with no
+  code of its own gets the pages, the records and the jobs.
+- **Jobs**: `Harbor::Scorers::SampleJob` (a finished agent run is offered to the scorers
+  that apply, at their sample rate), `Harbor::Scorers::EvaluateJob` (one scorer judges one
+  run, as a child run of it) and `Harbor::Proposals::CheckJob` (a scorer's unreviewed
+  failures, by agent, are handed over to be drafted from).
+- **Harbor does not run the judge or the drafter.** `config.scorer_judge` is called with a
+  `Harbor::Scorers::Judgement` and returns the model's final text; `config.proposal_drafter`
+  is called with a batch of failures and starts the run that reads them, whose answer goes
+  to `Harbor::Proposals::Recorder`. Without them the pages work and nothing is judged or
+  drafted: no run is sampled, and a judgement or a check started by hand ends as an error
+  naming the setting. See README "Scorers" and "Proposals".
+- **`config.scorer_judge_wait`**: how long a pending judgement holds its claim (11
+  minutes). **`config.site_name`**: the site's name in the judge's prompt.
+- **`config.scorer_class`** and **`config.proposal_class`** (`Harbor.scorer_class`,
+  `Harbor.proposal_class`): a host's subclasses. `Scorer.task_types` and `Scorer.draft`
+  decide what the form offers and starts with; `proposal.applied_by_name` names who
+  applied one.
+- **`Harbor::Proposals.register_target`**: a host's own kind of proposal, with what it is
+  called and how a drafting run's entry becomes one.
+- **Places for a host on the pages**, as partials in its `app/views/harbor/proposals/`:
+  `_proposal_badges`, `_show_actions`, `_show_extras` and `_change` (added when they
+  exist), and `_intro`, `_index_actions` and `_guide` (replacing Harbor's); and in
+  `app/views/harbor/scorers/`, `_self_improvement_note` (replacing Harbor's).
+- `Harbor::Run`: `scorer_results`, `scorable?`, `awaiting_verdict?` and `judge_runs`;
+  `delegated_runs` leaves out a scorer's judge; a scorable run that finishes is sampled.
+- `Harbor::ModelAlias#scorers`: an alias a scorer judges with can't be deleted.
+- `harbor/shared/quality_guide` and `harbor/shared/bar_series`, partials a host's own
+  pages can render, and the bar chart's hover bubble in Harbor's stylesheet.
+- A migration creates `scorers`, `scorer_results` and `improvement_proposals` where they
+  don't exist.
+
+Upgrading from 0.23:
+
+- **Run the migration.** In a host that already has the three tables it changes nothing.
+- **Delete the host's `/scorers` and `/proposals` routes, controllers and views, and its
+  route for scoring a run.** A host route at the same address is matched first and hides
+  Harbor's page.
+- `scorers_path`, `scorer_path(scorer)`, `new_scorer_path`, `edit_scorer_path(scorer)`,
+  `toggle_scorer_path(scorer)`, `proposals_path`, `proposal_path(proposal)`,
+  `apply_proposal_path(proposal)`, `dismiss_proposal_path(proposal)` and
+  `score_run_path(run)` are the engine's helpers: `harbor.scorer_path(scorer)` from a host
+  view. A host with many calls, or other names for them, keeps its names with `direct` in
+  its routes. The menu entry for Proposals is `proposals_path`, not
+  `improvement_proposals_path`.
+- A host's models become subclasses of Harbor's, named in config
+  (`c.scorer_class = "Scorer"`, `c.proposal_class = "ImprovementProposal"`), or the
+  constant itself (`ScorerResult = Harbor::ScorerResult`). A host's `Run` and `ModelAlias`
+  drop their own `scorer_results`, `scorers`, `scorable?`, `awaiting_verdict?`,
+  `judge_runs`, the judge exclusion in `delegated_runs` and the sampling callback.
+- **Set `c.scorer_judge`**, or nothing is sampled or judged. A host that judged in a job
+  of its own moves what ran the model into the hook, and lets Harbor's job make the judge
+  run and the result and record the verdict. Set `c.scorer_judge_wait` to what the claim's
+  stale window was.
+- **Set `c.proposal_drafter`** to what the host's check queued for each batch, and have
+  that run hand its answer to `Harbor::Proposals::Recorder.call`.
+- A proposal kind beyond `agent_prompt` and `agent_document` is registered
+  (`Harbor::Proposals.register_target`) or the record is invalid. What the host's pages
+  showed for it moves into the partials above.
+- A host test that looked for `[data-controller=poll]` on a run awaiting a verdict looks
+  for `[data-controller='harbor--poll']`.
+- A host whose runs page showed scores through `harbor/runs/_show_extras` removes them
+  from it: Harbor shows them itself, just above that partial.
+
 ## 0.23.0
 
 - **Workflows are Harbor's**: the five records (`Harbor::Workflow`, `WorkflowVersion`,

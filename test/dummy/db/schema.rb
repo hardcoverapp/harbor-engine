@@ -105,6 +105,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_160000) do
     t.index ["key"], name: "index_harbor_settings_on_key", unique: true
   end
 
+  create_table "improvement_proposals", force: :cascade do |t|
+    t.bigint "scorer_id"
+    t.string "agent_key", null: false
+    t.bigint "run_id"
+    t.string "target_kind", null: false
+    t.string "document_path"
+    t.string "status", default: "proposed", null: false
+    t.text "summary", null: false
+    t.text "before"
+    t.text "after"
+    t.text "regressions_addressed"
+    t.jsonb "evidence", default: {}, null: false
+    t.bigint "pr_run_id"
+    t.string "pr_url"
+    t.bigint "applied_by_user_id"
+    t.datetime "applied_at"
+    t.datetime "dismissed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["agent_key"], name: "index_improvement_proposals_on_agent_key"
+    t.index ["applied_by_user_id"], name: "index_improvement_proposals_on_applied_by_user_id"
+    t.index ["pr_run_id"], name: "index_improvement_proposals_on_pr_run_id"
+    t.index ["run_id"], name: "index_improvement_proposals_on_run_id"
+    t.index ["scorer_id"], name: "index_improvement_proposals_on_scorer_id"
+    t.index ["status"], name: "index_improvement_proposals_on_status"
+  end
+
   create_table "model_aliases", force: :cascade do |t|
     t.string "name", null: false
     t.text "description"
@@ -231,6 +258,51 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_160000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["key"], name: "index_runtimes_on_key", unique: true
+  end
+
+  create_table "scorer_results", force: :cascade do |t|
+    t.bigint "scorer_id", null: false
+    t.bigint "run_id", null: false
+    t.bigint "judge_run_id"
+    t.string "status", default: "queued", null: false
+    t.string "classification"
+    t.decimal "score", precision: 4, scale: 3
+    t.boolean "passed"
+    t.text "reasoning"
+    t.text "error"
+    t.datetime "scored_at"
+    t.bigint "proposal_id"
+    t.datetime "reviewed_at"
+    t.datetime "claimed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["judge_run_id"], name: "index_scorer_results_on_judge_run_id"
+    t.index ["proposal_id"], name: "index_scorer_results_on_proposal_id"
+    t.index ["run_id"], name: "index_scorer_results_on_run_id"
+    t.index ["scorer_id", "run_id"], name: "index_scorer_results_on_scorer_id_and_run_id", unique: true
+    t.index ["scorer_id", "scored_at"], name: "index_scorer_results_on_scorer_id_and_scored_at"
+    t.index ["scorer_id"], name: "index_scorer_results_on_scorer_id"
+  end
+
+  create_table "scorers", force: :cascade do |t|
+    t.string "name", null: false
+    t.text "description"
+    t.text "judge_instructions", null: false
+    t.bigint "model_alias_id", null: false
+    t.jsonb "classifications", default: [], null: false
+    t.decimal "pass_threshold", precision: 4, scale: 3, default: "0.7", null: false
+    t.integer "sample_rate", default: 25, null: false
+    t.jsonb "agent_keys", default: [], null: false
+    t.jsonb "task_types", default: [], null: false
+    t.boolean "enabled", default: true, null: false
+    t.integer "position", default: 0, null: false
+    t.boolean "self_improvement", default: false, null: false
+    t.integer "improvement_min_failures", default: 25, null: false
+    t.integer "improvement_max_age_days", default: 7, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["model_alias_id"], name: "index_scorers_on_model_alias_id"
+    t.index ["name"], name: "index_scorers_on_name", unique: true
   end
 
   create_table "task_assignments", force: :cascade do |t|
@@ -378,12 +450,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_160000) do
   add_foreign_key "agents", "model_aliases"
   add_foreign_key "agents", "workspace_profiles"
   add_foreign_key "database_backups", "runs"
+  add_foreign_key "improvement_proposals", "runs"
+  add_foreign_key "improvement_proposals", "runs", column: "pr_run_id", on_delete: :nullify
+  add_foreign_key "improvement_proposals", "scorers", on_delete: :nullify
   add_foreign_key "model_choices", "model_aliases"
   add_foreign_key "model_choices", "model_providers"
   add_foreign_key "run_events", "runs"
   add_foreign_key "runs", "automations", on_delete: :nullify
   add_foreign_key "runs", "runtimes"
   add_foreign_key "runs", "workflow_runs"
+  add_foreign_key "scorer_results", "improvement_proposals", column: "proposal_id", on_delete: :nullify
+  add_foreign_key "scorer_results", "runs"
+  add_foreign_key "scorer_results", "runs", column: "judge_run_id", on_delete: :nullify
+  add_foreign_key "scorer_results", "scorers"
+  add_foreign_key "scorers", "model_aliases"
   add_foreign_key "webhook_events", "runs"
   add_foreign_key "workflow_runs", "webhook_events"
   add_foreign_key "workflow_runs", "workflow_runs", column: "parent_workflow_run_id"

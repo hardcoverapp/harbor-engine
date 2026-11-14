@@ -1,0 +1,8 @@
+<%# How to use the page. A host that runs the check on a schedule of its own
+    replaces this partial to say when. locals: proposals, status %>
+<%= render "harbor/shared/quality_guide", current: :proposals, open: proposals.empty? && status == "proposed", steps: [
+      safe_join([ "Nothing appears here until a ", link_to("scorer", scorers_path, class: "underline"), " has “Self-improvement” ticked and has failed runs to learn from." ]),
+      "A check drafts a proposal for any agent that has collected enough failures (25, or any older than a week, unless the scorer says otherwise). “Run the check now” drafts from whatever failures exist today.",
+      "Open a proposal to see the exact change and the failed runs it came from. Apply it to update the agent's instructions for its next run, or dismiss it if the scorer was wrong.",
+      "Afterwards, the scorer's pass rate shows whether the change helped."
+    ] %>

@@ -1,0 +1,90 @@
+<%= form_with model: @scorer, scope: :scorer, url: (@scorer.persisted? ? scorer_path(@scorer) : scorers_path), class: "max-w-4xl space-y-8" do |form| %>
+  <% if @scorer.errors.any? %>
+    <div role="alert" class="bg-pale-red text-ink-red rounded-lg p-4 text-sm"><%= @scorer.errors.full_messages.join(". ") %></div>
+  <% end %>
+
+  <div class="grid sm:grid-cols-2 gap-6">
+    <div class="sm:col-span-2"><%= form.label :name, class: "block text-sm mb-2" %><%= form.text_field :name, required: true, class: "field w-full", placeholder: "Ran the tests before opening a PR" %></div>
+    <div class="sm:col-span-2"><%= form.label :description, class: "block text-sm mb-2" %><%= form.text_area :description, rows: 2, class: "field w-full" %></div>
+    <div>
+      <%= form.label :model_alias_id, "Judge model alias", class: "block text-sm mb-2" %>
+      <%= form.collection_select :model_alias_id, Harbor.model_alias_class.order(:name), :id, :name, { prompt: "Choose an alias" }, required: true, class: "field w-full" %>
+      <p class="meta mt-1">A cheap alias; every judgement is a run with its own cost. <%= link_to "Manage aliases", models_path, class: "underline" %>.</p>
+    </div>
+    <div>
+      <%= form.label :sample_rate, "Sample rate (%)", class: "block text-sm mb-2" %>
+      <%= form.number_field :sample_rate, min: 0, max: 100, class: "field w-full" %>
+      <p class="meta mt-1">Share of finished runs judged automatically. 0 = only by hand.</p>
+    </div>
+  </div>
+
+  <fieldset class="space-y-4">
+    <legend class="display text-xl mb-1">Which runs</legend>
+    <p class="text-sm text-soft">Leave both empty to judge every agent run.</p>
+    <div class="grid sm:grid-cols-2 gap-6">
+      <div>
+        <span class="block text-sm mb-2">Agents</span>
+        <div class="grid grid-cols-2 gap-1 text-sm">
+          <% Harbor.agent_class.order(:key).each do |agent| %>
+            <label class="flex items-center gap-2"><%= check_box_tag "scorer[agent_keys][]", agent.key, @scorer.agent_keys.include?(agent.key), id: "scorer_agent_#{agent.key}" %> <%= agent.key %></label>
+          <% end %>
+        </div>
+      </div>
+      <div>
+        <span class="block text-sm mb-2">Task types</span>
+        <div class="grid grid-cols-2 gap-1 text-sm">
+          <% Harbor.scorer_class.task_types.each do |t| %>
+            <label class="flex items-center gap-2"><%= check_box_tag "scorer[task_types][]", t, @scorer.task_types.include?(t), id: "scorer_task_#{t}" %> <code class="chip"><%= t %></code></label>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="space-y-4">
+    <legend class="display text-xl mb-1">The judgement</legend>
+    <div>
+      <%= form.label :judge_instructions, "Judge instructions", class: "block text-sm mb-2" %>
+      <%= form.text_area :judge_instructions, rows: 8, required: true, class: "field w-full font-mono text-sm",
+            placeholder: "What to look for in the transcript, and what earns each label." %>
+      <p class="meta mt-1">The judge reads the run's full stream-json transcript (read-only) and answers with one label and its reasoning.</p>
+    </div>
+    <div class="grid sm:grid-cols-2 gap-6">
+      <div>
+        <%= label_tag "scorer_classifications_text", "Classifications (label=score, one per line)", class: "block text-sm mb-2" %>
+        <%= text_area_tag "scorer[classifications_text]", params.dig(:scorer, :classifications_text) || @scorer.classifications_text, rows: 4, class: "field w-full font-mono text-sm", id: "scorer_classifications_text" %>
+        <p class="meta mt-1">Scores run from 0 to 1.</p>
+      </div>
+      <div>
+        <%= form.label :pass_threshold, "Pass threshold", class: "block text-sm mb-2" %>
+        <%= form.number_field :pass_threshold, min: 0, max: 1, step: 0.05, class: "field w-full max-w-xs" %>
+        <p class="meta mt-1">A run passes when its label's score reaches this.</p>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="space-y-4">
+    <legend class="display text-xl mb-1">Self-improvement</legend>
+    <label class="flex gap-2 items-start text-sm"><%= form.check_box :self_improvement %>
+      <%= render "harbor/scorers/self_improvement_note" %></label>
+    <div class="grid sm:grid-cols-2 gap-6">
+      <div>
+        <%= form.label :improvement_min_failures, "Propose after this many unreviewed failures", class: "block text-sm mb-2" %>
+        <%= form.number_field :improvement_min_failures, min: 1, max: 50, class: "field w-full max-w-xs" %>
+      </div>
+      <div>
+        <%= form.label :improvement_max_age_days, "…or when the oldest failure is this many days old", class: "block text-sm mb-2" %>
+        <%= form.number_field :improvement_max_age_days, min: 1, max: 90, class: "field w-full max-w-xs" %>
+      </div>
+    </div>
+  </fieldset>
+
+  <div class="flex flex-wrap gap-6 text-sm">
+    <label class="flex gap-2"><%= form.check_box :enabled %> Enabled</label>
+  </div>
+
+  <div class="flex gap-4 items-center">
+    <%= form.submit "Save scorer", class: "btn-primary cursor-pointer" %>
+    <%= link_to "Cancel", scorers_path, class: "text-sm text-soft" %>
+  </div>
+<% end %>

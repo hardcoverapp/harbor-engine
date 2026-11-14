@@ -1,0 +1,7 @@
+<% content_for :title, "#{@scorer.name} · Scorers" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="mb-8">
+  <h1 class="display text-3xl"><%= @scorer.name %></h1>
+  <p class="text-sm text-soft mt-1.5">Changes apply to runs judged from now on; earlier verdicts keep their scores.</p>
+</header>
+<%= render "harbor/scorers/form" %>

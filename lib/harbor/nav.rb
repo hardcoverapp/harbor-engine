@@ -45,8 +45,8 @@ module Harbor
       [ "Workspaces",    :workspace_profiles_path,    { key: :workspaces,  group: :infrastructure, scope: :harbor } ],
       [ "Databases",     :databases_path,             { key: :database,    group: :infrastructure, scope: :harbor } ],
       [ "Review policy", :reviews_path,               { key: :reviews,     group: :quality } ],
-      [ "Scorers",       :scorers_path,               { key: :scorers,     group: :quality } ],
-      [ "Proposals",     :improvement_proposals_path, { key: :proposals,   group: :quality } ],
+      [ "Scorers",       :scorers_path,               { key: :scorers,     group: :quality, scope: :harbor } ],
+      [ "Proposals",     :proposals_path,             { key: :proposals,   group: :quality, scope: :harbor } ],
       # No key: the page the switches are on can't be switched off.
       [ "Settings",      :settings_path,              { scope: :harbor,    group: :settings, icon: :settings } ]
     ].freeze

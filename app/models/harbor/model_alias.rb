@@ -8,6 +8,10 @@ module Harbor
 
     class Unavailable < StandardError; end
 
+    # An alias a scorer judges with can't be deleted from under it. Declared
+    # before the choices, so a refused delete has touched nothing.
+    has_many :scorers, class_name: Harbor.class_name_for(:scorer_class), foreign_key: :model_alias_id,
+             dependent: :restrict_with_error, inverse_of: :model_alias
     has_many :model_choices, -> { order(:position, :id) }, class_name: "Harbor::ModelChoice",
              foreign_key: :model_alias_id, dependent: :destroy, inverse_of: :model_alias
     accepts_nested_attributes_for :model_choices, allow_destroy: true, reject_if: :all_blank

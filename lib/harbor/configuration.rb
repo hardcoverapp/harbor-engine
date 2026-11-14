@@ -262,8 +262,44 @@ module Harbor
     # or nil. nil: the page says nothing is scheduled.
     attr_accessor :database_schedule
 
+    # --- Scorers and proposals (see README "Scorers" and "Proposals") ---
+
+    # The classes Harbor finds scorers and proposals with, by name: Harbor's
+    # own or a host's subclasses of them.
+    attr_accessor :scorer_class, :proposal_class
+
+    # The judge: called with a Harbor::Scorers::Judgement when a run is to be
+    # scored. It runs a model over the run's transcript with the judgement's
+    # prompt and returns the model's final text, which Harbor reads the
+    # verdict from. It may instead call `judgement.answer!(text)` or
+    # `judgement.fail!(message)` itself, then or later, and return nothing;
+    # raising Harbor::Scorers::Judgement::Busy has it tried again in a while.
+    # nil: there is no judge, and a judgement ends as an error that says so.
+    attr_accessor :scorer_judge
+
+    # How long a judgement may be pending before the same scorer and run can
+    # be claimed by another: longer than the judge ever takes. A duration, or
+    # a callable returning one.
+    attr_accessor :scorer_judge_wait
+
+    # The drafter: called with (scorer:, agent_key:, result_ids:, check_run:)
+    # when a check finds a batch of one scorer's failures on one agent worth
+    # a proposal. It starts the run that reads them, whose answer goes to
+    # Harbor::Proposals::Recorder. nil: the check ends as an error that says so.
+    attr_accessor :proposal_drafter
+
+    # What this site is called where an agent is told whose work it is
+    # judging ("Acme Factory"). nil: it isn't named.
+    attr_accessor :site_name
+
     def initialize
       @nav = Nav.new
+      @scorer_class = "Harbor::Scorer"
+      @proposal_class = "Harbor::Proposal"
+      @scorer_judge = nil
+      @scorer_judge_wait = 11.minutes
+      @proposal_drafter = nil
+      @site_name = nil
       @parent_controller = "ApplicationController"
       @user_label = ->(user) { user.try(:name).presence || user.try(:email) }
       @env_fallbacks = {}

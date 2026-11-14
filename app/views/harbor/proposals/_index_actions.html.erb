@@ -1,0 +1,6 @@
+<%# The button beside the page's heading: run the check now, when the site
+    has a drafter for it to hand failures to. A host that starts the check
+    its own way (from a schedule's page, say) replaces this partial. %>
+<% if Harbor.config.proposal_drafter %>
+  <%= button_to "Run the check now", check_proposals_path, method: :post, class: "btn-primary" %>
+<% end %>
