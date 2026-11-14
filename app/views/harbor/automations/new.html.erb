@@ -1,0 +1,9 @@
+<% content_for :title, "New automation" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="mb-8">
+  <h1 class="display text-3xl">New automation</h1>
+  <p class="text-sm text-soft mt-1.5 max-w-2xl">
+    An agent, its instructions, where it runs, and what starts it. Saved automations run without a deploy.
+  </p>
+</header>
+<%= render "harbor/automations/form" %>

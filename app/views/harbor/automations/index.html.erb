@@ -1,0 +1,26 @@
+<% content_for :title, "Automations" %>
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-10 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="display text-3xl">Automations</h1>
+    <p class="text-sm text-soft mt-1.5 max-w-2xl">
+      Everything this site does on its own — scheduled jobs and the agent automations
+      made here. Each firing is a tracked Run with a live log. Schedules are local time<%= " (#{harbor_schedule_zone})" if harbor_schedule_zone %>.
+    </p>
+  </div>
+  <%= link_to "New automation", new_automation_path, class: "btn-primary" %>
+</header>
+
+<%# Under the categories the host declared, in that order; one list when it
+    declared none. %>
+<% categories = Harbor::Automations.categories %>
+<% sections = categories.any? ? categories.filter_map { |category| (rows = @groups[category.key]) && [ category.label, rows ] } : [ [ nil, @automations ] ] %>
+<% if @automations.empty? %>
+  <p class="text-soft text-sm">No automations yet.</p>
+<% else %>
+  <% sections.each_with_index do |(label, rows), index| %>
+    <% if label %><h2 class="display text-xl mb-3 <%= "mt-12" unless index.zero? %>"><%= label %></h2><% end %>
+    <%= render "harbor/automations/table", rows: rows %>
+  <% end %>
+<% end %>

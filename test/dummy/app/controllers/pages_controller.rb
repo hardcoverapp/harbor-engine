@@ -1,6 +1,6 @@
 class PagesController < ApplicationController
   include Harbor::PageGate
-  harbor_page :automations, only: :placeholder
+  harbor_page :workflows, only: :placeholder
   harbor_page :reports, only: :reports
 
   def home = render(html: "Home", layout: true)

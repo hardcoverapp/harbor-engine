@@ -53,6 +53,32 @@ module Harbor
     # nothing happens.
     attr_accessor :agent_edited
 
+    # --- Automations (see README "Automations") ---
+
+    # The class Harbor finds automations with, by name: Harbor's own or a
+    # host's subclass of it.
+    attr_accessor :automation_class
+
+    # Called when an agent automation fires, with the automation and
+    # `trigger_source:`, `triggered_by_user:`, `trigger_ref:`,
+    # `webhook_event:`, `context:` and `idempotency_key:`; makes the run,
+    # queued, starts the work behind it and returns the run, or nil when this
+    # firing already has one. nil: Harbor runs the automation as an agent
+    # session (Harbor::Automations::AgentRunJob).
+    attr_accessor :automation_agent_run
+
+    # Attributes of the host's automation class that the form may save for an
+    # agent automation, beyond Harbor's own: the fields of the host's
+    # `harbor/automations/_agent_fields` and `_trigger_fields` partials.
+    attr_accessor :automation_params
+
+    # Called with (automation, current user, the form's values) when someone
+    # saves an automation from its form, after the form's values are assigned
+    # and before the automation is checked and saved: where a host reads the
+    # fields of its own that aren't plain attributes. The values are the
+    # request's `params[:automation]`, unfiltered. nil: nothing happens.
+    attr_accessor :automation_edited
+
     # The classes Harbor finds runtimes and workspaces with, by name.
     attr_accessor :runtime_class, :workspace_profile_class
 
@@ -195,6 +221,10 @@ module Harbor
       @task_assignment_class = "Harbor::TaskAssignment"
       @agent_params = []
       @agent_edited = nil
+      @automation_class = "Harbor::Automation"
+      @automation_agent_run = nil
+      @automation_params = []
+      @automation_edited = nil
       @runtime_class = "Harbor::Runtime"
       @workspace_profile_class = "Harbor::WorkspaceProfile"
       @redis = lambda do |&block|

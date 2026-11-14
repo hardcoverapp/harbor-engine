@@ -28,24 +28,24 @@ class HarborPagesTest < ActionDispatch::IntegrationTest
   end
 
   test "a page switched off leaves the menu and is not found; switched on, it is back" do
-    get "/automations"
+    get "/workflows"
     assert_response :success
-    assert_includes menu, "Automations"
+    assert_includes menu, "Workflows"
 
-    patch harbor.setting_path("page_automations"), params: { value: "false" }
-    assert_not Harbor::Pages.enabled?(:automations)
+    patch harbor.setting_path("page_workflows"), params: { value: "false" }
+    assert_not Harbor::Pages.enabled?(:workflows)
 
-    get "/automations"
+    get "/workflows"
     assert_response :not_found
     get "/reports"
     assert_response :success
-    assert_not_includes menu, "Automations"
+    assert_not_includes menu, "Workflows"
     assert_includes menu, "Reports"
 
-    patch harbor.setting_path("page_automations"), params: { value: "true" }
-    get "/automations"
+    patch harbor.setting_path("page_workflows"), params: { value: "true" }
+    get "/workflows"
     assert_response :success
-    assert_includes menu, "Automations"
+    assert_includes menu, "Workflows"
   end
 
   test "a page the host added with a key is switched off the same way" do
@@ -57,15 +57,15 @@ class HarborPagesTest < ActionDispatch::IntegrationTest
   end
 
   test "reset puts a page back on" do
-    Harbor::Setting.set!(:page_automations, "false")
-    delete harbor.setting_path("page_automations")
-    assert Harbor::Pages.enabled?(:automations)
+    Harbor::Setting.set!(:page_workflows, "false")
+    delete harbor.setting_path("page_workflows")
+    assert Harbor::Pages.enabled?(:workflows)
   end
 
   test "someone logged out is sent to log in, whether or not the page is on" do
-    Harbor::Setting.set!(:page_automations, "false")
+    Harbor::Setting.set!(:page_workflows, "false")
     delete "/logout"
-    get "/automations"
+    get "/workflows"
     assert_redirected_to "/login"
   end
 

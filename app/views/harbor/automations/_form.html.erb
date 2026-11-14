@@ -1,0 +1,106 @@
+<%# The form for one automation. A host's own fields go in the agent_fields
+    and trigger_fields partials (config.automation_params and
+    config.automation_edited let them save), and its own words under a field
+    in the hint partial. %>
+<% categories = Harbor::Automations.categories %>
+<% folders = Harbor::Automations.working_folders %>
+<% identities = Harbor::Automations.identities %>
+<%= form_with model: @automation, scope: :automation, url: (@automation.persisted? ? automation_path(@automation) : automations_path), class: "max-w-4xl space-y-8" do |form| %>
+  <% if @automation.errors.any? %>
+    <div role="alert" class="bg-pale-red text-ink-red rounded-lg p-4 text-sm"><%= @automation.errors.full_messages.join(". ") %></div>
+  <% end %>
+
+  <div class="grid sm:grid-cols-2 gap-6">
+    <div><%= form.label :name, class: "block text-sm mb-2" %><%= form.text_field :name, required: true, class: "field w-full" %></div>
+    <% if @automation.agent? %>
+      <div>
+        <%= form.label :key, "Key", class: "block text-sm mb-2" %>
+        <%= form.text_field :key, readonly: @automation.persisted?, placeholder: "stale-pr-nudge", class: "field w-full font-mono" %>
+        <p class="meta mt-1">Lowercase, dashes. Names the Run's log folder; fixed once saved.</p>
+      </div>
+    <% else %>
+      <div><span class="block text-sm mb-2">Key</span><code class="chip"><%= @automation.key %></code></div>
+    <% end %>
+    <div class="sm:col-span-2"><%= form.label :description, class: "block text-sm mb-2" %><%= form.text_area :description, rows: 2, class: "field w-full" %></div>
+    <% if categories.any? %>
+      <div><%= form.label :category, class: "block text-sm mb-2" %><%= form.select :category, categories.map { |c| [ c.label, c.key ] }, {}, class: "field w-full" %></div>
+    <% end %>
+  </div>
+
+  <% if @automation.agent? %>
+    <fieldset class="space-y-6">
+      <legend class="display text-xl mb-1">What runs</legend>
+      <div class="grid sm:grid-cols-2 gap-6">
+        <div>
+          <%= form.label :agent_key, "Agent", class: "block text-sm mb-2" %>
+          <%= form.collection_select :agent_key, Harbor.automation_class.offered_agents, :key, :key, { prompt: "Choose an agent" }, required: true, class: "field w-full" %>
+          <p class="meta mt-1"><%= harbor_automation_hint(:agent, @automation) do %><%= link_to "Manage agents", agents_path, class: "underline" %>.<% end %></p>
+        </div>
+        <% if folders.any? %>
+          <div>
+            <%= form.label :cwd_key, Harbor::Automations.label(:cwd_key), class: "block text-sm mb-2" %>
+            <%= form.select :cwd_key, folders.map { |f| [ f.label, f.key ] }, {}, class: "field w-full" %>
+          </div>
+        <% end %>
+        <% if identities.any? %>
+          <div>
+            <%= form.label :run_as, Harbor::Automations.label(:run_as), class: "block text-sm mb-2" %>
+            <%= form.select :run_as, identities.map { |i| [ i.label, i.key ] }, {}, class: "field w-full" %>
+          </div>
+        <% end %>
+        <div>
+          <%= form.label :timeout_ms, "Timeout (ms)", class: "block text-sm mb-2" %>
+          <%= form.number_field :timeout_ms, min: 60_000, step: 60_000, class: "field w-full" %>
+          <p class="meta mt-1">900000 = 15 minutes.</p>
+        </div>
+      </div>
+      <div>
+        <%= form.label :prompt, "Instructions", class: "block text-sm mb-2" %>
+        <%= form.text_area :prompt, rows: 8, class: "field w-full font-mono text-sm", placeholder: "What the agent should do each time this fires…" %>
+        <p class="meta mt-1">
+          <%= harbor_automation_hint(:prompt, @automation) do %>
+            <code class="chip">{{name}}</code> is replaced by what started the run, when it gave a value by that name.
+            The agent's own system prompt and the unattended-run preamble are added automatically.
+          <% end %>
+        </p>
+      </div>
+      <div>
+        <%= form.label :slash_command, "…or a slash command", class: "block text-sm mb-2" %>
+        <%= form.text_field :slash_command, placeholder: "review-audit 2026-10-01T00:00:00Z", class: "field w-full font-mono text-sm" %>
+        <p class="meta mt-1"><%= harbor_automation_hint(:slash_command, @automation) do %>A command in the repository's <code class="chip">.claude/commands/</code><% if (ref = Harbor::Setting.get(:automation_command_ref).presence) %>, read from <code class="chip"><%= ref %></code><% end %>. Give instructions or a command, not both.<% end %></p>
+      </div>
+      <% if harbor_automations_partial?("agent_fields") %><%= render "harbor/automations/agent_fields", form: form, automation: @automation %><% end %>
+    </fieldset>
+  <% end %>
+
+  <fieldset class="space-y-5">
+    <legend class="display text-xl mb-1">What starts it</legend>
+    <div class="flex flex-wrap gap-5 text-sm">
+      <label class="flex gap-2"><%= form.radio_button :trigger_kind, "schedule" %> On a schedule</label>
+      <% harbor_automation_triggers(@automation).each do |trigger| %>
+        <label class="flex gap-2"><%= form.radio_button :trigger_kind, trigger.key %> <%= trigger.label %></label>
+      <% end %>
+      <label class="flex gap-2"><%= form.radio_button :trigger_kind, "manual" %> Only by hand</label>
+    </div>
+    <div>
+      <%= form.label :cron, [ "Cron (local time", harbor_schedule_zone ].compact.join(", ") + ")", class: "block text-sm mb-2" %>
+      <%= form.text_field :cron, placeholder: "0 8 * * *", class: "field w-full max-w-xs font-mono" %>
+      <p class="meta mt-1">
+        <%= Harbor.automation_class.describe_cron(@automation.cron) if @automation.cron.present? %>
+        <% if @automation.next_run_at %>· next in <%= distance_of_time_in_words(Time.current, @automation.next_run_at) %><% end %>
+        Applies when "On a schedule" is chosen.
+      </p>
+    </div>
+    <% if harbor_automations_partial?("trigger_fields") %><%= render "harbor/automations/trigger_fields", form: form, automation: @automation %><% end %>
+  </fieldset>
+
+  <div class="flex flex-wrap gap-6 text-sm">
+    <label class="flex gap-2"><%= form.check_box :enabled %> Enabled</label>
+    <label class="flex gap-2"><%= form.check_box :allow_concurrent %> Allow a new run while one is still going</label>
+  </div>
+
+  <div class="flex gap-4 items-center">
+    <%= form.submit "Save automation", class: "btn-primary cursor-pointer" %>
+    <%= link_to "Cancel", automations_path, class: "text-sm text-soft" %>
+  </div>
+<% end %>

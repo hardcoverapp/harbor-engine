@@ -28,6 +28,9 @@ module Harbor
     has_many :child_runs, class_name: Harbor.class_name_for(:run_class), foreign_key: :parent_run_id,
                           inverse_of: :parent_run, dependent: :nullify
 
+    # The automation this run fired for; nil for a run started any other way.
+    belongs_to :automation, class_name: Harbor.class_name_for(:automation_class), optional: true, inverse_of: :runs
+
     enum :status, STATUSES.index_with(&:itself)
     enum :trigger_source, TRIGGER_SOURCES.index_with(&:itself), prefix: :trigger
 

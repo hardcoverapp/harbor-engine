@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.22.0
+
+- **Automations are Harbor's**: the record (`Harbor::Automation`, on the `automations`
+  table, which Harbor's migration creates), the pages (`/factory/automations`: the list,
+  the form that makes and edits one, the switch, "Run now" and Delete, in
+  `Harbor::AutomationsController`), starting one (`Harbor::Automations::Dispatch`) and
+  the tick (`Harbor::Automations::Tick`, and `Harbor::Automations::TickJob` for a site's
+  scheduler). A site with no code of its own makes an agent automation on the page, its
+  schedule fires it, and it runs as an agent session of its agent
+  (`Harbor::Automations::AgentRunJob`). The menu's Automations entry is Harbor's own
+  route now. See README "Automations".
+- **The tick starts a due automation exactly once**: a compare-and-set on
+  `last_scheduled_at`, once for the latest time missed after an outage, and a start that
+  raises is handed back for the next tick. Harbor requires no scheduler: a site gives
+  whichever it has one entry, every minute.
+- **Job automations**: an automation can enqueue one of the site's own job classes
+  (`kind: "job"`, with `job_dispatch` `loader`, `skill` or `self`). They are made in
+  code. The page never saves `job_class`, `job_dispatch`, `job_input` or `kind`.
+- **What a host declares** (`Harbor::Automations`): `category`, `working_folder`,
+  `identity`, `label` and `trigger` (a trigger kind the host fires itself).
+- **What a host configures**: `config.automation_class`, `config.automation_params`,
+  `config.automation_edited` and `config.automation_agent_run` (a host that runs agent
+  automations its own way).
+- **Places for a host on the pages**, as partials in the host's
+  `app/views/harbor/automations/`: `_name_extras`, `_agent_fields`, `_trigger_fields`
+  and `_hint`.
+- **Setting "Where slash commands are read from"** (`automation_command_ref`,
+  `origin/main` by default): the git ref an automation's slash command is read from when
+  Harbor runs it as a session.
+- `Harbor::Run` has `belongs_to :automation`; the migration adds the index and the
+  foreign key on `runs.automation_id` (deleting an automation keeps its runs).
+- `fugit` is a dependency (cron expressions).
+
+Upgrading from 0.21:
+
+- **Schedule the tick.** A site that wants scheduled automations gives its scheduler
+  one entry, every minute: `Harbor::Automations::TickJob` (README "The tick"). Without
+  it nothing is scheduled; "Run now" still works.
+- A host that already has an `automations` table keeps it: the migration creates the
+  table only when it is missing, and adds the index and foreign key on
+  `runs.automation_id` only when they are missing. A host with columns of its own on
+  that table subclasses `Harbor::Automation` and names it: `c.automation_class`.
+- A host that had its own `AutomationsController`, views and tick removes them, and
+  removes its `resources :automations` routes: a host route at an address Harbor serves
+  is matched first and hides Harbor's page. To keep `automations_path` and the rest
+  working without naming the engine, define them with `direct` in the host's routes, as
+  for the Runs and Agents pages.
+- A host with a page of its own at `automations_path` in Harbor's menu: the entry is the
+  engine's route now (`scope: :harbor`), so the host's page is no longer linked.
+- A host whose `Run` class declares `belongs_to :automation` can drop it; Harbor's is
+  the same association, on the host's automation class.
+- A host that ran agent automations its own way sets `c.automation_agent_run`. Without
+  it, agent automations run as Harbor agent sessions.
+
 ## 0.21.0
 
 - **The runtime form is two choices, not a backend and its JSON**: "Orca" (work runs on

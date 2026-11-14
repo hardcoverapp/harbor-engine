@@ -17,6 +17,15 @@ Harbor::Engine.routes.draw do
       end
     end
 
+    # Automations: the list, the form that makes and edits one, the switch,
+    # "Run now" and Delete.
+    resources :automations, except: :show do
+      member do
+        post :run
+        patch :toggle
+      end
+    end
+
     # Agents: the list with its task routing and shared context tabs, an
     # agent's page and form, and its avatar. A task type is given to an agent
     # with a PATCH to task_assignments/<task type>.

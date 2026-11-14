@@ -30,6 +30,12 @@ Harbor::Settings.declare :agent_session_resume_attempts,
   description: "How many times one agent session is started again where it stopped after being cut off: the machine it ran on " \
                "restarted, Orca was shut down, or its terminal was closed under it. 0 finishes such a session as an error instead."
 
+Harbor::Settings.declare :automation_command_ref,
+  type: :string, default: "origin/main", group: "Automations", label: "Where slash commands are read from",
+  description: "The git ref an automation's slash command is read from when Harbor runs it as an agent session, " \
+               "so the command that runs is the one on that branch whatever the run's worktree has checked out. " \
+               "Empty reads it from the worktree as checked out."
+
 Harbor::Settings.declare :model_catalog_url,
   type: :string, default: "https://models.dev/api.json", group: "Models", label: "Model catalog",
   description: "Where the list of each provider's models is read from when picking one for an alias. " \

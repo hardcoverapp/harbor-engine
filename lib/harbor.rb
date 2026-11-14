@@ -8,6 +8,7 @@ require "harbor/pages"
 require "harbor/settings"
 require "harbor/task_types"
 require "harbor/runtimes"
+require "harbor/automations"
 require "harbor/config_file"
 require "harbor/databases"
 require "harbor/runner"
@@ -78,6 +79,8 @@ module Harbor
     def agent_class = config.agent_class.constantize
 
     def task_assignment_class = config.task_assignment_class.constantize
+
+    def automation_class = config.automation_class.constantize
 
     def runtime_class = config.runtime_class.constantize
 

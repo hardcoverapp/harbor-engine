@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_14_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_14_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -52,6 +52,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_000000) do
     t.index ["key"], name: "index_agents_on_key", unique: true
     t.index ["model_alias_id"], name: "index_agents_on_model_alias_id"
     t.index ["workspace_profile_id"], name: "index_agents_on_workspace_profile_id"
+  end
+
+  create_table "automations", force: :cascade do |t|
+    t.string "key", null: false
+    t.string "name", null: false
+    t.text "description"
+    t.string "kind", default: "agent", null: false
+    t.string "category"
+    t.integer "position", default: 0, null: false
+    t.boolean "enabled", default: true, null: false
+    t.boolean "allow_concurrent", default: false, null: false
+    t.string "trigger_kind", default: "manual", null: false
+    t.string "cron"
+    t.datetime "last_scheduled_at"
+    t.string "agent_key"
+    t.text "prompt"
+    t.string "slash_command"
+    t.integer "timeout_ms", default: 900000, null: false
+    t.string "cwd_key"
+    t.string "run_as"
+    t.string "job_class"
+    t.string "job_dispatch", default: "loader", null: false
+    t.jsonb "job_input", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["enabled", "trigger_kind"], name: "index_automations_on_enabled_and_trigger_kind"
+    t.index ["key"], name: "index_automations_on_key", unique: true
   end
 
   create_table "database_backups", force: :cascade do |t|
@@ -178,6 +205,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_000000) do
     t.datetime "updated_at", null: false
     t.jsonb "runner_state", default: {}, null: false
     t.index ["agent_key"], name: "index_runs_on_agent_key"
+    t.index ["automation_id"], name: "index_runs_on_automation_id"
     t.index ["idempotency_key"], name: "index_runs_on_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
     t.index ["join_key"], name: "index_runs_on_live_join_key", unique: true, where: "((join_key IS NOT NULL) AND ((status)::text = ANY (ARRAY[('queued'::character varying)::text, ('waiting_for_model'::character varying)::text, ('running'::character varying)::text])))"
     t.index ["loader", "started_at"], name: "index_runs_on_loader_and_started_at"
@@ -260,6 +288,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_000000) do
   add_foreign_key "model_choices", "model_aliases"
   add_foreign_key "model_choices", "model_providers"
   add_foreign_key "run_events", "runs"
+  add_foreign_key "runs", "automations", on_delete: :nullify
   add_foreign_key "runs", "runtimes"
   add_foreign_key "webhook_events", "runs"
   add_foreign_key "workspace_profile_runtimes", "runtimes"

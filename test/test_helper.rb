@@ -174,7 +174,7 @@ module HarborAgentSessions
     base.include HarborTestConfig
     base.include ActiveJob::TestHelper
     base.setup do
-      [ Harbor::RunEvent, Harbor::TaskAssignment, Harbor::AgentDocument, Harbor::AgentSetting, Harbor::Agent,
+      [ Harbor::Automation, Harbor::RunEvent, Harbor::TaskAssignment, Harbor::AgentDocument, Harbor::AgentSetting, Harbor::Agent,
         Harbor::WorkspaceProfileRuntime, Harbor::WorkspaceProfile, Harbor::DatabaseBackup, Harbor::WebhookEvent, Harbor::Run,
         Harbor::Runtime, Harbor::ModelChoice, Harbor::ModelAlias, Harbor::ModelProvider ].each(&:delete_all)
       HARBOR_TEST_REDIS.with { |r| r.call("KEYS", "harbor:test:slots:*").each { |k| r.call("DEL", k) } }

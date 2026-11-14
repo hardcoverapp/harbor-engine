@@ -885,6 +885,210 @@ returns those as data and records nothing for them.
   it has not been proven against a real server. It does not continue earlier
   sessions.
 
+## Automations
+
+An automation is one thing a site does on its own: a row a person can read,
+switch off, reschedule and run by hand. `Harbor::Automation` has two kinds:
+
+- **`agent`**: an agent, with instructions or a slash command. Made and edited on the
+  Automations page, with no deploy. When it fires, Harbor runs it as an
+  [agent session](#agent-sessions) of that agent.
+- **`job`**: one of the site's own job classes. Made in code (a seed), because a job
+  class is code; the page edits only its name, description, category, schedule and switch.
+
+and three things that start one: a **schedule** (a cron, `trigger_kind: "schedule"`),
+**by hand** (`"manual"`, the "Run now" button, which works for every automation), or a
+**trigger the host declared** and fires itself (below).
+
+Every firing is a tracked run with `automation_id` set, so the list's "Last run" is the
+same record the Runs pages show. Harbor's migration creates the `automations` table.
+
+A site with no code of its own needs one thing beyond the gem: the tick on a schedule.
+
+### The tick
+
+`Harbor::Automations::TickJob` starts every enabled scheduled automation whose cron came
+due since it last fired. Run it every minute, with whatever scheduler the site has.
+Harbor doesn't require one:
+
+```yaml
+# sidekiq-scheduler or sidekiq-cron (config/sidekiq.yml)
+:scheduler:
+  :schedule:
+    harbor_automations_tick:
+      cron: "* * * * *"
+      class: Harbor::Automations::TickJob
+```
+
+```yaml
+# Solid Queue (config/recurring.yml)
+production:
+  harbor_automations_tick:
+    class: Harbor::Automations::TickJob
+    schedule: every minute
+```
+
+```ruby
+# anything else that can run code every minute (cron with bin/rails runner, a clock process)
+Harbor::Automations::Tick.call
+```
+
+That entry is the only cron a site keeps. Every schedule is a row, changed on the page.
+
+- **Never twice for one due time.** The tick claims a due time with a compare-and-set
+  on the automation's `last_scheduled_at` in the database, so two ticks running at once
+  start it once.
+- **Once after an outage.** An automation that missed twenty due times while the
+  workers were down fires once, for the latest.
+- **A start that raises is tried again.** If the queue is down or a job won't enqueue,
+  the due time is handed back and the next tick tries it. The failure is still a run.
+- **A schedule counts from when it was set.** An automation made at 10:00 with
+  `0 8 * * *` first fires tomorrow at 08:00, not on the next tick; the same when its
+  cron changes or it is switched back on.
+- **A run still going holds the next one back**, unless the automation allows
+  concurrent runs. The due time is used up, not queued behind it.
+- **Crons are read in the process's time zone** (`TZ`, else the app's `Time.zone`), by
+  [fugit](https://github.com/floraison/fugit). The pages name the zone.
+
+The tick is not a run itself; it logs one line per automation it starts.
+
+### Starting one
+
+`Harbor::Automations::Dispatch.call(automation, trigger_source: "manual")` is what the
+tick, "Run now" and a host's own trigger all call. It returns a result with `run` (the
+run, when there is one yet), `note` (why not, or what to tell the person) and
+`skipped?`. It also takes `triggered_by_user:`, `trigger_ref:`, `context:` (a hash:
+it becomes the run's input, and fills `{{placeholders}}` in an agent automation's
+instructions or slash command) and `idempotency_key:` (a second firing with the same
+key starts nothing).
+
+An **agent** automation becomes a queued run (`agent_key`, `skill` set to the
+automation's key, `task_type` "automation", `acting_as` set to who it runs as) with
+`Harbor::Automations::AgentRunJob` behind it. The job starts the session through the
+agent's workspace, with the automation's timeout. While the agent or every runtime is
+full, or no model is available, the run waits and the job looks again every 30 seconds.
+A slash command's file is read from the git ref in the **Where slash commands are read
+from** setting (`origin/main` by default; empty reads the worktree as checked out).
+So this needs what any agent session needs: an agent with a model alias and a
+workspace, a runtime, and the runner address set.
+
+A **job** automation names a job class and how it is started (`job_dispatch`):
+
+| `job_dispatch` | What happens |
+|---|---|
+| `loader` | Harbor makes the run, with the automation's key in the run's `loader`, and calls `JobClass.perform_later(run.id)`. `Harbor::TrackedJob` is a base class for exactly this |
+| `skill` | The same, with the key in the run's `skill` |
+| `self` | The job makes its own run. Harbor calls `JobClass.automation_dispatch!(trigger_source:, triggered_by_user_id:)` and "Run now" lands on the Runs list |
+
+The automation's `job_input` and the firing's `context` become the run's input. A job
+class may refuse a firing by defining `self.automation_skip_reason(trigger_source:)`;
+what it returns is shown as the reason. Job automations are made in code:
+
+```ruby
+# db/seeds.rb
+Harbor::Automation.find_or_create_by!(key: "nightly-load") do |a|
+  a.assign_attributes(name: "Nightly load", kind: "job", job_class: "NightlyLoadJob", job_dispatch: "loader",
+                      trigger_kind: "schedule", cron: "0 2 * * *", last_scheduled_at: Time.current)
+end
+```
+
+**The job class is never taken from the page.** `job_class`, `job_dispatch`, `job_input`
+and `kind` are not among the fields the form saves, for a new automation or an existing
+one, so a name typed into a browser is never turned into a constant. The record itself
+checks only that the name resolves, so keep creating job automations to code.
+
+### The pages
+
+Under `Harbor.path` like the rest: **the list** (`/factory/automations`) and **the form**
+(`/factory/automations/new`, `/factory/automations/7/edit`). Link to them with
+`harbor.automations_path` and `harbor.edit_automation_path(automation)`.
+
+The list has every automation, under the categories the host declared (one list when it
+declared none): its name and agent, its description, what it runs, what starts it and
+when it next will, its last run with its status, a switch, and "Run now"
+(`POST /factory/automations/7/run`). The switch is `PATCH /factory/automations/7/toggle`.
+It is a table from `lg` up and a card per automation below that.
+
+The form for an agent automation sets its name, key (once; it names the runs' log
+folder), description, agent, timeout, instructions or slash command, what starts it and
+its cron, whether it is enabled and whether a new run may start while one is going.
+A job automation's form has only what the page may change. An automation made on the
+page can be deleted from its own page (`DELETE /factory/automations/7`); its runs are
+kept. A job automation can't be deleted there.
+
+### What a host declares
+
+All optional, in an initializer:
+
+```ruby
+# config/initializers/harbor.rb
+Harbor::Automations.category "data", label: "Data"
+Harbor::Automations.category "upkeep", label: "Upkeep"
+Harbor::Automations.working_folder "app", label: "The app's checkout", path: -> { Rails.root.to_s }
+Harbor::Automations.identity "release-bot", label: "@release-bot"
+Harbor::Automations.label :run_as, "GitHub identity"
+Harbor::Automations.trigger "github", label: "On a GitHub event", kinds: %w[agent]
+```
+
+- **`category`**: a heading on the list, in the order declared, and a select on the
+  form. Once any is declared every automation must have one of them.
+- **`identity`**: who an agent automation may run as (`run_as`). The form gets a select,
+  an agent automation must name one, and the run's `acting_as` carries it, which is what
+  `config.agent_session_env` reads to give the session that identity's credentials.
+- **`working_folder`**: a folder an agent automation may be told to work in (`cwd_key`;
+  `automation.cwd` is its path). Harbor's own sessions work in a worktree on their
+  runtime and don't read it: it is for a host that runs agent automations its own way.
+- **`label`**: what the form calls the `:run_as` or `:cwd_key` field.
+- **`trigger`**: a trigger kind of the host's. The form offers it, between "On a
+  schedule" and "Only by hand", for the kinds named, and the record accepts it. Harbor
+  never fires it: the host matches whatever it listens for and calls
+  `Harbor::Automations::Dispatch.call(automation, trigger_source: "webhook", trigger_ref: …, context: …)`.
+  Its fields on the form are the host's `_trigger_fields` partial.
+
+```ruby
+Harbor.configure do |c|
+  c.automation_class = "Automation"       # the host's subclass of Harbor::Automation
+  c.automation_params = %i[team]          # what its fields on the form may save
+  c.automation_edited = ->(automation, user, values) { automation.filters = Filters.parse(values[:filters]) }
+  c.automation_agent_run = ->(automation, **trigger) { MyAgentJob.start!(automation, **trigger) }
+end
+```
+
+- **`automation_class`**: a subclass on the same table with what is the host's. Three
+  class methods it can override: `offered_agents` (the agents the form offers; every
+  enabled one), `page_defaults` (what a new automation starts with on the form) and
+  `identity_refusal` (what the form says about an identity that wasn't declared). It can
+  override `trigger_summary` to say its own trigger in words, and add validations.
+- **`automation_params`**: attributes of the host's class the form may save for an
+  agent automation, beyond Harbor's own. Anything not named is left out.
+- **`automation_edited`**: called with (automation, current user, the form's values)
+  when someone saves an automation from the form, after the values are assigned and
+  before it is checked and saved. The values are the request's `params[:automation]`,
+  unfiltered: this is where a host reads fields that aren't plain attributes. Never
+  called for an automation saved any other way.
+- **`automation_agent_run`**: for a host that runs agent automations its own way. Called
+  with the automation and `trigger_source:`, `triggered_by_user:`, `trigger_ref:`,
+  `webhook_event:`, `context:` and `idempotency_key:`; it makes the queued run, starts
+  the work and returns the run, or nil when this firing already has one.
+  `Harbor::Automations::Session.start!(run:, automation:, agent:, prompt:, slash_command:)`
+  is there for a host that wants its own job around Harbor's session.
+
+### What a host adds
+
+Partials in the host's `app/views/harbor/automations/`, rendered when the file exists:
+
+| Partial | Where | Locals |
+|---|---|---|
+| `_name_extras.html.erb` | The list, beside an automation's name and agent: a pill or a mark | `automation` |
+| `_agent_fields.html.erb` | The form of an agent automation, at the end of "What runs" | `form` (the form builder), `automation` |
+| `_trigger_fields.html.erb` | The form, at the end of "What starts it", after the cron: the fields of the host's trigger. Rendered for job automations too, so it decides for itself what to show | `form`, `automation` |
+| `_hint.html.erb` | The words under the Agent, Instructions and slash command fields. What it renders replaces Harbor's; where it renders nothing, Harbor's stand | `field` (`:agent`, `:prompt` or `:slash_command`), `automation` |
+
+```erb
+<%# app/views/harbor/automations/_hint.html.erb %>
+<% if field == :agent %>Only agents on the night shift. <%= link_to "Manage agents", agents_path, class: "underline" %>.<% end %>
+```
+
 ## Webhooks
 
 `Harbor::WebhookEvent` is the record of every inbound delivery, and the
@@ -1257,6 +1461,9 @@ The hooks for agent sessions (`agent_session_env`, `agent_session_preamble`,
 `agent_session_finished`, `claude_bin`, `codex_bin`) are under Agent sessions.
 What the Agents pages take (`agent_params`, `agent_edited`, `task_assignment_class`) is
 under Agents pages.
+What automations take (`automation_class`, `automation_params`, `automation_edited`,
+`automation_agent_run`, and what a host declares with `Harbor::Automations`) is under
+Automations.
 
 ### Settings
 

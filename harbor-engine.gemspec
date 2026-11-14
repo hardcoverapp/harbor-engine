@@ -18,4 +18,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency "rails", ">= 8.1"
 
   spec.add_dependency "marcel", ">= 1.0"
+  # Cron expressions: when an automation is next due (Harbor::Automation).
+  spec.add_dependency "fugit", ">= 1.11"
 end

@@ -1,0 +1,71 @@
+<%# One list of automations. A table from lg up; below that each automation is
+    a card, its facts stacked under their labels. A host adds beside an
+    automation's name with the name_extras partial. %>
+<% name_extras = harbor_automations_partial?("name_extras") %>
+<div class="lg:overflow-x-auto mb-2" data-reveal>
+  <table role="table" class="block lg:table lg:table-fixed w-full text-sm lg:min-w-[52rem] lg:bg-surface lg:border border-hairline lg:rounded-xl">
+    <thead class="hidden lg:table-header-group text-left">
+      <tr class="border-b border-hairline">
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium w-[44%]">Automation</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium w-[22%]">Trigger</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium w-[16%]">Last run</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium w-[8%]">Enabled</th>
+        <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium w-[10%]"><span class="sr-only">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody class="grid gap-4 lg:table-row-group lg:divide-y lg:divide-hairline">
+      <% rows.each do |automation| %>
+        <% last = @last_runs[automation.id] %>
+        <tr id="automation-<%= automation.key %>" class="grid gap-3 p-5 border border-hairline rounded-xl bg-surface lg:table-row lg:p-0 lg:border-0 lg:rounded-none <%= "opacity-55" unless automation.enabled? %>">
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top">
+            <div class="flex flex-wrap items-center gap-2">
+              <%= link_to automation.name, edit_automation_path(automation), class: "font-medium text-ink hover:underline" %>
+              <% if automation.agent? %>
+                <span class="pill bg-pale-purple text-ink-purple"><%= automation.agent_key %></span>
+              <% end %>
+              <% if name_extras %><%= render "harbor/automations/name_extras", automation: automation %><% end %>
+            </div>
+            <p class="text-soft mt-1 text-[13px] leading-snug"><%= automation.description %></p>
+            <% if automation.agent? %>
+              <p class="meta mt-1.5 font-mono [overflow-wrap:anywhere]" title="<%= automation.slash_command.presence || automation.prompt %>">
+                <%= automation.slash_command.present? ? "/#{automation.slash_command}" : automation.prompt.to_s.truncate(90) %>
+              </p>
+              <% where = [ automation.cwd_label, (automation.run_as_label && "as #{automation.run_as_label}") ].compact %>
+              <% if where.any? %><p class="meta mt-0.5 text-faint"><%= where.join(" · ") %></p><% end %>
+            <% end %>
+          </td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top text-body">
+            <span class="block lg:hidden meta mb-1">Trigger</span>
+            <%= automation.trigger_summary %>
+            <% if (next_at = automation.next_run_at) && automation.enabled? %>
+              <span class="block meta mt-0.5">next in <%= distance_of_time_in_words(Time.current, next_at) %></span>
+            <% end %>
+          </td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top">
+            <span class="block lg:hidden meta mb-1">Last run</span>
+            <% if last %>
+              <%= link_to "#{time_ago_in_words(last.created_at)} ago", run_path(last),
+                    class: "meta hover:text-ink underline decoration-hairline underline-offset-4" %>
+              <%= harbor_status_pill(last.status) %>
+            <% else %>
+              <span class="meta">—</span>
+            <% end %>
+          </td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top">
+            <span class="block lg:hidden meta mb-1">Enabled</span>
+            <%= button_to toggle_automation_path(automation), method: :patch, form_class: "inline",
+                  class: "pill cursor-pointer " + (automation.enabled? ? "bg-pale-green text-ink-green" : "bg-bone text-faint border border-hairline"),
+                  title: (automation.enabled? ? "Click to disable" : "Click to enable"),
+                  aria: { label: "#{automation.enabled? ? 'Disable' : 'Enable'} #{automation.name}" } do %>
+              <%= automation.enabled? ? "on" : "off" %>
+            <% end %>
+          </td>
+          <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 align-top lg:text-right lg:whitespace-nowrap">
+            <%= button_to "Run now", run_automation_path(automation), method: :post, form_class: "inline",
+                  class: "btn-quiet !py-1 !px-3 text-xs" %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

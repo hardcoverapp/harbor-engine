@@ -1,0 +1,21 @@
+<% content_for :title, "#{@automation.name} · Automations" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="mb-8">
+  <h1 class="display text-3xl"><%= @automation.name %></h1>
+  <p class="text-sm text-soft mt-1.5 max-w-2xl">
+    <% if @automation.job? %>
+      Backed by <code class="chip"><%= @automation.job_class %></code> in this repo — the schedule, description and switch are editable here; the code isn't.
+    <% else %>
+      An agent automation. Changes apply to its next run.
+    <% end %>
+  </p>
+</header>
+<%= render "harbor/automations/form" %>
+<% if @automation.agent? %>
+  <%# Only an automation made here is deleted here; its runs are kept. %>
+  <div class="max-w-4xl mt-10 pt-6 border-t border-hairline">
+    <%= button_to "Delete automation", automation_path(@automation), method: :delete, form_class: "inline",
+          class: "text-sm text-ink-red underline cursor-pointer",
+          data: { turbo_confirm: "Delete #{@automation.name_in_database}? Its runs are kept." } %>
+  </div>
+<% end %>
