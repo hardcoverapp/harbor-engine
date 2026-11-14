@@ -9,6 +9,7 @@ require "harbor/settings"
 require "harbor/task_types"
 require "harbor/runtimes"
 require "harbor/automations"
+require "harbor/workflows"
 require "harbor/config_file"
 require "harbor/databases"
 require "harbor/runner"
@@ -85,6 +86,10 @@ module Harbor
     def runtime_class = config.runtime_class.constantize
 
     def workspace_profile_class = config.workspace_profile_class.constantize
+
+    def workflow_class = config.workflow_class.constantize
+
+    def workflow_run_class = config.workflow_run_class.constantize
 
     # Tell the host that where or on what work can run has changed (a runtime
     # switched on, a workspace reordered), so anything waiting can look again.

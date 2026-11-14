@@ -1,0 +1,23 @@
+<% content_for :title, "Workflow runs" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="mb-8">
+  <h1 class="display text-3xl">Workflows</h1>
+  <p class="text-sm text-soft mt-1.5 max-w-2xl">Every firing of a workflow, newest first: what started it, where it stands, and the steps it ran.</p>
+</header>
+
+<%= render "harbor/workflows/tabs", current: :runs %>
+
+<% if @workflow %>
+  <p class="text-sm text-soft mb-4" data-runs-filter>
+    Runs of <%= link_to @workflow.name, workflow_path(@workflow), class: "text-ink hover:underline" %>.
+    <%= link_to "Show all workflows", workflow_runs_path, class: "underline decoration-hairline underline-offset-4 hover:text-ink" %>
+  </p>
+<% end %>
+
+<% if @runs.any? %>
+  <div<% if @runs.any?(&:active?) %> data-controller="harbor--poll" data-harbor--poll-interval-value="15"<% end %>>
+    <%= render "harbor/workflow_runs/table", runs: @runs %>
+  </div>
+<% else %>
+  <p class="text-soft text-sm">No workflow runs yet.</p>
+<% end %>

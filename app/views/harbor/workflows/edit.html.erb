@@ -1,0 +1,8 @@
+<% content_for :title, "Edit #{@workflow.name} · Workflows" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="mb-8">
+  <%= link_to @workflow.name, workflow_path(@workflow), class: "meta hover:text-ink" %>
+  <h1 class="display text-3xl mt-2">Edit workflow</h1>
+  <p class="text-sm text-soft mt-1.5">Saving makes version <%= (@workflow.current_version&.number || 0) + 1 %>. Runs already going keep the version they started on.</p>
+</header>
+<%= render "harbor/workflows/form" %>

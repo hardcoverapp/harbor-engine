@@ -1,0 +1,10 @@
+<%# locals: title, sub (optional). The close link reopens the page with no panel. %>
+<div class="wf-panel-head">
+  <div class="min-w-0 flex-1">
+    <h2 class="wf-panel-title"><%= title %></h2>
+    <% if local_assigns[:sub].present? %><p class="wf-panel-sub"><%= sub %></p><% end %>
+  </div>
+  <%= link_to workflow_run_path(@run, step: "none"), class: "wf-iconbtn", aria: { label: "Close" }, data: { turbo_action: "replace" } do %>
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  <% end %>
+</div>

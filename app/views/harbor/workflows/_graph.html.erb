@@ -1,0 +1,51 @@
+<%# The workflow as a vertical flow. locals: steps, latest (step key → step
+    run, or {}), run (a WorkflowRun or nil), depth. Choices and loops nest as
+    lanes; on a run page each node links to its step panel. %>
+<% latest ||= {} ; run ||= nil ; depth ||= 0 %>
+<ol class="relative space-y-3 <%= 'pl-4 border-l-2 border-hairline' if depth > 0 %>">
+  <% steps.each do |step| %>
+    <% sr = latest[step["key"]] %>
+    <li class="relative min-w-0">
+      <div id="node-<%= step['key'] %>"
+           class="card px-4 py-3 <%= 'ring-2 ring-ink/20' if sr&.pending? %> <%= 'opacity-60' if run && sr.nil? %>">
+        <div class="flex flex-wrap items-center gap-2">
+          <%= harbor_step_type_pill(step["type"]) %>
+          <% if run && sr %>
+            <%= link_to harbor_step_title(step), workflow_run_path(run, step: sr.id, anchor: "step"), data: { turbo_action: "replace" }, class: "font-medium text-ink hover:underline" %>
+            <%= harbor_step_status_pill(sr.status) %>
+            <% if sr.output["verdict"] %><span class="pill bg-bone text-ink border border-hairline"><%= sr.output["verdict"] %></span><% end %>
+            <% if step["type"] == "loop" && sr.output["iterations"] %><span class="meta"><%= sr.output["result"] %> after <%= sr.output["iterations"] %></span><% end %>
+            <% if step["type"] == "choice" && sr.output["branch"] %><span class="meta">→ <%= sr.output["branch"] %></span><% end %>
+            <% if (n = run.step_runs.count { |s| s.step_key == step['key'] }) > 1 %><span class="meta">×<%= n %></span><% end %>
+          <% else %>
+            <span class="font-medium text-ink"><%= harbor_step_title(step) %></span>
+          <% end %>
+          <code class="meta font-mono ml-auto"><%= step["key"] %></code>
+        </div>
+        <% summary = harbor_step_summary(step) %>
+        <% if summary.present? %><p class="meta mt-1 [overflow-wrap:anywhere]"><%= summary %></p><% end %>
+      </div>
+      <% case step["type"] %>
+      <% when "choice" %>
+        <div class="mt-3 ml-3 grid gap-3">
+          <% Array(step["branches"]).each_with_index do |b, i| %>
+            <div class="min-w-0">
+              <p class="meta mb-2">if <span class="text-ink"><%= Harbor::Workflows::Condition.describe(b["when"]) %></span><%= " (#{b['name']})" if b["name"].present? %></p>
+              <%= render "harbor/workflows/graph", steps: Array(b["steps"]), latest:, run:, depth: depth + 1 %>
+            </div>
+          <% end %>
+          <% if Array(step["otherwise"]).any? %>
+            <div class="min-w-0">
+              <p class="meta mb-2">otherwise</p>
+              <%= render "harbor/workflows/graph", steps: Array(step["otherwise"]), latest:, run:, depth: depth + 1 %>
+            </div>
+          <% end %>
+        </div>
+      <% when "loop" %>
+        <div class="mt-3 ml-3">
+          <%= render "harbor/workflows/graph", steps: Array(step["steps"]), latest:, run:, depth: depth + 1 %>
+        </div>
+      <% end %>
+    </li>
+  <% end %>
+</ol>

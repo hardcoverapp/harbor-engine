@@ -172,7 +172,8 @@ The full list, with what each one colours, is at the top of
 `app/assets/tailwind/harbor/engine.css`.
 
 Harbor's JavaScript is a few small Stimulus controllers (the side nav's collapse,
-a log that follows its newest line, a page that refreshes itself). On `importmap-rails` with the usual
+a log that follows its newest line, a page that refreshes itself) and the workflow
+builder. On `importmap-rails` with the usual
 `eagerLoadControllersFrom("controllers", application)` there is nothing to do:
 Harbor pins them under `controllers/harbor/`.
 
@@ -1089,6 +1090,249 @@ Partials in the host's `app/views/harbor/automations/`, rendered when the file e
 <% if field == :agent %>Only agents on the night shift. <%= link_to "Manage agents", agents_path, class: "underline" %>.<% end %>
 ```
 
+## Workflows
+
+A workflow is a trigger and a graph of steps: agents, verdicts, actions, approvals,
+branches and loops, each step's output feeding the next. People build one in a
+visual builder; every save is a new version; a run walks the version it started
+on, and every step that does work is a tracked Run.
+
+### The records
+
+| Record | Table | What it is |
+|---|---|---|
+| `Harbor::Workflow` | `workflows` | A key, a name, a `mode` (`off`, `dry_run`, `live`), the flows it `claims`, and its current version |
+| `Harbor::WorkflowVersion` | `workflow_versions` | One saved definition, numbered, never changed |
+| `Harbor::WorkflowRun` | `workflow_runs` | One firing: its status, mode, what started it, its `context`, and what it is about |
+| `Harbor::WorkflowStepRun` | `workflow_step_runs` | One execution of one step: its input, output, status, and the `Run` that did the work |
+| `Harbor::WorkflowWait` | `workflow_waits` | Something a parked step is waiting for, with when it gives up |
+
+A workflow run is its own record and not a Run because it lives as long as the
+flow does, hours or days; `runs.workflow_run_id` ties each step's Run to it.
+`workflow.save_definition!(json_or_hash, user:)` returns `[version, errors]`: a new
+version when the definition is valid and changed, the current one when it didn't,
+and the reasons when it isn't valid. Each saved version is also handed to
+`config.export` as `workflows/<key>.json`.
+
+A host with more on a workflow or a run subclasses the record and names it
+(`c.workflow_class = "Workflow"`, `c.workflow_run_class = "WorkflowRun"`). With
+`c.user_class = "User"` a version records who saved it and a run who started it.
+
+### A definition
+
+```json
+{
+  "settings": {},
+  "inputs":   [ { "key": "branch", "description": "the branch to tidy" } ],
+  "triggers": [ { "kind": "manual" } ],
+  "steps": [
+    { "key": "review", "type": "verifier", "agent": "task:review", "prompt": "Review {{input.branch}}",
+      "verdicts": [ "approve", "changes" ] },
+    { "key": "route", "type": "choice", "branches": [
+        { "name": "Needs work", "when": { "path": "steps.review.verdict", "op": "eq", "value": "changes" },
+          "steps": [ { "key": "fix", "type": "agent", "agent": "writer", "prompt": "Fix: {{steps.review.feedback}}" } ] } ],
+      "otherwise": [] },
+    { "key": "ok", "type": "approval", "prompt": "Merge {{input.branch}}?" }
+  ],
+  "finally": [ { "key": "done", "type": "action", "action": "note", "message": "{{steps.ok.decision}}" } ]
+}
+```
+
+Steps run top to bottom; `choice` and `loop` nest steps; `finally` runs at the end
+however the main path ended. A step's `key` names its output for later steps. Text
+fields are templates over one flat context: `trigger.*` (what started the run),
+`input.*`, `settings.*`, `steps.<key>.*` (each step's output, plus `status`),
+`loop.<key>.iteration` and `run.*` (`id`, `url`). A placeholder that names nothing
+stays as written, so a typo shows. Conditions are data, never code: a leaf is
+`{ "path", "op", "value" | "values" }` with `eq ne in not_in contains present blank gt
+gte lt lte`, combined with `all`, `any` and `not` (`Harbor::Workflows::Condition`).
+On any step, `"on_error": "continue"` carries on past a failure.
+
+Harbor's own step types need no host:
+
+| Type | What it does |
+|---|---|
+| `agent` | Runs an agent as an agent session (see Agent sessions), a tracked Run. `agent` is an agent's key, or `task:<task type>` for whoever that task is given to. A `prompt` or a `slash_command`; `outputs` names values it must return; `session: "continue"` picks up the step's previous pass; `timeout_minutes` |
+| `verifier` | The same, and it must return one of `verdicts` (as `{"verdict": …, "feedback": …}` in a fenced `json` block, or a `VERDICT:` line) |
+| `action` · `note` | Writes a line to the app's log |
+| `filter` | Stops the run there, as succeeded, unless `when` passes |
+| `choice` | Runs the first branch whose `when` passes, else `otherwise` |
+| `loop` | Runs its steps again `until` a condition passes, at most `max_iterations` (20 at most) |
+| `approval` | Waits for a person to approve or reject on the run's page |
+| `call` | Starts another workflow with this run's trigger and its own `input`, and waits for it |
+
+and one trigger, `manual`: started from the workflow's page, or by a `call` step.
+
+### The engine
+
+`Harbor::Workflows.start!(workflow, trigger:, kind:, input:)` makes the run and
+queues `Harbor::Workflows::AdvanceJob`, the only thing that moves a run forward.
+The engine (`Harbor::Workflows::Engine`) replays the definition from the top on
+every advance: a step with a recorded step run isn't run again, its output goes
+back into the context, and the first step that hasn't run is started. A step that
+finishes on the spot lets the walk go on; one that has to wait (an agent's Run, a
+person, a called workflow) stops it, and whatever finishes that step queues the
+job again. Everything the walk needs is in the database, so a restart loses
+nothing and a double enqueue is harmless.
+
+An agent step's Run is started by `Harbor::Workflows::AgentStepJob`; while the
+agent or every runtime is full, or no model is available, the Run waits and the
+job comes back (the **Agent step retry** setting says how soon). When a Run that
+is a workflow step finishes, however it finishes, its result becomes the step's
+output (`Harbor::Workflows::StepCompletion`) and the run moves on.
+
+**Modes.** A run is live only when its workflow is `live` and the **Workflows**
+setting is on; otherwise it is a dry run, which records what each step would do
+and runs only the steps registered as having no side effect. `off` only means
+nothing starts the workflow on its own: a person can still dry-run it.
+
+**Control** (`Harbor::Workflows::Control`): `cancel!(run, user:)` cancels the
+pending steps, stops their Runs and still runs `finally`; `decide!` answers an
+approval; `rerun!` starts again with the same trigger and input.
+
+### Starting a workflow from host code
+
+```ruby
+workflow = Harbor::Workflow.find_by!(key: "tidy-branch")
+run = Harbor::Workflows.start!(workflow,
+  trigger: { "kind" => "ticket", "queue" => "support", "sender" => "sam" },   # what steps read as trigger.*
+  kind: "ticket",                                # the trigger's kind
+  input: { "branch" => "main" },                 # what steps read as input.*
+  user: current_user,                            # who started it, if someone did
+  subject: { repo: "acme/app", pr_number: 12 },  # what it is about; optional
+  webhook_event: event, dedupe_key: "tidy:#{event.delivery_id}")   # optional
+```
+
+It returns the run, or `nil` when it wasn't started: the workflow has no saved
+version, the dedupe key was already used, or a run of the same workflow about the
+same subject is still going (one active run per workflow per subject). A subject
+is a repository with a pull request or an issue number; `c.workflow_subject` derives
+one from the trigger and the input when none is given, and a host's run class says
+where it lives (`subject_url`). A host that starts workflows from webhooks decides
+which workflows a delivery starts (`workflow.definition.triggers` with
+`Harbor::Workflows.trigger_matches?`) and calls `start!` for each.
+
+### Registering a step type and a trigger
+
+Everything a workflow can be built from is one registered list
+(`Harbor::Workflows`), read by validation, the engine, the builder's palette and
+forms, and the reference page:
+
+```ruby
+# config/initializers/harbor.rb
+Harbor::Workflows.register_step "action", action: "chat.post",
+  label: "Post to chat", group: "Chat", icon: "message", color: "#4A154B",
+  description: "Posts a message to the team's channel.",
+  fields: [ { name: "body", label: "Message", kind: "textarea", required: true } ],
+  outputs: [ [ "url", "string", "link to the message" ] ],
+  defaults: { "body" => "" },
+  runner: "Chat::PostStep",                       # named, and looked up when a step runs
+  validate: ->(step, label) { step["body"].blank? ? [ "#{label}: say something" ] : [] },
+  summary: ->(step) { step["body"].to_s.truncate(60) }
+
+class Chat::PostStep
+  # Finish the step run and return :done, or leave it pending and return
+  # :blocked; whatever finishes it later calls Harbor::Workflows.advance_later.
+  def self.start(engine, step, step_run, input)
+    message = Chat.post(input["body"])
+    step_run.finish!(status: "ok", output: { "url" => message.url })
+    :done
+  end
+end
+
+Harbor::Workflows.register_trigger "ticket",
+  label: "Ticket", group: "Desk", icon: "tag", color: "#0F766E", description: "A ticket was opened or changed.",
+  fields: [ { name: "queue", label: "Queue", kind: "text", required: true } ], defaults: { "queue" => "support" },
+  validate: ->(trigger, label) { trigger["queue"].blank? ? [ "#{label}: name a queue" ] : [] },
+  summary: ->(trigger) { "Ticket in #{trigger['queue']}" },
+  matches: ->(trigger, event, data) { data["queue"] == trigger["queue"] }
+
+Harbor::Workflows.register_data :trigger, "queue", "string", "the ticket's queue"   # the data picker and reference
+Harbor::Workflows.register_setting "channel", label: "Channel", kind: "text", help: "Where it posts."
+Harbor::Workflows.register_validator ->(definition) { [] }      # rules that span steps
+Harbor::Workflows.register_claim "triage", "New tickets → TriageJob"   # a flow in code a live workflow takes over
+```
+
+A type is `"agent"`, or `"action"` with an `action:` (its id is then
+`"action:chat.post"`). `before:` and `after:` place an entry beside another;
+registering an id again replaces that entry where it is, `update_step` and
+`update_trigger` change part of one, and `remove_step` and `remove_trigger` take
+one of Harbor's away, so a host that runs agents its own way registers its own
+runner for `agent` and `verifier`. A step's other options: `side_effect: false`
+(runs in a dry run too), `working: true` (a run is "running", not "waiting", while
+it is pending), `dry_run_stop:` (a dry run ends there), `inside_loop: false`,
+`gate:` and `gate_note:`, `dynamic_outputs:`, `makes_workspace:`, `short:` and
+`pill:`. Anything read from the database or from the host's classes (a select's
+options) may be a callable, called each time it is needed, so registering loads
+nothing early. Field kinds the builder edits: `text`, `template`, `textarea`,
+`number`, `bool`, `select`, `multi`, `condition`, `agent`, `workflow`, `workspace`,
+`kv`.
+
+A host's step that waits for something creates a `Harbor::WorkflowWait` on its
+step run and returns `:blocked`; when the thing happens the host finishes the step
+run, destroys the wait and calls `Harbor::Workflows.advance_later(run.id)`.
+`Harbor::Workflows.sweep_waits!`, called on a schedule, finishes the ones past
+their `expires_at` as timed out.
+
+### The pages and the builder
+
+Under `Harbor.path`, gated by the Workflows page switch: **the list**
+(`/factory/workflows`, each workflow with what is running and how its last three
+runs ended), **a workflow's page** (its canvas, mode, runs, versions and "Run
+it"), **the builder** (`/factory/workflows/new`, `…/:key/edit`), **the reference**
+(`/factory/workflows/reference`, printed from what is registered), **recent runs**
+(`/factory/workflow_runs`) and **a run's page** (`/factory/workflow_runs/12`: the
+canvas with each step's status, and a panel with a step's input, output and live
+log, the step list, or the run's context; Cancel, Run again, and Approve or Reject
+on an approval). A run's page refreshes itself while the run is live.
+
+The builder is one Stimulus controller (`harbor--workflow-builder`) that draws the
+canvas from the catalog (`Harbor::Workflows::Catalog`); it knows no step type or
+trigger by name beyond the three the engine walks itself. Its styles are in
+`app/assets/tailwind/harbor/workflows.css`, which Harbor's stylesheet imports;
+they are coloured with the host's theme (`--color-ink`, `--color-soft`,
+`--color-hairline`, `--color-bone`, `--color-brand`, …), each with a value of its
+own for a host that has none.
+
+### What a host adds
+
+Partials in the host's `app/views/harbor/workflows/`. Harbor has words of its own
+for the first four, which a host's file of the same name replaces; the rest are
+rendered when they exist.
+
+| Partial | Where |
+|---|---|
+| `_intro` | The list's introduction |
+| `_switched_off` | The notice while the Workflows setting is off |
+| `_empty` | The list with no workflows yet |
+| `_run_fields` | What "Run it" asks for (Harbor's: the input as JSON), read by `c.workflow_manual_start` |
+| `_index_actions` | Buttons beside "New workflow" |
+| `_form_extras` (`form`) | Fields in the builder's settings panel, saved when named in `c.workflow_params` |
+| `_versions_note` (`workflow`) | Under a workflow's versions |
+| `_reference_triggers` | Under the triggers on the reference page |
+
+```ruby
+# config/initializers/harbor.rb
+Harbor.configure do |c|
+  c.workflow_class = "Workflow"            # the host's subclasses of the records
+  c.workflow_run_class = "WorkflowRun"
+  c.user_class = "User"                    # who saved a version, who started a run
+  c.workflow_params = %i[owner]            # the host's attributes the workflow form may save
+  c.workflow_starter = -> { { "triggers" => [ { "kind" => "manual" } ], "steps" => [ … ] } }   # what a new workflow opens on
+  c.workflow_subject = ->(trigger, input) { { repo: trigger["repo"], pr_number: input["pr"] } }
+  c.workflow_manual_start = ->(params, user, input) { [ { "kind" => "manual", "ticket" => params[:ticket] }, input ] }
+  c.workflow_event_data = ->(event) { Desk.trigger_data(event) }   # with it, a workflow's page offers "Test with an event"
+  c.workflow_run_url = ->(run) { "https://hub.example.com/factory/workflow_runs/#{run.id}" }
+  c.workflow_run_finished = ->(run) { Desk.note_finished(run) }    # a run has finished, cleanup and all
+  c.workflow_step_retry = ->(run, step_run) { Retries.schedule(run, step_run) }   # true: the host runs the step again
+  c.workflow_run_cancel = ->(run, user) { Runs.stop(run) }         # stop a step's Run when its workflow is canceled
+end
+```
+
+Without `workflow_run_url`, a run's address is its page's path after the **Runner
+address** setting. Without `workflow_run_cancel`, a step's Run is stopped the way
+the Runs page's Stop does.
+
 ## Webhooks
 
 `Harbor::WebhookEvent` is the record of every inbound delivery, and the
@@ -1464,6 +1708,8 @@ under Agents pages.
 What automations take (`automation_class`, `automation_params`, `automation_edited`,
 `automation_agent_run`, and what a host declares with `Harbor::Automations`) is under
 Automations.
+What workflows take (`workflow_class`, `workflow_run_class`, `user_class` and the
+`workflow_*` hooks) is under Workflows.
 
 ### Settings
 

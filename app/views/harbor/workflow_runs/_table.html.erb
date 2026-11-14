@@ -1,0 +1,14 @@
+<div class="card divide-y divide-hairline">
+  <% runs.each do |run| %>
+    <div class="px-5 py-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+      <%= harbor_workflow_run_mark(run) %>
+      <%= link_to "##{run.id}", workflow_run_path(run), class: "font-mono text-ink hover:underline" %>
+      <%= link_to run.workflow.name, workflow_path(run.workflow), class: "text-ink hover:underline" %>
+      <%= harbor_workflow_run_status_pill(run.status) %>
+      <% if run.dry_run? %><%= harbor_workflow_mode_pill("dry_run") %><% end %>
+      <% if run.subject_label %><span class="meta"><%= run.subject_label %></span><% end %>
+      <span class="meta"><%= run.trigger_kind %></span>
+      <span class="meta ml-auto"><%= time_ago_in_words(run.created_at) %> ago</span>
+    </div>
+  <% end %>
+</div>

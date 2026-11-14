@@ -1,0 +1,60 @@
+<%# The visual builder. The canvas edits the definition held in the hidden
+    textarea; the name sits above it, and key, description and claims live in
+    the settings panel (the sliders button), all in the one form. %>
+<%= form_with model: @workflow, url: (@workflow.persisted? ? workflow_path(@workflow) : workflows_path), id: "workflow-form",
+      data: { controller: "harbor--workflow-builder", "harbor--workflow-builder-mode-value": "edit",
+              "harbor--workflow-builder-catalog-value": harbor_workflow_builder_catalog.to_json,
+              "harbor--workflow-builder-errors-value": Array(@errors).to_json } do |form| %>
+  <% if @errors.present? %>
+    <div role="alert" class="bg-pale-red text-ink-red rounded-lg p-4 text-sm mb-4">
+      <p class="font-medium mb-1">Not saved:</p>
+      <ul class="list-disc pl-5 space-y-0.5"><% @errors.each do |e| %><li><%= e %></li><% end %></ul>
+    </div>
+  <% end %>
+
+  <div class="flex flex-wrap items-end gap-4 mb-4">
+    <div class="min-w-0 flex-1 max-w-xl">
+      <%= form.label :name, "Workflow name", class: "block text-sm mb-1" %>
+      <%= form.text_field :name, required: true, class: "field w-full text-lg", placeholder: "Review requested" %>
+    </div>
+    <% unless @workflow.persisted? %>
+      <div class="w-64">
+        <%= form.label :key, "Key", class: "block text-sm mb-1" %>
+        <%= form.text_field :key, required: true, placeholder: "get-pr-to-done", class: "field w-full font-mono" %>
+      </div>
+    <% end %>
+    <p class="meta pb-2 max-w-md">Click a bubble to set it up, <strong>+</strong> to add a module, a funnel to edit a filter. Drag the canvas to move; Ctrl+scroll zooms.</p>
+    <%= link_to "Cancel", (@workflow.persisted? ? workflow_path(@workflow) : workflows_path), class: "btn-quiet ml-auto" %>
+  </div>
+
+  <%= text_area_tag "workflow[definition]", @json, id: "workflow_definition", hidden: true, data: { "harbor--workflow-builder-target": "source" } %>
+  <%= render "harbor/workflows/canvas", mode: "edit" %>
+
+  <div data-harbor--workflow-builder-target="details" class="space-y-4" hidden>
+    <div class="wf-section">
+      <h3>Workflow</h3>
+      <% if @workflow.persisted? %>
+        <div class="wf-field"><span class="wf-label">Key</span><code class="chip self-start"><%= @workflow.key %></code><span class="wf-hint">Fixed once saved. Other workflows call it by this.</span></div>
+      <% end %>
+      <div class="wf-field"><%= form.label :description, class: "wf-label" %><%= form.text_area :description, rows: 3, class: "field w-full text-sm" %></div>
+    </div>
+    <%# The flows a host runs in code that a live workflow can take over
+        (Harbor::Workflows.register_claim). A site with none has no such box. %>
+    <% if Harbor::Workflows.claimable.any? %>
+      <fieldset class="wf-section">
+        <legend class="sr-only">Take over built-in flows</legend>
+        <h3>When live, take over</h3>
+        <%= hidden_field_tag "workflow[claims][]", "" %>
+        <% Harbor::Workflows.claimable.each do |flow, label| %>
+          <label class="flex items-start gap-2 text-sm">
+            <%= check_box_tag "workflow[claims][]", flow, Array(@workflow.claims).include?(flow), id: "claim-#{flow}" %>
+            <span><code class="chip"><%= flow %></code> <span class="text-soft"><%= label %></span></span>
+          </label>
+        <% end %>
+        <p class="wf-hint">The built-in code path steps aside while this workflow is live.</p>
+      </fieldset>
+    <% end %>
+    <%# A host's own fields in the settings panel (`config.workflow_params`). %>
+    <%= render "harbor/workflows/form_extras", form: form if harbor_workflows_partial?("form_extras") %>
+  </div>
+<% end %>

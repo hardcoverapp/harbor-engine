@@ -5,6 +5,11 @@ Harbor::Settings.declare :workflows_enabled,
   description: "Lets live workflows start from webhooks, claim the flows they replace and act outside this app. " \
                "Off, nothing starts on its own and every run is a dry run."
 
+Harbor::Settings.declare :workflow_agent_retry_seconds,
+  type: :integer, default: 60, min: 5, max: 3600, group: "Workflows", label: "Agent step retry (seconds)",
+  description: "When a workflow's agent step finds its agent or every runtime full, or no model available, " \
+               "how long it waits before asking again."
+
 Harbor::Settings.declare :self_improvement_pull_requests,
   type: :boolean, default: false, group: "Self-improvement", label: "Open pull requests from proposals",
   description: "Lets an approved proposal open a pull request against a repository. " \

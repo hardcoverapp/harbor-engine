@@ -163,7 +163,7 @@ class HarborRunsPagesTest < ActionDispatch::IntegrationTest
 
   test "everything long on the page wraps instead of widening it" do
     run = finished(skill: "a.very.long.skill.name.that.would.not.fit.on.a.narrow.screen", agent_key: "writer", status: "error",
-                   error: "x" * 300, command: "claude #{'--flag ' * 40}", workflow_run_id: 7, workflow_step_key: "review")
+                   error: "x" * 300, command: "claude #{'--flag ' * 40}", workflow_run_id: workflow_run.id, workflow_step_key: "review")
     Harbor::LiveLog.append(run.live_log_path, "#{'y' * 400}\n")
     get harbor.run_path(run)
     assert_select "#run-header h1.flex-wrap > span[class*='overflow-wrap:anywhere']", text: run.skill
@@ -186,11 +186,20 @@ class HarborRunsPagesTest < ActionDispatch::IntegrationTest
     assert_select "#run-error pre.text-ink-yellow", text: "No model is available."
   end
 
-  test "a workflow step names its workflow run, as plain text while no page for one exists" do
-    run = finished(workflow_run_id: 7, workflow_step_key: "review")
+  test "a workflow step names its workflow run and links to its page" do
+    run = finished(workflow_run_id: workflow_run.id, workflow_step_key: "review")
     get harbor.run_path(run)
-    assert_select "#run-header p", text: /Step\s+review\s+of\s+workflow run #7/
-    assert_select "#run-header a", text: /workflow run/, count: 0
+    assert_select "#run-header p", text: /Step\s+review\s+of\s+workflow run ##{workflow_run.id}/
+    assert_select "#run-header a[href=?]", harbor.workflow_run_path(workflow_run), text: "workflow run ##{workflow_run.id}"
+  end
+
+  # A workflow run for a step's Run to belong to.
+  def workflow_run
+    @workflow_run ||= begin
+      workflow = Harbor::Workflow.new(key: "review-#{SecureRandom.hex(3)}", name: "Review")
+      workflow.save_definition!(Harbor::WorkflowsController.starter)
+      Harbor::WorkflowRun.create!(workflow:, workflow_version: workflow.current_version, mode: "dry_run", trigger_kind: "manual")
+    end
   end
 
   test "a run that doesn't exist is not found" do

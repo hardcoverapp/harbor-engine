@@ -1,5 +1,78 @@
 # Changelog
 
+## 0.23.0
+
+- **Workflows are Harbor's**: the five records (`Harbor::Workflow`, `WorkflowVersion`,
+  `WorkflowRun`, `WorkflowStepRun`, `WorkflowWait`, on the tables of those names), the
+  definition and its validation, conditions, the run context and its templates, the
+  engine with its `AdvanceJob`, the control actions (cancel, approve or reject, run
+  again), the visual builder (`harbor--workflow-builder`) and every page:
+  `/factory/workflows` with the builder and the reference, and `/factory/workflow_runs`
+  with a run's page. A site with no code of its own builds a workflow in the builder,
+  starts it and watches its run. The menu's Workflows entry is Harbor's own route now.
+- **One registered list of what a workflow is built from** (`Harbor::Workflows`):
+  `register_step` (a step type, its form, its outputs and the object that runs it),
+  `register_trigger`, `register_data`, `register_setting`, `register_validator` and
+  `register_claim`, with `update_step`, `update_trigger`, `remove_step` and
+  `remove_trigger` for Harbor's own entries. Validation, the engine, the builder's
+  palette and forms and the reference page all read it.
+- **Harbor's own step types need no host**: `agent` and `verifier` (the agent runs as an
+  agent session, a tracked Run, through `Harbor::Workflows::AgentStepJob`), the `note`
+  action, `filter`, `choice`, `loop`, `approval` and `call`; and the `manual` trigger.
+  Waiting for an event and making a workspace are not among them: a host registers
+  those (README "Workflows" says how a waiting step is built).
+- **`Harbor::Workflows.start!`** starts a workflow from host code, with what the run is
+  about (`subject:`) and one active run per workflow per subject.
+  `Harbor::Workflows.sweep_waits!` times out parked steps.
+- **A Run that is a workflow step hands its result back** when it finishes
+  (`Harbor::Run`, `Harbor::Workflows::StepCompletion`), whoever ran it.
+  `Harbor::Run#workflow_run` and `Harbor::WebhookEvent#workflow_runs` are associations.
+- **Config**: `workflow_class`, `workflow_run_class`, `user_class`, `workflow_params`,
+  `workflow_starter`, `workflow_subject`, `workflow_manual_start`, `workflow_event_data`,
+  `workflow_run_url`, `workflow_run_finished`, `workflow_step_retry` and
+  `workflow_run_cancel`. A setting, **Agent step retry (seconds)**.
+- **Places for a host on the pages**, as partials in its `app/views/harbor/workflows/`:
+  `_intro`, `_switched_off`, `_empty` and `_run_fields` (in place of Harbor's own), and
+  `_index_actions`, `_form_extras`, `_versions_note` and `_reference_triggers`.
+- The builder's styles are `app/assets/tailwind/harbor/workflows.css`, imported by
+  Harbor's stylesheet.
+
+Upgrading from 0.22:
+
+- Run the migrations. A host that already has the five tables keeps them as they are;
+  the migration adds only what is missing (on a new site, the tables and the foreign
+  key from `runs.workflow_run_id`).
+- A host with its own workflow code deletes what moved (the models' bodies, the
+  definition, conditions, context, engine, control, catalog, the advance job, both
+  controllers, their views, the builder's Stimulus controller and its `.wf-*` styles)
+  and keeps what is its own behind the registry and the hooks: its step types and what
+  runs them (`register_step … runner:`), its triggers and how a delivery matches one
+  (`register_trigger … matches:`), what `trigger.*` holds (`register_data`), and the
+  hooks above. A host class kept under an old name is a subclass
+  (`class Workflow < Harbor::Workflow`, named in `c.workflow_class`) or, with nothing
+  to add, the same class (`WorkflowStepRun = Harbor::WorkflowStepRun`). A job class
+  queued under an old name needs that name to still resolve
+  (`Workflows::AdvanceJob = Harbor::Workflows::AdvanceJob`).
+- A host that ran its own callback when a workflow step's Run finished removes it:
+  `Harbor::Run` does that now, and two would finish the step twice.
+- **A host's steps are no longer in the engine's `case`**: every leaf type needs a
+  `runner:`. A type recorded, not run, in a dry run is the default; `side_effect: false`
+  runs it there. A type a dry run stops at says `dry_run_stop:`; a type that keeps a run
+  "running" says `working: true`.
+- The catalog the builder is given has no `github_actions`: a `multi` field with
+  `suggest_from:` carries its own `suggestions:` (`{ value of the other field => [ … ] }`).
+  A `workspace` field carries its fixed `options:`, and the type whose steps it lists is
+  registered with `makes_workspace: true`. A trigger's starting values are its
+  `defaults:`, and what the canvas writes under it its `summary_fields:`.
+- Markup: the builder is `data-controller="harbor--workflow-builder"`, with
+  `data-harbor--workflow-builder-*` values and targets; the pages' own refresh and
+  folding are `harbor--poll` and `harbor--details`. A host test that looked for
+  `workflow-builder` or `poll` on these pages looks for those.
+- Route helpers are the engine's (`harbor.workflow_path(workflow)`,
+  `harbor.workflow_run_path(run)`). A host that wants its old names defines them with
+  `direct`, as for runs and agents. Don't keep a host route at an address Harbor serves:
+  it would be matched first and hide Harbor's page.
+
 ## 0.22.0
 
 - **Automations are Harbor's**: the record (`Harbor::Automation`, on the `automations`

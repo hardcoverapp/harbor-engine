@@ -31,6 +31,13 @@ module Harbor
     # The automation this run fired for; nil for a run started any other way.
     belongs_to :automation, class_name: Harbor.class_name_for(:automation_class), optional: true, inverse_of: :runs
 
+    # The workflow run this is one step of, when it is one.
+    belongs_to :workflow_run, class_name: Harbor.class_name_for(:workflow_run_class), optional: true, inverse_of: :runs
+
+    # A workflow step's Run finished: hand the result back and move the
+    # workflow on.
+    after_update_commit :complete_workflow_step, if: -> { workflow_run_id && saved_change_to_status? && finished? }
+
     enum :status, STATUSES.index_with(&:itself)
     enum :trigger_source, TRIGGER_SOURCES.index_with(&:itself), prefix: :trigger
 
@@ -143,5 +150,8 @@ module Harbor
     def finish!(status:, output: nil, error: nil)
       update!(status:, output: output.presence || self.output, error: error, ended_at: Time.current)
     end
+
+    private
+      def complete_workflow_step = Harbor::Workflows::StepCompletion.from_run(self)
   end
 end

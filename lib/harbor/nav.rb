@@ -35,7 +35,7 @@ module Harbor
     DEFAULTS = [
       [ "Overview",      :factory_path,               { key: :overview,    group: :overview } ],
       [ "Velocity",      :velocity_path,              { key: :velocity,    group: :overview } ],
-      [ "Workflows",     :workflows_path,             { key: :workflows,   group: :flows, also: [ "/workflow_runs" ] } ],
+      [ "Workflows",     :workflows_path,             { key: :workflows,   group: :flows, also: [ "/workflow_runs" ], scope: :harbor } ],
       [ "Automations",   :automations_path,           { key: :automations, group: :flows, scope: :harbor } ],
       [ "Runs",          :runs_path,                  { key: :runs,        group: :activity, scope: :harbor } ],
       [ "Webhooks",      :webhooks_path,              { key: :webhooks,    group: :activity, scope: :harbor } ],

@@ -1,0 +1,45 @@
+<%# The builder's canvas: viewport, side panel, module picker and toolbar.
+    Rendered inside an element carrying data-controller="harbor--workflow-builder"
+    (the edit form, or a wrapper on the workflow and run pages).
+    locals: mode ("edit" | "view" | "run"); on a run page also run_panel (the
+    server-rendered details panel, or nil) and run_tools (extra toolbar links).
+
+    On a run page the page morph-refreshes while the run is live. The viewport
+    and the builder's own panel are drawn by JavaScript, so they are marked
+    permanent: a refresh leaves them alone and the controller redraws. %>
+<% editing = mode == "edit" %>
+<% running = mode == "run" %>
+<div class="wf-bleed">
+  <div class="wf-shell <%= editing ? 'is-edit' : 'is-view' %> <%= 'is-run' if running %>">
+    <div class="wf-viewport" data-harbor--workflow-builder-target="viewport" role="region"<% if running %> id="wf-run-viewport" data-turbo-permanent<% end %>
+         aria-label="Workflow canvas. Drag to move around<%= ', Ctrl+scroll to zoom' %>. Each module is a button.">
+      <div class="wf-stage" data-harbor--workflow-builder-target="stage"></div>
+    </div>
+    <% if editing %>
+      <p class="wf-warnings" data-harbor--workflow-builder-target="warnings" role="status" hidden></p>
+      <div class="wf-picker" data-harbor--workflow-builder-target="picker" role="dialog" aria-label="Add a module" hidden></div>
+    <% end %>
+    <%= local_assigns[:run_panel] %>
+    <aside class="wf-panel" data-harbor--workflow-builder-target="panel" aria-label="Details" hidden<% if running %> id="wf-run-builder-panel" data-turbo-permanent<% end %>></aside>
+    <div class="wf-toolbar" role="toolbar" aria-label="Canvas">
+      <% if editing %>
+        <button type="submit" class="wf-save"><%= @workflow.persisted? ? "Save" : "Create workflow" %></button>
+        <span class="wf-sep" aria-hidden="true"></span>
+        <button type="button" class="wf-tool" data-action="harbor--workflow-builder#undo" title="Undo (⌘Z)" aria-label="Undo"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg></button>
+        <button type="button" class="wf-tool" data-action="harbor--workflow-builder#redo" title="Redo (⇧⌘Z)" aria-label="Redo"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg></button>
+        <span class="wf-sep" aria-hidden="true"></span>
+      <% end %>
+      <button type="button" class="wf-tool" data-action="harbor--workflow-builder#zoomOut" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+      <span class="wf-zoom" data-harbor--workflow-builder-target="zoomLabel">100%</span>
+      <button type="button" class="wf-tool" data-action="harbor--workflow-builder#zoomIn" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button type="button" class="wf-tool" data-action="harbor--workflow-builder#fit" title="Fit to screen" aria-label="Fit to screen"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+      <span class="wf-sep" aria-hidden="true"></span>
+      <% if editing %>
+        <button type="button" class="wf-tool" data-action="harbor--workflow-builder#openSettings" title="Workflow settings" aria-label="Workflow settings"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button>
+      <% end %>
+      <%= local_assigns[:run_tools] %>
+      <button type="button" class="wf-tool" data-action="harbor--workflow-builder#openJson" title="Definition as JSON" aria-label="Definition as JSON"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg></button>
+      <button type="button" class="wf-tool" data-action="harbor--workflow-builder#openHelp" title="How workflows work" aria-label="How workflows work"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg></button>
+    </div>
+  </div>
+</div>

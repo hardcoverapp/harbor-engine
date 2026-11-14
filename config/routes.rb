@@ -35,6 +35,25 @@ Harbor::Engine.routes.draw do
     end
     resources :task_assignments, only: :update
 
+    # Workflows: the list, a workflow's page and builder, the reference, and
+    # each run's page. A host adds actions of its own under the same
+    # addresses in its own routes.
+    resources :workflows, param: :key, except: :destroy do
+      member do
+        post :run
+        patch :mode
+        post :test
+      end
+      collection { get :reference }
+    end
+    resources :workflow_runs, only: %i[index show] do
+      member do
+        post :cancel
+        post :rerun
+        post "steps/:step_run_id/decide", action: :decide, as: :decide
+      end
+    end
+
     # Models: providers and their usage, and the aliases agents are given.
     resources :models, only: :index do
       collection { post :refresh }

@@ -1,0 +1,32 @@
+<%# Under a workflow on the Workflows page: what is running now (newest first,
+    at most SHOWN), then how its last three runs ended. %>
+<% shown = 5 %>
+<div class="mt-3 pt-3 border-t border-hairline md:col-span-2" data-workflow-runs>
+  <% if active.empty? && finished.empty? %>
+    <p class="meta">No runs yet.</p>
+  <% else %>
+    <ul class="space-y-1.5 text-[13px]">
+      <% active.first(shown).each do |run| %>
+        <li class="flex flex-wrap items-center gap-x-2 gap-y-0.5" data-run="<%= run.id %>" data-run-state="active">
+          <%= harbor_workflow_run_mark(run) %>
+          <%= link_to "##{run.id}", workflow_run_path(run), class: "font-mono text-ink hover:underline" %>
+          <span class="text-ink"><%= run.status == "waiting" ? "Waiting" : "Running" %><%= " on #{run.subject_label}" if run.subject_label %></span>
+          <% if run.dry_run? %><span class="meta">dry run</span><% end %>
+          <span class="meta">started <%= time_ago_in_words(run.started_at || run.created_at) %> ago</span>
+        </li>
+      <% end %>
+      <% if active.size > shown %>
+        <li class="meta pl-5"><%= link_to "and #{active.size - shown} more in progress", workflow_runs_path(workflow: workflow.key), class: "underline decoration-hairline underline-offset-4 hover:text-ink" %></li>
+      <% end %>
+      <% finished.each do |run| %>
+        <li class="flex flex-wrap items-center gap-x-2 gap-y-0.5" data-run="<%= run.id %>" data-run-state="finished">
+          <%= harbor_workflow_run_mark(run) %>
+          <%= link_to "##{run.id}", workflow_run_path(run), class: "font-mono text-soft hover:text-ink hover:underline" %>
+          <span class="text-soft"><%= run.status.capitalize %><%= " on #{run.subject_label}" if run.subject_label %></span>
+          <% if run.dry_run? %><span class="meta">dry run</span><% end %>
+          <span class="meta"><%= time_ago_in_words(run.ended_at || run.updated_at) %> ago<% if run.duration %> · took <%= harbor_short_duration(run.duration) %><% end %></span>
+        </li>
+      <% end %>
+    </ul>
+  <% end %>
+</div>

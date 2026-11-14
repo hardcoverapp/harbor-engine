@@ -234,3 +234,94 @@ module HarborAgentSessions
 
   def raw_stream(run) = File.binread(Harbor::LiveLog.absolute(run.raw_log_path))
 end
+
+# Workflows: empty tables, the registry as Harbor ships it (put back after a
+# test that registers its own), the master switch on, and a way to run a
+# workflow run forward without a queue.
+module HarborWorkflows
+  HOOKS = %i[workflow_class workflow_run_class user_class workflow_params workflow_starter workflow_subject workflow_manual_start
+             workflow_event_data workflow_run_url workflow_run_finished workflow_step_retry workflow_run_cancel].freeze
+
+  def self.included(base)
+    # Once: its setup empties the settings, which a module included earlier
+    # may have filled.
+    base.include HarborTestConfig unless base < HarborTestConfig
+    base.include ActiveJob::TestHelper
+    base.setup do
+      [ Harbor::WorkflowWait, Harbor::WorkflowStepRun ].each(&:delete_all)
+      Harbor::Run.where.not(workflow_run_id: nil).delete_all
+      Harbor::Workflow.update_all(current_version_id: nil)
+      [ Harbor::WorkflowRun, Harbor::WorkflowVersion, Harbor::Workflow ].each(&:delete_all)
+      @workflow_registry = Harbor::Workflows.snapshot
+      @workflow_hooks = HOOKS.index_with { |name| Harbor.config.public_send(name) }
+      Harbor::Setting.set!(:workflows_enabled, true)
+    end
+    base.teardown do
+      Harbor::Workflows.restore!(@workflow_registry)
+      @workflow_hooks.each { |name, value| Harbor.config.public_send("#{name}=", value) }
+      clear_enqueued_jobs
+    end
+  end
+
+  # Accepts the definition as a braced hash, or as bare string keys (which
+  # Ruby hands over as keywords).
+  def workflow(definition = nil, mode: "live", key: "wf-#{SecureRandom.hex(3)}", **bare)
+    definition ||= bare.transform_keys(&:to_s)
+    workflow = Harbor::Workflow.new(key:, name: key.titleize, mode:)
+    _, errors = workflow.save_definition!(definition)
+    assert_empty errors
+    workflow
+  end
+
+  def start_workflow(workflow, input: {}, **options)
+    Harbor::Workflows.start!(workflow, trigger: { "kind" => "manual", "sender" => "Sam" }, kind: "manual", input:, **options)
+  end
+
+  # Run AdvanceJob (and the advances it queues) until the queue is quiet.
+  def drain(run)
+    10.times do
+      jobs = enqueued_jobs.select { |job| job["job_class"] == "Harbor::Workflows::AdvanceJob" }
+      break if jobs.empty?
+      enqueued_jobs.reject! { |job| job["job_class"] == "Harbor::Workflows::AdvanceJob" }
+      jobs.each { |job| Harbor::Workflows::AdvanceJob.perform_now(*ActiveJob::Arguments.deserialize(job["arguments"])) }
+    end
+    run.reload
+  end
+
+  def step_of(run, key) = run.step_runs.reload.select { |step| step.step_key == key }.last
+
+  # The Run a step dispatched, finished as an agent would finish it.
+  def finish_step_run(run, step_key, text:, ok: true)
+    agent_run = run.runs.where(workflow_step_key: step_key).order(:id).last
+    assert agent_run, "expected #{step_key} to have dispatched a Run"
+    agent_run.finish!(status: ok ? "ok" : "error", output: { "text" => text, "exit_code" => ok ? 0 : 1 }, error: (text unless ok))
+  end
+
+  # A step type of the test's own: records what it was given and finishes on
+  # the spot, as a host's action would.
+  class Recorder
+    class << self
+      attr_reader :seen
+
+      def reset! = @seen = []
+
+      def start(_engine, _step, step_run, input)
+        (@seen ||= []) << input["message"]
+        raise ArgumentError, "told to fail" if input["message"] == "fail"
+        step_run.finish!(status: "ok", output: { "said" => input["message"] })
+        :done
+      end
+    end
+  end
+
+  # Registers the "say" action, run by Recorder; it runs in a dry run only
+  # when `side_effect: false` is given.
+  def register_say(**options)
+    Recorder.reset!
+    Harbor::Workflows.register_step "action", action: "say", label: "Say", group: "Test", icon: "bell", color: "#000000",
+      description: "Records a message.", fields: [ { name: "message", label: "Message", kind: "text" } ],
+      outputs: [ [ "said", "string", "" ] ], runner: "HarborWorkflows::Recorder", **options
+  end
+
+  def said = Recorder.seen
+end

@@ -1,0 +1,62 @@
+<% content_for :title, "Workflows" %>
+
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-8 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="display text-3xl">Workflows</h1>
+    <%# What workflows are at this site. A host words it its own way by having
+        a partial of this name. %>
+    <%= render "harbor/workflows/intro" %>
+  </div>
+  <div class="flex items-center gap-2">
+    <%= link_to "Reference", reference_workflows_path, class: "btn-quiet" %>
+    <%# A host's own buttons beside these (loading its starter workflows, say). %>
+    <%= render "harbor/workflows/index_actions" if harbor_workflows_partial?("index_actions") %>
+    <%= link_to "New workflow", new_workflow_path, class: "btn-primary" %>
+  </div>
+</header>
+
+<%= render "harbor/workflows/tabs", current: :workflows %>
+
+<% unless Harbor::Workflows.enabled? %>
+  <p role="status" class="bg-pale-yellow text-ink-yellow rounded-lg p-4 text-sm mb-8">
+    <%= render "harbor/workflows/switched_off" %>
+  </p>
+<% end %>
+
+<% if @workflows.empty? %>
+  <div class="card p-8 text-center">
+    <p class="text-ink font-medium">No workflows yet.</p>
+    <%= render "harbor/workflows/empty" %>
+  </div>
+<% else %>
+  <%# While anything is running, reload so the spinners turn into results. %>
+  <div class="grid gap-4 mb-12"<% if @active_runs.any? %> data-controller="harbor--poll" data-harbor--poll-interval-value="15"<% end %>>
+    <% @workflows.each do |workflow| %>
+      <% definition = workflow.definition %>
+      <% stats = @stats[workflow.id] %>
+      <article id="workflow-<%= workflow.key %>" class="card p-5 grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <%= link_to workflow.name, workflow_path(workflow), class: "font-medium text-ink hover:underline" %>
+            <%= harbor_workflow_mode_pill(workflow.mode) %>
+            <% Array(workflow.claims).each do |c| %>
+              <span class="pill bg-bone text-soft border border-hairline" title="<%= Harbor::Workflows.claimable[c] %>">claims <%= c %></span>
+            <% end %>
+            <span class="meta">v<%= workflow.current_version&.number || 0 %></span>
+          </div>
+          <p class="text-soft mt-1 text-[13px] leading-snug"><%= workflow.description %></p>
+          <ul class="meta mt-1.5 space-y-0.5">
+            <% definition.triggers.each do |t| %><li><%= harbor_trigger_summary(t) %></li><% end %>
+          </ul>
+        </div>
+        <div class="text-sm md:text-right space-y-1">
+          <p class="meta">7 days: <%= stats.values.sum %> runs<% if stats.any? %> · <%= stats["succeeded"] %> ok · <%= stats["failed"] %> failed<% end %></p>
+          <p><%= link_to "All runs", workflow_runs_path(workflow: workflow.key), class: "meta underline decoration-hairline underline-offset-4 hover:text-ink" %></p>
+        </div>
+        <%= render "harbor/workflows/runs", workflow: workflow, active: @active_runs.fetch(workflow.id, []), finished: @finished_runs.fetch(workflow.id, []) %>
+      </article>
+    <% end %>
+  </div>
+<% end %>

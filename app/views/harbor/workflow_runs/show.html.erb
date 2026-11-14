@@ -1,0 +1,72 @@
+<% content_for :title, "#{@run.workflow.name} · Workflow run ##{@run.id}" %>
+<% turbo_refreshes_with(method: :morph, scroll: :preserve) if respond_to?(:turbo_refreshes_with) %>
+<% if @run.active? %><div data-controller="harbor--poll" data-harbor--poll-interval-value="5" hidden></div><% end %>
+<%= render "harbor/shared/section_nav" %>
+
+<header id="workflow-run-header" class="mb-5">
+  <nav aria-label="Breadcrumb" data-breadcrumbs class="meta flex flex-wrap items-center gap-1.5">
+    <%= link_to "Workflows", workflows_path, class: "hover:text-ink" %>
+    <span aria-hidden="true">/</span>
+    <%= link_to @run.workflow.name, workflow_path(@run.workflow), class: "hover:text-ink" %>
+    <span aria-hidden="true">/</span>
+    <%= link_to "Runs", workflow_runs_path(workflow: @run.workflow.key), class: "hover:text-ink" %>
+    <span aria-hidden="true">/</span>
+    <span class="text-ink" aria-current="page">Run #<%= @run.id %></span>
+  </nav>
+  <div class="mt-2 flex flex-wrap items-center gap-3">
+    <h1 class="display text-3xl">Run #<%= @run.id %></h1>
+    <%= harbor_workflow_run_status_pill(@run.status) %>
+    <% if @run.dry_run? %><%= harbor_workflow_mode_pill("dry_run") %><% end %>
+    <div class="ml-auto flex gap-2">
+      <% if @run.active? %>
+        <%= button_to "Cancel", cancel_workflow_run_path(@run), method: :post, form_class: "inline",
+              class: "btn-quiet text-ink-red !py-1 !px-3 text-xs", data: { turbo_confirm: "Cancel this run? Running agents are stopped; cleanup steps still run." } %>
+      <% else %>
+        <%= button_to "Run again", rerun_workflow_run_path(@run), method: :post, form_class: "inline", class: "btn-quiet !py-1 !px-3 text-xs" %>
+      <% end %>
+    </div>
+  </div>
+  <p class="text-sm text-soft mt-2" data-run-summary>
+    <%# Each part is a string or nil; a bare `a && b` would leave a literal "false" in the line. %>
+    <%= safe_join([
+          (link_to_if(@run.subject_url, @run.subject_label, @run.subject_url, class: "underline decoration-hairline underline-offset-4 hover:text-ink") if @run.subject_label),
+          "started by #{@run.trigger_kind}#{" (#{@run.webhook_event.event}.#{@run.webhook_event.action})" if @run.webhook_event}",
+          "version #{@run.workflow_version.number}",
+          ("started #{time_ago_in_words(@run.started_at)} ago" if @run.started_at),
+          ("took #{distance_of_time_in_words(@run.duration)}" if @run.duration && @run.finished?),
+          ("$#{'%.4f' % @run.cost_usd}" if @run.cost_usd.positive?),
+          (link_to("called by run ##{@run.parent_workflow_run_id}", workflow_run_path(@run.parent_workflow_run_id), class: "underline decoration-hairline underline-offset-4") if @run.parent_workflow_run_id)
+        ].compact, " · ") %>
+  </p>
+  <% if @run.note.present? %><p class="text-sm mt-2 text-ink"><%= @run.note %></p><% end %>
+  <% if @run.error.present? %><p role="alert" class="mt-3 bg-pale-red text-ink-red rounded-lg p-3 text-sm"><%= @run.error %></p><% end %>
+</header>
+
+<%# Everything about the run opens inside the canvas: a step's details and
+    live log, the step list, the run's context. Nothing sits below it. %>
+<% run_panel = capture do %>
+  <% if @panel %>
+    <aside id="step" class="wf-panel wf-run-panel" aria-label="Details" data-run-panel="<%= @panel %>">
+      <div class="wf-panel-inner">
+        <%= render "harbor/workflow_runs/panel_#{@panel}" %>
+      </div>
+    </aside>
+  <% end %>
+<% end %>
+<% run_tools = capture do %>
+  <%= link_to workflow_run_path(@run, panel: "steps"), class: "wf-tool #{'is-on' if @panel == 'steps'}", title: "Step list", aria: { label: "Step list" }, data: { turbo_action: "replace" } do %>
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+  <% end %>
+  <%= link_to workflow_run_path(@run, panel: "context"), class: "wf-tool #{'is-on' if @panel == 'context'}", title: "Run context", aria: { label: "Run context" }, data: { turbo_action: "replace" } do %>
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg>
+  <% end %>
+<% end %>
+
+<div id="workflow-run-canvas" data-controller="harbor--workflow-builder" data-harbor--workflow-builder-mode-value="run"
+     data-harbor--workflow-builder-definition-value="<%= @definition.data.to_json %>"
+     data-harbor--workflow-builder-statuses-value="<%= harbor_workflow_run_statuses(@run, @latest).to_json %>"
+     data-harbor--workflow-builder-selected-key-value="<%= @selected&.step_key %>"
+     data-harbor--workflow-builder-catalog-value="<%= harbor_workflow_builder_catalog.to_json %>">
+  <%= render "harbor/workflows/canvas", mode: "run", run_panel: run_panel, run_tools: run_tools %>
+  <p class="meta mt-2">Click a step to see what went into it, what came out, and its log. Green links show the path the run took.</p>
+</div>

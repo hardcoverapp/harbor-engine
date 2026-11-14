@@ -9,6 +9,9 @@ module Harbor
     STATUSES = %w[received dispatched ignored error].freeze
 
     belongs_to :run, class_name: Harbor.class_name_for(:run_class), optional: true
+    # The workflow runs this delivery started.
+    has_many :workflow_runs, class_name: Harbor.class_name_for(:workflow_run_class), foreign_key: :webhook_event_id,
+                             dependent: :nullify, inverse_of: :webhook_event
 
     validates :status, inclusion: { in: STATUSES }
 

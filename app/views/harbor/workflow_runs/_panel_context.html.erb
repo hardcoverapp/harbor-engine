@@ -1,0 +1,2 @@
+<%= render "harbor/workflow_runs/panel_head", title: "Run context", sub: "Everything the steps can read" %>
+<pre class="text-xs font-mono bg-bone rounded-lg p-3 overflow-x-auto"><%= harbor_pretty_json(@run.context) %></pre>

@@ -1,0 +1,7 @@
+<% content_for :title, "New workflow" %>
+<%= render "harbor/shared/section_nav" %>
+<header class="mb-8">
+  <%= link_to "Workflows", workflows_path, class: "meta hover:text-ink" %>
+  <h1 class="display text-3xl mt-2">New workflow</h1>
+</header>
+<%= render "harbor/workflows/form" %>

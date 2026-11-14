@@ -82,6 +82,59 @@ module Harbor
     # The classes Harbor finds runtimes and workspaces with, by name.
     attr_accessor :runtime_class, :workspace_profile_class
 
+    # --- Workflows (see README "Workflows") ---
+
+    # The classes Harbor finds workflows and their runs with, by name:
+    # Harbor's own or a host's subclass of each.
+    attr_accessor :workflow_class, :workflow_run_class
+
+    # The host's user class, by name. With it, a workflow version records who
+    # saved it and a workflow run who started it, and the pages name them
+    # (`user_label`). nil: only the id is kept.
+    attr_accessor :user_class
+
+    # Attributes of the host's workflow class that the workflow form may save,
+    # beyond Harbor's own (`permit`'s arguments: names, or `{ name: [] }`).
+    attr_accessor :workflow_params
+
+    # What a new workflow's definition starts as on the "New workflow" page:
+    # a Hash, or a callable returning one. nil: Harbor's own, built from its
+    # own step types.
+    attr_accessor :workflow_starter
+
+    # Called with (trigger, input) when a workflow run is started without a
+    # subject; returns what the run is about: { repo:, pr_number:,
+    # issue_number: }, any of them. nil: a run is about nothing.
+    attr_accessor :workflow_subject
+
+    # Called with (params, user, input) when someone starts a workflow by
+    # hand from its page; returns [trigger, input]: what the steps read as
+    # `trigger.*` and `input.*`. nil: a trigger saying who started it.
+    attr_accessor :workflow_manual_start
+
+    # Called with a stored webhook delivery; returns the trigger data a
+    # workflow started by it would read, or nil for a delivery that can't
+    # start one. With it, a workflow's page offers "Test with an event".
+    # nil: it doesn't.
+    attr_accessor :workflow_event_data
+
+    # Called with a workflow run; returns the address of its page as steps
+    # and messages give it out. nil: Harbor's own address for it.
+    attr_accessor :workflow_run_url
+
+    # Called with a workflow run when it has finished, cleanup and all,
+    # however it ended. nil: nothing happens.
+    attr_accessor :workflow_run_finished
+
+    # Called with (run, step run) when an agent step's Run has finished;
+    # returns true when the host will run the step again, which leaves the
+    # step pending. nil: the Run's result is the step's.
+    attr_accessor :workflow_step_retry
+
+    # Called with (run, user) to stop a step's Run when its workflow run is
+    # canceled. nil: stopped as the Runs page's Stop does.
+    attr_accessor :workflow_run_cancel
+
     # How Harbor reaches Redis, for capacity slots: called with a block, yields
     # a connection answering `call("COMMAND", …)`. Sidekiq's by default.
     attr_accessor :redis
@@ -227,6 +280,18 @@ module Harbor
       @automation_edited = nil
       @runtime_class = "Harbor::Runtime"
       @workspace_profile_class = "Harbor::WorkspaceProfile"
+      @workflow_class = "Harbor::Workflow"
+      @workflow_run_class = "Harbor::WorkflowRun"
+      @user_class = nil
+      @workflow_params = []
+      @workflow_starter = nil
+      @workflow_subject = nil
+      @workflow_manual_start = nil
+      @workflow_event_data = nil
+      @workflow_run_url = nil
+      @workflow_run_finished = nil
+      @workflow_step_retry = nil
+      @workflow_run_cancel = nil
       @redis = lambda do |&block|
         raise "Harbor needs Redis for capacity slots: set config.redis, or load Sidekiq." unless defined?(::Sidekiq)
         ::Sidekiq.redis(&block)

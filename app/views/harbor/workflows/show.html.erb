@@ -1,0 +1,111 @@
+<% content_for :title, "#{@workflow.name} · Workflows" %>
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-8">
+  <%= link_to "Workflows", workflows_path, class: "meta hover:text-ink" %>
+  <div class="mt-2 flex flex-wrap items-center gap-3">
+    <h1 class="display text-3xl"><%= @workflow.name %></h1>
+    <%= harbor_workflow_mode_pill(@workflow.mode) %>
+    <span class="meta">version <%= @workflow.current_version&.number || 0 %> · <code class="chip"><%= @workflow.key %></code></span>
+    <%= link_to "Edit", edit_workflow_path(@workflow), class: "btn-quiet !py-1 !px-3 text-xs ml-auto" %>
+  </div>
+  <p class="text-sm text-soft mt-2 max-w-3xl"><%= @workflow.description %></p>
+  <div class="mt-4 flex flex-wrap items-center gap-2" role="group" aria-label="Mode">
+    <span class="meta mr-1">Mode</span>
+    <% Harbor::Workflow::MODES.each do |m| %>
+      <%= button_to m.tr("_", " "), mode_workflow_path(@workflow, mode: m), method: :patch, form_class: "inline",
+            class: "pill cursor-pointer " + (@workflow.mode == m ? Harbor::WorkflowsHelper::MODE_CLASSES[m] : "bg-surface text-soft border border-hairline hover:text-ink"),
+            aria: { pressed: @workflow.mode == m } %>
+    <% end %>
+    <span class="meta ml-2">Off never starts. Dry run follows real events and records what it would do. Live acts<%= " and takes over: #{@workflow.claims.join(', ')}" if @workflow.claims.any? %>.</span>
+  </div>
+</header>
+
+<div class="mb-10" data-controller="harbor--workflow-builder" data-harbor--workflow-builder-mode-value="view"
+     data-harbor--workflow-builder-definition-value="<%= @definition.data.to_json %>"
+     data-harbor--workflow-builder-catalog-value="<%= harbor_workflow_builder_catalog.to_json %>">
+  <%= render "harbor/workflows/canvas", mode: "view" %>
+</div>
+
+<div class="grid gap-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
+  <section class="min-w-0 space-y-8">
+    <details class="card p-4">
+      <summary class="meta cursor-pointer">Step list (the same workflow as an outline)</summary>
+      <div class="mt-4">
+        <h2 class="font-medium text-ink mb-2">Starts when</h2>
+        <ul class="card divide-y divide-hairline mb-6 text-sm">
+          <% @definition.triggers.each do |t| %><li class="px-4 py-2.5"><%= harbor_trigger_summary(t) %></li><% end %>
+        </ul>
+        <%= render "harbor/workflows/graph", steps: @definition.steps %>
+        <% if @definition.finally_steps.any? %>
+          <h3 class="meta uppercase tracking-[0.05em] mt-6 mb-2">Always, at the end (cleanup)</h3>
+          <%= render "harbor/workflows/graph", steps: @definition.finally_steps %>
+        <% end %>
+      </div>
+    </details>
+    <% if @definition.settings.any? %>
+      <p class="meta">Settings: <% @definition.settings.each do |k, v| %><code class="chip"><%= k %>: <%= v %></code> <% end %></p>
+    <% end %>
+    <section>
+      <h2 class="display text-xl mb-3">Runs</h2>
+      <% if @runs.any? %>
+        <%= render "harbor/workflow_runs/table", runs: @runs %>
+      <% else %>
+        <p class="text-sm text-soft">No runs yet.</p>
+      <% end %>
+    </section>
+  </section>
+
+  <aside class="space-y-8 min-w-0">
+    <section class="card p-5">
+      <h2 class="font-medium text-ink mb-3">Run it</h2>
+      <%= form_with url: run_workflow_path(@workflow), method: :post, class: "space-y-3 text-sm" do %>
+        <%# What the run is given. A host that starts runs on something of its
+            own (a pull request, a ticket) has a partial of this name with its
+            fields, read by `config.workflow_manual_start`. %>
+        <%= render "harbor/workflows/run_fields" %>
+        <label class="flex items-center gap-2"><%= check_box_tag :dry_run, "1", !@workflow.live? %> Dry run (record what it would do)</label>
+        <%= submit_tag "Start", class: "btn-primary w-full" %>
+      <% end %>
+    </section>
+
+    <%# For a host that can turn a stored delivery into trigger data
+        (`config.workflow_event_data`). %>
+    <% if Harbor.config.workflow_event_data %>
+      <section id="test" class="card p-5">
+        <h2 class="font-medium text-ink mb-1">Test with an event</h2>
+        <p class="meta mb-3">Pick a delivery this site received. See which triggers match and what the steps would read, or dry-run it.</p>
+        <%= form_with url: test_workflow_path(@workflow), method: :post, class: "space-y-3 text-sm" do %>
+          <%= select_tag :webhook_event_id, options_for_select(@events.map { |e| [ "##{e.id} #{e.event}.#{e.action} #{e.payload.dig('pull_request', 'number') || e.payload.dig('issue', 'number')}", e.id ] }, @test_result&.dig("event")&.id), class: "field w-full" %>
+          <div class="flex gap-2">
+            <%= button_tag "Check triggers", name: "start", value: "0", class: "btn-quiet flex-1" %>
+            <%= button_tag "Dry run it", name: "start", value: "1", class: "btn-primary flex-1" %>
+          </div>
+        <% end %>
+        <% if @test_result %>
+          <div class="mt-4 text-sm">
+            <% if @test_result["matched"].any? %>
+              <p class="text-ink-green">Trigger <%= @test_result["matched"].join(", ") %> matches.</p>
+            <% else %>
+              <p class="text-ink-red">No trigger matches this event.</p>
+            <% end %>
+            <details class="mt-2"><summary class="meta cursor-pointer">trigger.* the steps would read</summary>
+              <pre class="mt-2 text-xs font-mono bg-bone rounded-lg p-3 overflow-x-auto"><%= harbor_pretty_json(@test_result["trigger"]) %></pre>
+            </details>
+          </div>
+        <% end %>
+      </section>
+    <% end %>
+
+    <section>
+      <h2 class="font-medium text-ink mb-2">Versions</h2>
+      <ol class="space-y-1 text-sm">
+        <% @versions.each do |v| %>
+          <li class="flex gap-2"><span class="font-mono">v<%= v.number %></span><span class="meta"><%= l(v.created_at, format: :short) %><% if (who = harbor_workflow_user(v, :created_by_user)) %> · <%= who %><% end %></span></li>
+        <% end %>
+      </ol>
+      <%# Where a host keeps the exported definitions, in its own words. %>
+      <%= render "harbor/workflows/versions_note", workflow: @workflow if harbor_workflows_partial?("versions_note") %>
+    </section>
+  </aside>
+</div>

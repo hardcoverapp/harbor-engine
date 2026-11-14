@@ -1,0 +1,65 @@
+<%# One step of the run, inside the canvas: where it stands, its live log when
+    an agent ran it, and what went in and came out. %>
+<% sr = @selected %>
+<% step = @definition.find(sr.step_key) || {} %>
+<%= render "harbor/workflow_runs/panel_head", title: harbor_step_title(step.presence || { "key" => sr.step_key }),
+      sub: [ harbor_step_type_label(sr.step_type), ("pass #{sr.iteration}" if sr.iteration) ].compact.join(" · ") %>
+<div class="flex flex-wrap items-center gap-2 text-sm" data-step-status>
+  <%= harbor_step_status_pill(sr.status) %>
+  <% if sr.run %>
+    <span>Ran as <%= link_to "Run ##{sr.run.id}", run_path(sr.run), class: "underline decoration-hairline underline-offset-4 hover:text-ink" %></span>
+    <%= harbor_status_pill(sr.run.status) %>
+    <% if sr.run.cost_usd %><span class="meta">$<%= "%.4f" % sr.run.cost_usd %></span><% end %>
+  <% end %>
+  <span class="meta ml-auto"><%= sr.started_at && "started #{l(sr.started_at, format: :short)}" %><%= " · finished #{l(sr.ended_at, format: :short)}" if sr.ended_at %></span>
+</div>
+
+<% if sr.step_type == "approval" && sr.pending? %>
+  <%= form_with url: decide_workflow_run_path(@run, step_run_id: sr.id), method: :post, class: "space-y-2" do %>
+    <p class="text-sm"><%= sr.output["prompt"] %></p>
+    <%= text_field_tag :note, nil, class: "field w-full", placeholder: "Note (optional)" %>
+    <div class="flex gap-2">
+      <%= button_tag "Approve", name: "decision", value: "approve", class: "btn-primary flex-1" %>
+      <%= button_tag "Reject", name: "decision", value: "reject", class: "btn-quiet flex-1" %>
+    </div>
+  <% end %>
+<% end %>
+<% if sr.error.present? %><p class="bg-pale-red text-ink-red rounded-lg p-3 text-sm"><%= sr.error %></p><% end %>
+
+<% if @log %>
+  <section class="wf-section flex flex-col flex-1 min-h-0" id="step-log">
+    <h3 class="flex items-center gap-2">
+      Log
+      <% if sr.run.running? %><span class="pill bg-pale-blue text-ink-blue normal-case tracking-normal">streaming</span><% end %>
+      <%= link_to "Open the full run", run_path(sr.run), class: "ml-auto normal-case tracking-normal font-normal underline decoration-hairline underline-offset-4 hover:text-ink" %>
+    </h3>
+    <% if @log[:body].present? %>
+      <% if @log[:clipped] %><p class="wf-hint">Showing the end of the log. The full run page has all of it.</p><% end %>
+      <%# Stays at the bottom as lines arrive, unless you have scrolled up to read. %>
+      <pre class="wf-log" id="step-log-<%= sr.run.id %>" data-controller="harbor--log-follow" tabindex="0" aria-label="Log of run <%= sr.run.id %>"><%= @log[:body] %></pre>
+    <% elsif sr.run.running? || sr.run.pending? %>
+      <p class="wf-hint">Waiting for the first output…</p>
+    <% else %>
+      <p class="wf-hint">No log was written for this run.</p>
+    <% end %>
+  </section>
+<% end %>
+
+<% sources = (step.values_at("prompt", "slash_command", "body", "message") + [ step["input"].to_json ]).flat_map { |t| Harbor::Workflows::Context.sources(t) }.uniq %>
+<%# The reader's open or closed choice survives the page's refreshes. %>
+<details class="wf-section" id="step-went-in-<%= sr.id %>" data-controller="harbor--details" data-action="turbo:before-morph-attribute->harbor--details#preserveOpen" <%= "open" unless @log %>>
+  <summary class="meta uppercase tracking-[0.05em] cursor-pointer">Went in</summary>
+  <% if sources.any? %>
+    <p class="meta mt-2">Reads output from:
+      <% sources.each do |key| %>
+        <% from = @latest[key] %>
+        <%= from ? link_to(harbor_step_title(@definition.find(key) || { "key" => key }), workflow_run_path(@run, step: from.id), data: { turbo_action: "replace" }, class: "underline decoration-hairline underline-offset-4 hover:text-ink") : key %><%= " (pass #{from.iteration})" if from&.iteration %>
+      <% end %>
+    </p>
+  <% end %>
+  <pre class="mt-2 text-xs font-mono bg-bone rounded-lg p-3 overflow-x-auto max-h-80"><%= harbor_pretty_json(sr.input.except("key", "type", "name")) %></pre>
+</details>
+<details class="wf-section" id="step-came-out-<%= sr.id %>" data-controller="harbor--details" data-action="turbo:before-morph-attribute->harbor--details#preserveOpen" <%= "open" unless @log %>>
+  <summary class="meta uppercase tracking-[0.05em] cursor-pointer">Came out</summary>
+  <pre class="mt-2 text-xs font-mono bg-bone rounded-lg p-3 overflow-x-auto max-h-96"><%= harbor_pretty_json(sr.output) %></pre>
+</details>

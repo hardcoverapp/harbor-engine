@@ -1,0 +1,17 @@
+<%# The same run as an outline, and the runs it called. %>
+<%= render "harbor/workflow_runs/panel_head", title: "Step list", sub: "The same run as an outline" %>
+<%= render "harbor/workflows/graph", steps: @definition.steps, latest: @latest, run: @run %>
+<% if @definition.finally_steps.any? %>
+  <h3 class="meta uppercase tracking-[0.05em] mt-2">Always, at the end (cleanup)</h3>
+  <%= render "harbor/workflows/graph", steps: @definition.finally_steps, latest: @latest, run: @run %>
+<% end %>
+<% if @run.child_workflow_runs.any? %>
+  <div class="wf-section">
+    <h3>Called</h3>
+    <ul class="space-y-1 text-sm">
+      <% @run.child_workflow_runs.each do |child| %>
+        <li class="flex items-center gap-2"><%= harbor_workflow_run_mark(child) %> <%= link_to "#{child.workflow.name} ##{child.id}", workflow_run_path(child), class: "underline decoration-hairline underline-offset-4 hover:text-ink" %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>

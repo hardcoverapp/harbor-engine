@@ -1,0 +1,6 @@
+<%# The Workflows page's own sub-pages. `current` is :workflows or :runs. %>
+<div data-workflows-tabs>
+  <%= render "harbor/shared/page_tabs", label: "Workflows", tabs: [
+        [ "Workflows", workflows_path, current == :workflows ],
+        [ "Recent runs", workflow_runs_path, current == :runs ] ] %>
+</div>

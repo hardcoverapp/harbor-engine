@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_14_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_14_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -214,6 +214,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_100000) do
     t.index ["started_at"], name: "index_runs_on_started_at"
     t.index ["status"], name: "index_runs_on_status"
     t.index ["subject_type", "subject_id"], name: "index_runs_on_subject_type_and_subject_id"
+    t.index ["workflow_run_id"], name: "index_runs_on_workflow_run_id"
   end
 
   create_table "runtimes", force: :cascade do |t|
@@ -260,6 +261,98 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_100000) do
     t.index ["status"], name: "index_webhook_events_on_status"
   end
 
+  create_table "workflow_runs", force: :cascade do |t|
+    t.bigint "workflow_id", null: false
+    t.bigint "workflow_version_id", null: false
+    t.string "status", default: "queued", null: false
+    t.string "mode", null: false
+    t.string "phase", default: "main", null: false
+    t.string "outcome"
+    t.text "note"
+    t.text "error"
+    t.string "trigger_kind", null: false
+    t.bigint "webhook_event_id"
+    t.bigint "triggered_by_user_id"
+    t.bigint "parent_workflow_run_id"
+    t.string "parent_step_key"
+    t.string "dedupe_key"
+    t.string "github_repo"
+    t.integer "pr_number"
+    t.integer "issue_number"
+    t.jsonb "context", default: {}, null: false
+    t.datetime "started_at"
+    t.datetime "ended_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["dedupe_key"], name: "index_workflow_runs_on_dedupe_key", unique: true, where: "(dedupe_key IS NOT NULL)"
+    t.index ["github_repo", "issue_number"], name: "index_workflow_runs_on_github_repo_and_issue_number"
+    t.index ["github_repo", "pr_number"], name: "index_workflow_runs_on_github_repo_and_pr_number"
+    t.index ["parent_workflow_run_id"], name: "index_workflow_runs_on_parent_workflow_run_id"
+    t.index ["triggered_by_user_id"], name: "index_workflow_runs_on_triggered_by_user_id"
+    t.index ["webhook_event_id"], name: "index_workflow_runs_on_webhook_event_id"
+    t.index ["workflow_id", "status"], name: "index_workflow_runs_on_workflow_id_and_status"
+    t.index ["workflow_id"], name: "index_workflow_runs_on_workflow_id"
+    t.index ["workflow_version_id"], name: "index_workflow_runs_on_workflow_version_id"
+  end
+
+  create_table "workflow_step_runs", force: :cascade do |t|
+    t.bigint "workflow_run_id", null: false
+    t.string "step_key", null: false
+    t.string "step_type", null: false
+    t.string "scope", default: "", null: false
+    t.integer "iteration"
+    t.string "status", default: "running", null: false
+    t.bigint "run_id"
+    t.jsonb "input", default: {}, null: false
+    t.jsonb "output", default: {}, null: false
+    t.text "error"
+    t.datetime "started_at"
+    t.datetime "ended_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["run_id"], name: "index_workflow_step_runs_on_run_id"
+    t.index ["workflow_run_id", "scope", "step_key"], name: "idx_on_workflow_run_id_scope_step_key_62657d4f8f", unique: true
+    t.index ["workflow_run_id"], name: "index_workflow_step_runs_on_workflow_run_id"
+  end
+
+  create_table "workflow_versions", force: :cascade do |t|
+    t.bigint "workflow_id", null: false
+    t.integer "number", null: false
+    t.jsonb "definition", default: {}, null: false
+    t.bigint "created_by_user_id"
+    t.datetime "created_at", null: false
+    t.index ["created_by_user_id"], name: "index_workflow_versions_on_created_by_user_id"
+    t.index ["workflow_id", "number"], name: "index_workflow_versions_on_workflow_id_and_number", unique: true
+    t.index ["workflow_id"], name: "index_workflow_versions_on_workflow_id"
+  end
+
+  create_table "workflow_waits", force: :cascade do |t|
+    t.bigint "workflow_run_id", null: false
+    t.bigint "workflow_step_run_id", null: false
+    t.string "github_repo"
+    t.integer "number"
+    t.jsonb "matcher", default: {}, null: false
+    t.datetime "expires_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["expires_at"], name: "index_workflow_waits_on_expires_at"
+    t.index ["github_repo", "number"], name: "index_workflow_waits_on_github_repo_and_number"
+    t.index ["workflow_run_id"], name: "index_workflow_waits_on_workflow_run_id"
+    t.index ["workflow_step_run_id"], name: "index_workflow_waits_on_workflow_step_run_id"
+  end
+
+  create_table "workflows", force: :cascade do |t|
+    t.string "key", null: false
+    t.string "name", null: false
+    t.text "description"
+    t.string "mode", default: "off", null: false
+    t.string "claims", default: [], null: false, array: true
+    t.bigint "current_version_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_workflows_on_key", unique: true
+  end
+
   create_table "workspace_profile_runtimes", force: :cascade do |t|
     t.bigint "workspace_profile_id", null: false
     t.bigint "runtime_id", null: false
@@ -290,7 +383,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_100000) do
   add_foreign_key "run_events", "runs"
   add_foreign_key "runs", "automations", on_delete: :nullify
   add_foreign_key "runs", "runtimes"
+  add_foreign_key "runs", "workflow_runs"
   add_foreign_key "webhook_events", "runs"
+  add_foreign_key "workflow_runs", "webhook_events"
+  add_foreign_key "workflow_runs", "workflow_runs", column: "parent_workflow_run_id"
+  add_foreign_key "workflow_runs", "workflow_versions"
+  add_foreign_key "workflow_runs", "workflows"
+  add_foreign_key "workflow_step_runs", "runs"
+  add_foreign_key "workflow_step_runs", "workflow_runs"
+  add_foreign_key "workflow_versions", "workflows"
+  add_foreign_key "workflow_waits", "workflow_runs"
+  add_foreign_key "workflow_waits", "workflow_step_runs"
   add_foreign_key "workspace_profile_runtimes", "runtimes"
   add_foreign_key "workspace_profile_runtimes", "workspace_profiles"
 end

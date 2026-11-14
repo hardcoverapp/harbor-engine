@@ -58,10 +58,19 @@ class HarborSectionTest < ActionDispatch::IntegrationTest
     assert_no_match(/#[0-9A-Fa-f]{3,6}\b/, rules, "a colour is written outside the theme block")
   end
 
+  test "the workflow builder's styles come with the stylesheet, and know no step type or host by name" do
+    entry = Harbor::Engine.root.join("app/assets/tailwind/harbor/engine.css").read
+    assert_includes entry, '@import "./workflows.css";'
+    builder = Harbor::Engine.root.join("app/assets/tailwind/harbor/workflows.css").read
+    %w[.wf-shell .wf-viewport .wf-node .wf-panel .wf-toolbar .wf-picker .wf-run-panel].each { |rule| assert_includes builder, "#{rule} " }
+    # Every colour it takes from the host's theme has a value of its own.
+    assert_empty builder.scan(/var\((--color-[\w-]+)\)/).flatten.uniq, "a theme colour with nothing to fall back on"
+  end
+
   test "Harbor's Stimulus controllers are where the import map pins them" do
     pins = Harbor::Engine.root.join("config/importmap.rb").read
     assert_includes pins, 'under: "controllers/harbor"'
-    %w[side_nav log_follow poll details].each do |name|
+    %w[side_nav log_follow poll details workflow_builder].each do |name|
       assert Harbor::Engine.root.join("app/javascript/harbor/controllers/#{name}_controller.js").file?
     end
   end

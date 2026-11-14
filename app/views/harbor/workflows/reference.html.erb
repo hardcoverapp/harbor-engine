@@ -1,0 +1,138 @@
+<% content_for :title, "Reference · Workflows" %>
+<%= render "harbor/shared/section_nav" %>
+<% cat = Harbor::Workflows::Catalog %>
+<% waits_for_events = cat.modules.any? { |m| m[:fields].any? { |f| f[:scope] == "event" } } %>
+
+<header class="mb-10 max-w-3xl">
+  <%= link_to "Workflows", workflows_path, class: "meta hover:text-ink" %>
+  <h1 class="display text-3xl mt-2">How workflows are built</h1>
+  <p class="text-sm text-soft mt-2">
+    A workflow is a <strong>trigger</strong>, then <strong>modules</strong> joined left to right. <strong>Gates</strong>
+    decide what runs: filters on links, routers, repeats, waits and approvals. Every module can read <strong>data</strong>
+    from the trigger and from the modules before it. Cleanup modules run at the end however the main path finished.
+  </p>
+  <nav class="mt-4 flex flex-wrap gap-2 text-sm" aria-label="On this page">
+    <a class="chip" href="#triggers">Triggers</a><a class="chip" href="#gates">Gates</a><a class="chip" href="#operators">Filter operators</a>
+    <a class="chip" href="#data">Data</a><a class="chip" href="#modules">Modules</a>
+  </nav>
+</header>
+
+<section id="triggers" class="mb-12">
+  <h2 class="display text-2xl mb-3">Triggers: what starts a run</h2>
+  <div class="grid gap-4 md:grid-cols-2">
+    <% cat.triggers.each do |t| %>
+      <div class="card p-4">
+        <div class="flex items-center gap-3 mb-2">
+          <span class="inline-block size-3 rounded-full" style="background: <%= t[:color] %>"></span>
+          <h3 class="font-medium text-ink"><%= t[:label] %><%= " (not runnable yet)" if t[:soon] %></h3>
+          <code class="chip ml-auto"><%= t[:kind] %></code>
+        </div>
+        <p class="text-sm text-soft mb-2"><%= t[:description] %></p>
+        <% if t[:fields].any? %>
+          <ul class="text-sm space-y-1">
+            <% t[:fields].each do |f| %><li><code class="chip"><%= f[:name] %></code> <%= f[:label] %><%= " · #{f[:help]}" if f[:help] %></li><% end %>
+          </ul>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+  <%# What a host has to say about its own triggers (its events and their
+      actions, say). %>
+  <%= render "harbor/workflows/reference_triggers" if harbor_workflows_partial?("reference_triggers") %>
+</section>
+
+<section id="gates" class="mb-12">
+  <h2 class="display text-2xl mb-3">Gates: what decides what runs</h2>
+  <div class="overflow-x-auto card">
+    <table class="w-full text-sm">
+      <thead><tr class="text-left meta"><th class="px-4 py-2 font-medium">Gate</th><th class="px-4 py-2 font-medium">Where</th><th class="px-4 py-2 font-medium">Reads</th><th class="px-4 py-2 font-medium">What it does</th></tr></thead>
+      <tbody class="divide-y divide-hairline align-top">
+        <% cat.gates.each do |g| %>
+          <tr>
+            <th scope="row" class="px-4 py-2 text-left font-medium text-ink whitespace-nowrap"><%= g[:name] %><% if g[:type] %> <code class="chip"><%= g[:type] %></code><% end %></th>
+            <td class="px-4 py-2"><%= g[:where] %></td><td class="px-4 py-2 font-mono text-xs"><%= g[:reads] %></td><td class="px-4 py-2"><%= g[:does] %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+  <p class="meta mt-2">In words: a trigger filter and a Wait say <em>when</em>; a Filter and a Router say <em>if</em>; a Repeat says <em>until</em>; an Approval says <em>who</em>.</p>
+</section>
+
+<section id="operators" class="mb-12 max-w-3xl">
+  <h2 class="display text-2xl mb-3">Filter operators</h2>
+  <p class="text-sm text-soft mb-3">A filter is one or more OR groups, each a list of AND rules. A rule is <em>field · operator · value</em>. Text compares ignoring case.</p>
+  <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+    <% cat::OPERATORS.each do |o| %>
+      <li><code class="chip"><%= o[:op] %></code> <%= o[:label] %> <span class="meta"><%= { 0 => "no value", 1 => "one value", many: "a comma-separated list" }[o[:arity]] %></span></li>
+    <% end %>
+  </ul>
+</section>
+
+<section id="data" class="mb-12">
+  <h2 class="display text-2xl mb-3">Data a module can read</h2>
+  <p class="text-sm text-soft mb-4 max-w-3xl">Write <code class="chip">{{path}}</code> in any text field (the builder's Data panel inserts them for you), or pick the path in a filter.</p>
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div>
+      <h3 class="font-medium text-ink mb-2"><code class="chip">trigger.*</code> the event that started the run</h3>
+      <ul class="card divide-y divide-hairline text-sm">
+        <% cat.data[:trigger].each do |k, t, d| %><li class="px-4 py-1.5"><code class="chip"><%= k %></code> <span class="meta"><%= t %> · <%= d %></span></li><% end %>
+      </ul>
+      <% if waits_for_events %>
+        <p class="meta mt-2">Inside a Wait's filter the same fields are <code class="chip">event.*</code>, and describe the event being waited for.</p>
+      <% end %>
+    </div>
+    <div class="space-y-6">
+      <div>
+        <h3 class="font-medium text-ink mb-2"><code class="chip">run.*</code></h3>
+        <ul class="card divide-y divide-hairline text-sm">
+          <% cat.data[:run].each do |k, t, d| %><li class="px-4 py-1.5"><code class="chip"><%= k %></code> <span class="meta"><%= t %> · <%= d %></span></li><% end %>
+        </ul>
+      </div>
+      <div>
+        <h3 class="font-medium text-ink mb-2">Also</h3>
+        <ul class="card divide-y divide-hairline text-sm">
+          <li class="px-4 py-1.5"><code class="chip">steps.&lt;key&gt;.&lt;output&gt;</code> <span class="meta">what an earlier module returned (each module's outputs are below), plus <code>status</code></span></li>
+          <li class="px-4 py-1.5"><code class="chip">input.&lt;name&gt;</code> <span class="meta">what the workflow that ran this one passed in (declare inputs in settings)</span></li>
+          <li class="px-4 py-1.5"><code class="chip">settings.&lt;name&gt;</code> <span class="meta">this workflow's settings</span></li>
+          <li class="px-4 py-1.5"><code class="chip">loop.&lt;key&gt;.iteration</code> <span class="meta">which pass of a Repeat this is, from 1</span></li>
+        </ul>
+      </div>
+      <% if cat.settings.any? %>
+        <div>
+          <h3 class="font-medium text-ink mb-2">Settings</h3>
+          <ul class="card divide-y divide-hairline text-sm">
+            <% cat.settings.each do |f| %><li class="px-4 py-1.5"><code class="chip"><%= f[:name] %></code> <span class="meta"><%= f[:help] %></span></li><% end %>
+          </ul>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</section>
+
+<section id="modules" class="mb-12">
+  <h2 class="display text-2xl mb-3">Modules</h2>
+  <% cat.modules.group_by { |m| m[:group] }.each do |group, mods| %>
+    <h3 class="meta uppercase tracking-[0.05em] mt-6 mb-2"><%= group %></h3>
+    <div class="grid gap-4 md:grid-cols-2">
+      <% mods.each do |m| %>
+        <div class="card p-4">
+          <div class="flex items-center gap-3 mb-1">
+            <span class="inline-block size-3 rounded-full" style="background: <%= m[:color] %>"></span>
+            <h4 class="font-medium text-ink"><%= m[:label] %></h4>
+            <code class="chip ml-auto"><%= [ m[:type], m[:action] ].compact.join(" · ") %></code>
+          </div>
+          <p class="text-sm text-soft mb-2"><%= m[:description] %></p>
+          <% if m[:fields].any? %>
+            <p class="meta mb-1">Settings</p>
+            <ul class="text-sm space-y-0.5 mb-2">
+              <% m[:fields].each do |f| %><li><code class="chip"><%= f[:name] %></code> <%= f[:label] %><%= " (required)" if f[:required] %></li><% end %>
+            </ul>
+          <% end %>
+          <p class="meta mb-1">Gives later steps</p>
+          <p class="text-sm"><% (m[:outputs] || []).first(8).each do |k, _, _| %><code class="chip"><%= k %></code> <% end %><%= "…" if (m[:outputs] || []).size > 8 %><%= " + the values you list" if m[:dynamic_outputs] %></p>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+</section>
