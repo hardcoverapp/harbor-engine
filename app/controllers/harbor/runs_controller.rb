@@ -42,8 +42,5 @@ module Harbor
       end
       redirect_back fallback_location: run_path(run), notice: notice
     end
-
-    private
-      def harbor_current_user = respond_to?(:current_user, true) ? send(:current_user) : nil
   end
 end

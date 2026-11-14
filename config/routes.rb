@@ -17,6 +17,15 @@ Harbor::Engine.routes.draw do
       end
     end
 
+    # Agents: the list with its task routing and shared context tabs, an
+    # agent's page and form, and its avatar. A task type is given to an agent
+    # with a PATCH to task_assignments/<task type>.
+    resources :agents, only: %i[index show new create edit update] do
+      member { get :avatar }
+      collection { patch :context }
+    end
+    resources :task_assignments, only: :update
+
     # Models: providers and their usage, and the aliases agents are given.
     resources :models, only: :index do
       collection { post :refresh }

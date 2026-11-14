@@ -1,0 +1,4 @@
+<% content_for :title, "Edit #{@agent.display_name}" %>
+<%= render "harbor/shared/section_nav" %>
+<h1 class="display text-3xl mb-8 [overflow-wrap:anywhere]">Edit <%= @agent.display_name %></h1>
+<%= render "harbor/agents/form" %>

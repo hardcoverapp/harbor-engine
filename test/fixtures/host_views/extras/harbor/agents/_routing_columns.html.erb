@@ -1,0 +1,2 @@
+<%# A host's own cells in a task type's row. locals: task_type, assignment %>
+<td data-host-routing-cell="<%= task_type %>"><%= assignment ? "given to #{assignment.agent_key}" : "nobody yet" %></td>

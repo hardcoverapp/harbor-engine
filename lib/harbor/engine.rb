@@ -62,6 +62,7 @@ module Harbor
       ActiveSupport.on_load(:action_controller_base) do
         helper Harbor::NavHelper
         helper Harbor::StatusHelper
+        helper Harbor::AgentHelper
       end
     end
   end

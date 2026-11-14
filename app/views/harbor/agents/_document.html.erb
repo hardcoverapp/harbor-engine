@@ -1,0 +1,7 @@
+<%# One of an agent's documents, as a row of the form. locals: form %>
+<div class="card p-5 space-y-3" data-harbor-nested-row>
+  <%= form.hidden_field :id %>
+  <div><%= form.label :path, "Document path", class: "block text-xs text-soft mb-2" %><%= form.text_field :path, placeholder: "knowledge.md", required: true, class: "field w-full font-mono text-sm" %></div>
+  <%= form.label :body, "Markdown", class: "block text-xs text-soft" %><%= form.text_area :body, rows: 10, class: "field w-full font-mono text-sm" %>
+  <label class="flex gap-2 text-xs text-soft"><%= form.check_box :_destroy %> Remove this document when saved</label>
+</div>

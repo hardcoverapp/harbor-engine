@@ -1,0 +1,49 @@
+<%# The Task routing tab: which agent handles which kind of task. A host's
+    own columns sit between the task and its agent (the routing_columns
+    partials). %>
+<% host_columns = harbor_agents_partial?("routing_columns") %>
+<p class="text-sm text-soft mb-6 max-w-2xl">
+  Which agent handles which task. Changing a row applies to the <em>next</em> run — no deploy.
+  Only enabled agents a task can be given to are offered.
+</p>
+<% if @assignments.empty? %>
+  <p class="text-soft text-sm">No task types are declared.</p>
+<% else %>
+  <div class="lg:overflow-x-auto" data-reveal>
+    <table role="table" class="block lg:table w-full text-sm lg:min-w-[32rem] lg:bg-surface lg:border border-hairline lg:rounded-xl">
+      <thead class="hidden lg:table-header-group text-left">
+        <tr class="border-b border-hairline">
+          <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Task</th>
+          <% if harbor_agents_partial?("routing_columns_head") %><%= render "harbor/agents/routing_columns_head" %><% end %>
+          <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Agent</th>
+        </tr>
+      </thead>
+      <tbody class="grid gap-4 lg:table-row-group lg:divide-y lg:divide-hairline">
+        <% @assignments.each do |task_type, assignment| %>
+          <tr class="grid gap-4 p-5 border border-hairline rounded-xl bg-surface lg:table-row lg:p-0 lg:border-0 lg:rounded-none" data-task-type="<%= task_type %>">
+            <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 [overflow-wrap:anywhere] lg:[overflow-wrap:normal]"><span class="block lg:hidden meta mb-1">Task</span><code class="chip"><%= task_type %></code></td>
+            <% if host_columns %><%= render "harbor/agents/routing_columns", task_type: task_type, assignment: assignment %><% end %>
+            <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3">
+              <span class="block lg:hidden meta mb-1">Agent</span>
+              <%= form_with url: task_assignment_path(task_type), method: :patch, class: "flex items-center gap-2" do %>
+                <select name="agent_key"
+                        aria-label="Agent for <%= task_type.humanize.downcase %>"
+                        class="min-w-0 w-full flex-1 lg:w-auto lg:flex-none rounded-md bg-surface border border-hairline text-body text-sm px-2.5 py-1.5 focus:outline-none focus:border-faint">
+                  <% if assignment.nil? %>
+                    <option value="" selected>unassigned</option>
+                  <% end %>
+                  <% Harbor.task_assignment_class.compatible_agents(task_type).each do |agent| %>
+                    <option value="<%= agent.key %>" <%= "selected" if assignment&.agent_key == agent.key %>>
+                      <%= agent.key %> (<%= agent.model_label %>)
+                    </option>
+                  <% end %>
+                </select>
+                <button type="submit" class="btn-quiet !py-1.5 !px-3 text-xs">Save</button>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>

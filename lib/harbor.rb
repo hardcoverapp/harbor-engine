@@ -3,6 +3,7 @@ require "harbor/icons"
 require "harbor/nav"
 require "harbor/nav_helper"
 require "harbor/status_helper"
+require "harbor/agent_helper"
 require "harbor/pages"
 require "harbor/settings"
 require "harbor/task_types"
@@ -75,6 +76,8 @@ module Harbor
     def model_alias_class = config.model_alias_class.constantize
 
     def agent_class = config.agent_class.constantize
+
+    def task_assignment_class = config.task_assignment_class.constantize
 
     def runtime_class = config.runtime_class.constantize
 

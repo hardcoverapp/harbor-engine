@@ -1,0 +1,20 @@
+<%# The Shared context tab: what every agent is told. %>
+<section class="max-w-4xl">
+  <p class="text-sm text-soft mb-6">House instructions included in every agent's system prompt, and shared documents agents can be given.</p>
+  <%= form_with url: context_agents_path, method: :patch do |form| %>
+    <%= form.label :body, "House instructions", class: "sr-only" %>
+    <%= form.text_area :body, value: @house_context, rows: 12, class: "field w-full font-mono text-sm" %>
+    <%= form.submit "Save shared context", class: "btn-quiet mt-4 cursor-pointer" %>
+  <% end %>
+  <% @shared_documents.each do |doc| %>
+    <details class="mt-6 border-t border-hairline pt-4" data-shared-document="<%= doc.key %>">
+      <summary class="text-sm cursor-pointer [overflow-wrap:anywhere]"><%= doc.key.delete_prefix(Harbor::AgentSetting::SHARED_PREFIX) %></summary>
+      <%= form_with url: context_agents_path, method: :patch, class: "mt-4" do |form| %>
+        <%= form.hidden_field :key, value: doc.key, id: nil %>
+        <%= form.label :body, "Shared markdown", class: "sr-only", for: dom_id(doc, :body) %>
+        <%= form.text_area :body, value: doc.body, rows: 10, id: dom_id(doc, :body), class: "field w-full font-mono text-sm" %>
+        <%= form.submit "Save document", class: "btn-quiet mt-4 cursor-pointer" %>
+      <% end %>
+    </details>
+  <% end %>
+</section>

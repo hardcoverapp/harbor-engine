@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.20.0
+
+- **The Agents pages are Harbor's**: the list (`/factory/agents`) with its Task routing
+  and Shared context tabs, an agent's own page, the form that creates and edits one, and
+  its avatar (`/factory/agents/:id/avatar`), in `Harbor::AgentsController`; giving a task
+  type to an agent (`PATCH /factory/task_assignments/:task_type`) in
+  `Harbor::TaskAssignmentsController`. A site with no code of its own gets all of it:
+  identity, avatar upload and removal, model alias, workspace, limits, the system prompt,
+  documents as rows, tools, default tasks and configuration as JSON, routing over the
+  declared task types, and what every agent is told. The list and the routing table are
+  cards on a phone. The menu's Agents entry is Harbor's own route now.
+- **Places for a host on those pages**, as partials in the host's
+  `app/views/harbor/agents/`: `_agent_columns_head` and `_agent_columns` (its own columns
+  in the agents table), `_routing_columns_head` and `_routing_columns` (in the routing
+  table), `_show_facts` (an agent's page) and `_form_extras` (fields in the form). See
+  README "Agents pages".
+- **`config.agent_params`**: attributes of the host's agent class the form may save.
+- **`config.agent_edited`**: called with (agent, current user) when an agent is saved
+  from the form, before it is checked and saved.
+- **`config.task_assignment_class`** (`Harbor.task_assignment_class`): the host's
+  subclass of `Harbor::TaskAssignment`. Its `compatible_agents(task_type)` decides who the
+  routing tab offers and accepts, and the new `refusal(task_type, agent_key)` what the
+  page says for anyone else.
+- `harbor_agent_avatar(agent, size:)`, in every view: an agent's image, or its initial.
+- `Harbor::AgentSetting.editable_key?(key)`: the keys the Shared context tab may write.
+- An agent saved from the form needs a model alias.
+
+Upgrading from 0.19:
+
+- **Delete the host's `/agents` and `/task_assignments` routes, controllers and views.**
+  A host route at the same address is matched first and hides Harbor's page.
+- `agents_path`, `agent_path(agent)`, `new_agent_path`, `edit_agent_path(agent)`,
+  `avatar_agent_path(agent)`, `context_agents_path` and `task_assignment_path(type)` are
+  the engine's helpers now: `harbor.agent_path(agent)` from a host view. A host with many
+  calls keeps the old names with `direct(:agent) { |agent, options| … }` in its routes.
+- Move what the host's pages showed beyond Harbor's into the partials above, the
+  attributes its form saved into `config.agent_params`, and anything it did to an agent
+  on save into `config.agent_edited`.
+- A host that subclasses `Harbor::TaskAssignment` names it:
+  `c.task_assignment_class = "TaskAssignment"`. Without that the routing tab offers every
+  enabled agent.
+- The agent form's document rows use Harbor's `harbor--nested-fields` controller; a
+  host's own controller for them is no longer needed.
+
 ## 0.19.0
 
 - **The Runs pages are Harbor's**: the list (`/factory/runs`), a run's own page

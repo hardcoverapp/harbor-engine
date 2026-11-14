@@ -16,6 +16,10 @@ module Harbor
     # task types need a particular kind of agent narrows this in a subclass.
     def self.compatible_agents(_task_type) = Harbor.agent_class.enabled.order(:key)
 
+    # What the routing page says when asked to give a task type to an agent
+    # that isn't one of those. A host that narrows the agents says why here.
+    def self.refusal(task_type, agent_key) = "#{agent_key.inspect} isn't an enabled agent that #{task_type} can be given to."
+
     # The enabled agent for a task type: its own assignment, else its
     # fallback type's, else its default agent. nil when there is none or the
     # agent is switched off (callers treat that as "don't dispatch").

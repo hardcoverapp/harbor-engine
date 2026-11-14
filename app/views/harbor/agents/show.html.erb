@@ -1,0 +1,25 @@
+<% content_for :title, @agent.display_name %>
+<%= render "harbor/shared/section_nav" %>
+<header class="mb-10">
+  <div class="flex justify-between items-start gap-4">
+    <div class="flex items-center gap-4 min-w-0">
+      <%= harbor_agent_avatar(@agent, size: :xl) %>
+      <h1 class="display text-3xl min-w-0 [overflow-wrap:anywhere]"><%= @agent.display_name %></h1>
+    </div>
+    <%= link_to "Edit agent", edit_agent_path(@agent), class: "btn-primary shrink-0 whitespace-nowrap" %>
+  </div>
+  <p class="text-sm text-soft mt-2"><%= @agent.description %></p>
+</header>
+<dl class="card p-6 grid sm:grid-cols-4 gap-6 mb-8 text-sm [overflow-wrap:anywhere]" data-agent-facts>
+  <div><dt class="meta mb-1">Key</dt><dd><%= @agent.key %></dd></div>
+  <div><dt class="meta mb-1">Model alias</dt><dd><%= @agent.model_label %></dd></div>
+  <%# A host's own facts about an agent, each a <div> holding a <dt> and a <dd>. %>
+  <% if harbor_agents_partial?("show_facts") %><%= render "harbor/agents/show_facts", agent: @agent %><% end %>
+  <div><dt class="meta mb-1">Workspace</dt><dd><%= @agent.effective_workspace_profile&.name %></dd></div>
+  <div><dt class="meta mb-1">Max workspaces</dt><dd><%= @agent.max_workspaces %></dd></div>
+  <div><dt class="meta mb-1">Max agents</dt><dd><%= @agent.max_agents %></dd></div>
+  <div><dt class="meta mb-1">Status</dt><dd><%= @agent.enabled? ? "Enabled" : "Disabled" %></dd></div>
+</dl>
+<h2 class="display text-xl mb-3">System prompt</h2><pre class="card p-6 whitespace-pre-wrap break-words text-sm mb-8"><%= @agent.system_prompt.presence || "No system prompt configured." %></pre>
+<% @agent.agent_documents.each do |doc| %><h2 class="display text-xl mb-3 [overflow-wrap:anywhere]"><%= doc.path %></h2><pre class="card p-6 whitespace-pre-wrap break-words text-sm mb-8"><%= doc.body %></pre><% end %>
+<% { "Tools" => @agent.tools, "Default tasks" => @agent.default_tasks, "Additional configuration" => @agent.configuration }.each do |label, value| %><h2 class="display text-xl mb-3"><%= label %></h2><pre class="card p-6 whitespace-pre-wrap break-words text-sm mb-8"><%= JSON.pretty_generate(value) %></pre><% end %>

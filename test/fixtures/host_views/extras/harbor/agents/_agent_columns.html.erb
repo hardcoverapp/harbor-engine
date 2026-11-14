@@ -1,0 +1,6 @@
+<%# A host's own cells in an agent's row. locals: agent, slot %>
+<% if slot == :first %>
+  <td data-host-cell="first"><%= agent.key.first.upcase %></td>
+<% else %>
+  <td data-host-cell="last"><%= agent.agent_documents.size %> documents</td>
+<% end %>

@@ -1,0 +1,52 @@
+<%# The Agents tab: who the agents are and how each runs. A table from lg up;
+    below that each agent is a card, its facts stacked under their labels.
+    A host's own columns go in two places, after the agent and before when it
+    was updated (the agent_columns partials). %>
+<% host_columns = harbor_agents_partial?("agent_columns") %>
+<% host_heads = harbor_agents_partial?("agent_columns_head") %>
+<% if @agents.empty? %>
+  <p class="text-soft text-sm">No agents yet.</p>
+<% else %>
+  <div class="lg:overflow-x-auto" data-reveal>
+    <table role="table" class="block lg:table w-full text-sm lg:min-w-[44rem] lg:bg-surface
+                               lg:border border-hairline lg:rounded-xl">
+      <thead class="hidden lg:table-header-group text-left">
+        <tr class="border-b border-hairline">
+          <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Agent</th>
+          <% if host_heads %><%= render "harbor/agents/agent_columns_head", slot: :first %><% end %>
+          <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Model</th>
+          <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium" title="Execution location and capacity">Runs on</th>
+          <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Does</th>
+          <% if host_heads %><%= render "harbor/agents/agent_columns_head", slot: :last %><% end %>
+          <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Updated</th>
+        </tr>
+      </thead>
+      <tbody class="grid gap-4 lg:table-row-group lg:divide-y lg:divide-hairline">
+        <% @agents.each do |agent| %>
+          <tr class="grid grid-cols-2 gap-4 p-5 border border-hairline rounded-xl bg-surface lg:table-row lg:p-0 lg:border-0 lg:rounded-none <%= "opacity-45" unless agent.enabled? %>" data-agent="<%= agent.key %>">
+            <td class="block min-w-0 col-span-2 lg:table-cell lg:px-5 lg:py-3">
+              <div class="flex items-center gap-3">
+                <%= harbor_agent_avatar(agent) %>
+                <div class="min-w-0">
+                  <%= link_to agent.display_name, agent_path(agent), class: "font-medium text-ink hover:underline [overflow-wrap:anywhere] lg:[overflow-wrap:normal]" %>
+                  <% unless agent.enabled? %>
+                    <span class="pill bg-bone text-faint border border-hairline ml-1">disabled</span>
+                  <% end %>
+                </div>
+              </div>
+            </td>
+            <% if host_columns %><%= render "harbor/agents/agent_columns", agent: agent, slot: :first %><% end %>
+            <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 text-body [overflow-wrap:anywhere] lg:[overflow-wrap:normal]"><span class="block lg:hidden meta mb-1">Model</span><%= agent.model_label %></td>
+            <td class="block min-w-0 col-span-2 lg:table-cell lg:px-5 lg:py-3 text-body lg:whitespace-nowrap"><span class="block lg:hidden meta mb-1">Runs on</span><%= agent.effective_workspace_profile&.name %> <span class="meta"><%= agent.max_workspaces %> workspaces · <%= agent.max_agents %> agents</span></td>
+            <td class="block min-w-0 col-span-2 lg:table-cell lg:px-5 lg:py-3 text-soft [overflow-wrap:anywhere] lg:[overflow-wrap:normal]"><span class="block lg:hidden meta mb-1">Does</span><%= agent.description %></td>
+            <% if host_columns %><%= render "harbor/agents/agent_columns", agent: agent, slot: :last %><% end %>
+            <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 meta">
+              <span class="block lg:hidden mb-1">Updated</span>
+              <%= "#{time_ago_in_words(agent.updated_at)} ago" %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>

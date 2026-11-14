@@ -37,6 +37,22 @@ module Harbor
     # subclass of it.
     attr_accessor :agent_class
 
+    # The class Harbor finds task assignments with, by name: Harbor's own or a
+    # host's subclass of it, which decides which agents a task type may be
+    # given to.
+    attr_accessor :task_assignment_class
+
+    # Attributes of the host's agent class that the agent form may save, beyond
+    # Harbor's own: the fields of the host's `harbor/agents/_form_extras`
+    # partial. They are assigned before Harbor's own fields.
+    attr_accessor :agent_params
+
+    # Called with (agent, current user) when someone saves an agent from its
+    # form, after the form's values are assigned and before the agent is
+    # checked and saved. Never called for an agent saved any other way. nil:
+    # nothing happens.
+    attr_accessor :agent_edited
+
     # The classes Harbor finds runtimes and workspaces with, by name.
     attr_accessor :runtime_class, :workspace_profile_class
 
@@ -176,6 +192,9 @@ module Harbor
       @webhook_event_class = "Harbor::WebhookEvent"
       @model_alias_class = "Harbor::ModelAlias"
       @agent_class = "Harbor::Agent"
+      @task_assignment_class = "Harbor::TaskAssignment"
+      @agent_params = []
+      @agent_edited = nil
       @runtime_class = "Harbor::Runtime"
       @workspace_profile_class = "Harbor::WorkspaceProfile"
       @redis = lambda do |&block|

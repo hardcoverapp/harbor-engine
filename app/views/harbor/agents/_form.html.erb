@@ -1,0 +1,37 @@
+<%= form_with model: @agent, scope: :agent, url: (@agent.persisted? ? agent_path(@agent) : agents_path), class: "max-w-4xl space-y-8" do |form| %>
+  <% if @agent.errors.any? %><div role="alert" class="bg-pale-red text-ink-red rounded-lg p-4 text-sm"><%= @agent.errors.full_messages.join(". ") %></div><% end %>
+  <div class="flex items-center gap-5">
+    <%= harbor_agent_avatar(@agent, size: :xl) %>
+    <div class="min-w-0">
+      <%= form.label :avatar, "Avatar", class: "block text-sm mb-2" %>
+      <%= form.file_field :avatar, accept: Harbor::Agent::AVATAR_CONTENT_TYPES.join(","), class: "block w-full text-sm text-soft", aria: { describedby: "avatar-hint" } %>
+      <p id="avatar-hint" class="meta mt-2">PNG, JPEG, GIF, or WebP. Up to 2 MB. Choose a new image to replace the current avatar.</p>
+      <% if @agent.persisted? && @agent.avatar_data_in_database.present? %>
+        <label class="text-sm flex gap-2 mt-3"><%= form.check_box :remove_avatar %> Remove avatar</label>
+      <% end %>
+    </div>
+  </div>
+  <div class="grid sm:grid-cols-2 gap-6">
+    <div><%= form.label :key, class: "block text-sm mb-2" %><%= form.text_field :key, required: true, readonly: @agent.persisted?, class: "field w-full" %></div>
+    <div><%= form.label :name, class: "block text-sm mb-2" %><%= form.text_field :name, class: "field w-full" %></div>
+    <div class="sm:col-span-2"><%= form.label :description, class: "block text-sm mb-2" %><%= form.text_area :description, rows: 2, class: "field w-full" %></div>
+    <%# A host's own fields, as cells of this grid (config.agent_params lets them save). %>
+    <% if harbor_agents_partial?("form_extras") %><%= render "harbor/agents/form_extras", form: form, agent: @agent %><% end %>
+    <div><%= form.label :model_alias_id, "Model alias", class: "block text-sm mb-2" %><%= form.collection_select :model_alias_id, Harbor.model_alias_class.order(:name), :id, :name, { prompt: "Choose an alias" }, required: true, class: "field w-full" %><%= link_to "Manage model aliases", models_path, class: "meta underline" %></div>
+    <div><%= form.label :workspace_profile_id, "Workspace", class: "block text-sm mb-2" %><%= form.collection_select :workspace_profile_id, Harbor.workspace_profile_class.order(:name), :id, :name, { selected: @agent.effective_workspace_profile&.id }, class: "field w-full" %><%= link_to "Manage workspaces", workspace_profiles_path, class: "meta underline" %></div>
+    <div><%= form.label :max_workspaces, "Max workspaces", class: "block text-sm mb-2" %><%= form.number_field :max_workspaces, min: 1, required: true, class: "field w-full" %></div>
+    <div><%= form.label :max_agents, "Max agents", class: "block text-sm mb-2" %><%= form.number_field :max_agents, min: 1, required: true, class: "field w-full" %><p class="meta mt-2">Total parallel runs across all active workspaces.</p></div>
+  </div>
+  <label class="text-sm flex gap-2"><%= form.check_box :enabled %> Agent enabled</label>
+  <div><%= form.label :system_prompt, "System prompt", class: "block display text-xl mb-3" %><%= form.text_area :system_prompt, rows: 16, class: "field w-full font-mono text-sm" %></div>
+  <div class="space-y-6" data-controller="harbor--nested-fields">
+    <div><h2 class="display text-xl">Agent documents</h2><p class="text-sm text-soft mt-1">Personality, instructions, memory, and knowledge markdown. These are included in the agent's system context.</p></div>
+    <div data-harbor--nested-fields-target="list" class="space-y-5"><%= form.fields_for :agent_documents do |doc| %><%= render "harbor/agents/document", form: doc %><% end %></div>
+    <template data-harbor--nested-fields-target="template"><%= form.fields_for :agent_documents, Harbor::AgentDocument.new, child_index: "NEW_RECORD" do |doc| %><%= render "harbor/agents/document", form: doc %><% end %></template>
+    <button type="button" data-action="harbor--nested-fields#add" class="btn-quiet">Add markdown document</button>
+  </div>
+  <div><%= form.label :tools, "Tools (JSON)", class: "block text-sm mb-2" %><%= form.text_area :tools, value: harbor_agent_json(@agent, :tools), rows: 5, class: "field w-full font-mono text-sm" %><p class="meta mt-1">allowed: tool names · permission_mode: default, acceptEdits, or bypassPermissions.</p></div>
+  <div><%= form.label :default_tasks, "Default task types (JSON array)", class: "block text-sm mb-2" %><%= form.text_area :default_tasks, value: harbor_agent_json(@agent, :default_tasks), rows: 3, class: "field w-full font-mono text-sm" %></div>
+  <div><%= form.label :configuration, "Additional configuration (JSON)", class: "block text-sm mb-2" %><%= form.text_area :configuration, value: harbor_agent_json(@agent, :configuration), rows: 8, class: "field w-full font-mono text-sm" %><p class="meta mt-1">Anything else kept with the agent, as a JSON object. The controls above take precedence for identity, routing, tools, and model selection.</p></div>
+  <div class="flex gap-4 items-center"><%= form.submit "Save agent", class: "btn-primary cursor-pointer" %><%= link_to "Cancel", agents_path, class: "text-sm text-soft" %></div>
+<% end %>

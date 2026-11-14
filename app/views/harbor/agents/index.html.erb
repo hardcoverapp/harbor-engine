@@ -1,0 +1,19 @@
+<% content_for :title, "Agents" %>
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-8 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="display text-3xl">Agents</h1>
+    <p class="text-sm text-soft mt-1.5 max-w-2xl">
+      Manage agent identity, instructions, documents, and execution settings.
+    </p>
+  </div>
+  <%= link_to "New agent", new_agent_path, class: "btn-primary" %>
+</header>
+
+<%= render "harbor/shared/page_tabs", label: "Agents", tabs: [
+      [ "Agents", agents_path, @tab == :agents ],
+      [ "Task routing", agents_path(tab: "routing"), @tab == :routing ],
+      [ "Shared context", agents_path(tab: "context"), @tab == :context ] ] %>
+
+<%= render "harbor/agents/#{@tab}" %>

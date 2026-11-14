@@ -379,6 +379,112 @@ agent = Harbor::TaskAssignment.agent_for("pr_review")   # nil when unassigned or
 A host with more on its agents subclasses the record and names it:
 `c.agent_class = "Agent"`.
 
+## Agents pages
+
+Under `Harbor.path` like the rest: **the list** (`/factory/agents`) with two more tabs,
+**an agent's own page** (`/factory/agents/7`) and **its form** (`/factory/agents/new`,
+`/factory/agents/7/edit`). Link to them with `harbor.agents_path` and
+`harbor.agent_path(agent)`.
+
+The list has every agent, enabled ones first: its avatar and name, its model alias, the
+workspace it runs on with its limits, what it does and when it last changed. It is a
+table from `lg` up and a card per agent below that.
+
+- **Task routing** (`?tab=routing`): each declared task type (`Harbor::TaskTypes`) with
+  the agent that does it, changed with a select. Saving one is
+  `PATCH /factory/task_assignments/<task type>` with `agent_key`. Only the agents the
+  type can be given to are offered, and one that isn't is refused.
+- **Shared context** (`?tab=context`): the house context every agent is told, and each
+  shared document (`Harbor::AgentSetting`), each with its own form. Saving one is
+  `PATCH /factory/agents/context` with `body` and, for a shared document, its `key`
+  (`shared/<path>.md`); any other key is refused.
+
+An agent's page shows its key, model alias, workspace, limits and whether it is enabled,
+then its system prompt, each of its documents, its tools, default tasks and configuration.
+
+The form sets all of that: key (once; it can't be changed after), name, description,
+avatar (PNG, JPEG, GIF or WebP up to 2 MB, judged by its bytes; a tick box removes it),
+model alias, workspace, the two limits, enabled, the system prompt, documents as rows
+that are added and removed in place (the `harbor--nested-fields` controller), and the
+tools, default task types and configuration as JSON. JSON that doesn't parse, or is the
+wrong shape, is refused with what was typed left in the form. **An agent saved from the
+form needs a model alias**, because one without can't run; agents made in code are not
+held to that.
+
+### Avatars
+
+`GET /factory/agents/7/avatar` serves the stored image, for the browser's own cache only
+(`private`, with an ETag). It needs the host's login, and it is still served while the
+Agents page is switched off, because other pages show avatars.
+
+`harbor_agent_avatar(agent, size: :lg)` draws an agent in any view of the host's or
+Harbor's: the image when it has one, else the first letter of its name in a circle.
+Sizes are `:xs`, `:sm`, `:md`, `:lg` and `:xl`. The image's address carries when the
+agent last changed (`harbor_agent_avatar_path(agent)`), so a browser never shows an old
+one.
+
+### What a host adds
+
+A host adds to these pages with partials in its own `app/views/harbor/agents/`. Harbor
+renders each one where the page has a place for it, when the file exists, and nothing
+when it doesn't:
+
+| Partial | Where | Locals |
+|---|---|---|
+| `_agent_columns_head.html.erb` | The agents table's heading row: the host's own `<th>`s. Rendered twice, once for each place | `slot` (`:first`: after the Agent column; `:last`: before Updated) |
+| `_agent_columns.html.erb` | An agent's row: the `<td>`s under those headings. Rendered twice per row | `agent`, `slot` (as above) |
+| `_routing_columns_head.html.erb` | The routing table's heading row, between Task and Agent: the host's own `<th>`s | none |
+| `_routing_columns.html.erb` | A task type's row: the `<td>`s under those headings | `task_type` (its key), `assignment` (its `TaskAssignment`, or nil when unassigned) |
+| `_show_facts.html.erb` | An agent's page, in the card of facts, after the model alias: each fact a `<div>` holding a `<dt>` and a `<dd>` | `agent` |
+| `_form_extras.html.erb` | The form, in the grid of fields, after the description: each field a `<div>` (a cell of a two-column grid) | `form` (the form builder), `agent` |
+
+A partial that fills one slot of the agents table renders nothing for the other
+(`<% if slot == :first %>…<% end %>`). Below `lg` each row of both tables is a card, so a
+cell carries its own label there, as Harbor's cells do:
+
+```erb
+<td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3">
+  <span class="block lg:hidden meta mb-1">Team</span><%= agent.team %>
+</td>
+```
+
+### What a host configures
+
+```ruby
+# config/initializers/harbor.rb
+Harbor.configure do |c|
+  c.agent_class = "Agent"                     # the host's subclass of Harbor::Agent
+  c.task_assignment_class = "TaskAssignment"  # the host's subclass of Harbor::TaskAssignment
+  c.agent_params = %i[team]                   # what its _form_extras fields may save
+  c.agent_edited = ->(agent, user) { agent.edited_by = user.name }
+end
+```
+
+- **`agent_params`**: attributes of the host's agent class that the form may save, beyond
+  Harbor's own. They are assigned before Harbor's fields, so where one of them sets
+  something a field of Harbor's also sets, the field wins. Anything not named is left out.
+- **`agent_edited`**: called with (agent, current user) when someone saves an agent from
+  the form, new or existing, after the form's values are assigned and before the agent is
+  checked and saved. What it sets on the agent is saved with the rest. It is not called
+  for an agent saved any other way (an import, a console), nor when the form's JSON
+  couldn't be read.
+- **`task_assignment_class`**: two class methods a host's subclass can override.
+  `compatible_agents(task_type)` is the agents a task type may be given to: the ones the
+  routing tab offers and the only ones it accepts. Harbor's is every enabled agent.
+  `refusal(task_type, agent_key)` is what the page says when asked for any other.
+
+```ruby
+class TaskAssignment < Harbor::TaskAssignment
+  def self.compatible_agents(task_type) = super.where(team: Team.for(task_type))
+
+  def self.refusal(task_type, agent_key) = "#{agent_key} isn't on the team that does #{task_type}."
+end
+```
+
+Methods of `Harbor::Agent` the pages read, which a host's subclass can override:
+`display_name`, `model_label` (what its model is called) and `effective_workspace_profile`
+(the workspace shown, and selected in the form, for an agent that has none of its own).
+
 ## Runtimes and workspaces
 
 A `Harbor::Runtime` is a place work can run, with a limit on how much at once.
@@ -1111,6 +1217,8 @@ end
 
 The hooks for agent sessions (`agent_session_env`, `agent_session_preamble`,
 `agent_session_finished`, `claude_bin`, `codex_bin`) are under Agent sessions.
+What the Agents pages take (`agent_params`, `agent_edited`, `task_assignment_class`) is
+under Agents pages.
 
 ### Settings
 

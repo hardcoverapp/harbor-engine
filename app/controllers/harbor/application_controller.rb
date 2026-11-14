@@ -7,8 +7,11 @@ module Harbor
     helper Harbor::ModelsHelper
 
     private
+      # The host's current user, when its controller has one.
+      def harbor_current_user = respond_to?(:current_user, true) ? send(:current_user) : nil
+
       def harbor_user_label
-        user = respond_to?(:current_user, true) ? send(:current_user) : nil
+        user = harbor_current_user
         user && Harbor.config.user_label.call(user)
       end
   end
