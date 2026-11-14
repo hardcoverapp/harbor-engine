@@ -108,6 +108,12 @@ module Harbor
         false
       end
 
+      # Stops every terminal of a worktree and closes them.
+      def close_terminals(worktree:)
+        call("terminal", "close", "--worktree", selector(worktree), "--all")
+        true
+      end
+
       private
         def selector(worktree)
           case worktree

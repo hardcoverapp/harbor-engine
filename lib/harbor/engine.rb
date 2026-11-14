@@ -42,6 +42,22 @@ module Harbor
       end
     end
 
+    # Agent sessions keep running where they are while the app is down. When
+    # the job workers come back up, each one is picked up again
+    # (Harbor::AgentSession.recover!). A host on another queue than Sidekiq
+    # calls that itself when its workers start.
+    initializer "harbor.recover_agent_sessions" do
+      next unless defined?(::Sidekiq)
+
+      ::Sidekiq.configure_server do |config|
+        config.on(:startup) do
+          Rails.application.executor.wrap { Harbor::AgentSession.recover! }
+        rescue StandardError => e
+          Rails.logger&.error("[harbor] picking up agent sessions failed: #{e.class}: #{e.message}")
+        end
+      end
+    end
+
     initializer "harbor.nav_helper" do
       ActiveSupport.on_load(:action_controller_base) do
         helper Harbor::NavHelper

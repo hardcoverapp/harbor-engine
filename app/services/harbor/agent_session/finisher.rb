@@ -9,22 +9,31 @@ module Harbor
     #   Finisher.call(run, exit_status: 0)               the runner's report
     #   Finisher.call(run)                               after a stop
     #   Finisher.call(run, error: "the runner stopped…") Harbor's own verdict
+    #   Finisher.call(run, error: "…", interrupted: true) its terminal is gone
+    #
+    # A session that was cut off is not finished: it is started again where
+    # it stopped (Interruption), while it has attempts left. Cut off means
+    # its terminal went away without a result, or its runner was signalled
+    # (a closed terminal, a machine shutting down) when Harbor had not
+    # stopped it.
     class Finisher
       TEXT_CAP = 2_000
 
       def self.call(run, **options) = new(run, **options).call
 
-      def initialize(run, exit_status: nil, signalled: false, error: nil)
+      def initialize(run, exit_status: nil, signalled: false, error: nil, interrupted: false)
         @run = run
         @exit_status = exit_status
         @signalled = signalled
         @error = error
+        @interrupted = interrupted
       end
 
       def call
         case settle
         when :finished then put_away
         when :again then start_again
+        when :interrupted then resume
         end
         @run
       end
@@ -45,8 +54,23 @@ module Harbor
           if start_again?(stream)
             @state.merge!("attempt" => @state["attempt"].to_i + 1, "received" => 0, "digested" => 0,
                           "raw_base" => raw_size, "resume_fallback" => true)
+            # A session that was continuing after an interruption goes back
+            # to its first prompt, told what happened.
+            @state["started_over"] = true if @state.delete("continuing")
             @run.update_columns(runner_state: @state)
             next :again
+          end
+
+          if interrupted?
+            # A new attempt from here on: whatever the old runner still
+            # sends is refused, and it stops its command when it is.
+            session_id = stream.summary.session_id.presence || @run.session_id
+            @state.merge!("attempt" => @state["attempt"].to_i + 1, "received" => 0, "digested" => 0, "raw_base" => raw_size,
+                          "interruptions" => @state["interruptions"].to_i + 1,
+                          "interrupted" => { "at" => Time.current.iso8601, "reason" => interruption,
+                                             "session_id" => session_id }.compact)
+            @run.update_columns(runner_state: @state, session_id:)
+            next :interrupted
           end
 
           @state["exit_status"] = @exit_status unless @exit_status.nil?
@@ -116,6 +140,31 @@ module Harbor
         return current if previous.nil?
         return previous if current.nil?
         previous.to_f + current
+      end
+
+      # Cut off, not ended: Harbor did not stop it, and either its terminal
+      # is gone with no result or its runner was signalled out of a command
+      # that was still running. Only while it has attempts left, and never
+      # twice at once.
+      def interrupted?
+        return false if @state["stop_reason"].present? || @state["interrupted"].present? || @state["cli"].blank?
+        return false unless @interrupted || (@error.nil? && @signalled && !@exit_status.nil? && @exit_status != 0)
+        @state["interruptions"].to_i < Interruption.allowed
+      end
+
+      def interruption
+        return "its terminal was closed under it" unless @interrupted
+        @state["session"].present? ? "its terminal went away without a result" : "it was cut off while being started"
+      end
+
+      # Started again where it stopped, by a job: the runtime may take a
+      # while to answer, or may not answer yet (an Orca that is itself
+      # restarting), and this may be the runner's own request.
+      def resume
+        AgentSession.note(@run, "[harbor] interrupted: #{@state.dig('interrupted', 'reason')}. Starting it again where it stopped.")
+        WatchJob.perform_later(*[ @run.id, "resume", @state["watch_round"] ].compact)
+      rescue StandardError => e
+        AgentSession.log_failure(@run, "queueing the interrupted session to start again", e)
       end
 
       # One more attempt, once, when continuing an earlier session failed

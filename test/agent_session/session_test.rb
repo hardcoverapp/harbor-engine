@@ -458,7 +458,8 @@ class HarborAgentSessionTest < ActionDispatch::IntegrationTest
     assert quiet.reload.running?, "no idle limit, no idle stop"
   end
 
-  test "a quiet session whose terminal has gone is finished as an error: the runner stopped reporting" do
+  test "a quiet session whose terminal has gone, and that may not be started again, is finished as an error: the runner stopped reporting" do
+    Harbor::Setting.set!(:agent_session_resume_attempts, 0)
     finished = []
     Harbor.config.agent_session_finished = ->(run) { finished << run.status }
     run = start_session(timeout: nil)
@@ -496,6 +497,7 @@ class HarborAgentSessionTest < ActionDispatch::IntegrationTest
 
   test "how long a session may be quiet before its terminal is asked about is a setting" do
     Harbor::Setting.set!(:agent_session_silent_minutes, 2)
+    Harbor::Setting.set!(:agent_session_resume_attempts, 0)
     run = start_session(timeout: nil)
     @orca.exited = true
     travel(3.minutes) { WatchJob.perform_now(run.id, "silent") }
@@ -503,6 +505,7 @@ class HarborAgentSessionTest < ActionDispatch::IntegrationTest
   end
 
   test "a terminal that is gone altogether counts as ended, and a runtime that can't be asked decides nothing" do
+    Harbor::Setting.set!(:agent_session_resume_attempts, 0)
     gone = start_session(timeout: nil)
     @orca.refuse("terminal wait", code: "terminal_handle_stale")
     travel(11.minutes) { WatchJob.perform_now(gone.id, "silent") }

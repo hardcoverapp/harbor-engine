@@ -25,6 +25,11 @@ Harbor::Settings.declare :agent_session_silent_minutes,
   description: "When a running agent session has sent nothing for this long, Harbor asks its runtime whether the terminal is still there. " \
                "A session whose terminal has gone is finished as an error instead of being left running forever."
 
+Harbor::Settings.declare :agent_session_resume_attempts,
+  type: :integer, default: 3, min: 0, max: 20, group: "Runs", label: "Starts after an interruption",
+  description: "How many times one agent session is started again where it stopped after being cut off: the machine it ran on " \
+               "restarted, Orca was shut down, or its terminal was closed under it. 0 finishes such a session as an error instead."
+
 Harbor::Settings.declare :model_catalog_url,
   type: :string, default: "https://models.dev/api.json", group: "Models", label: "Model catalog",
   description: "Where the list of each provider's models is read from when picking one for an alias. " \

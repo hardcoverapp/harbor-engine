@@ -20,12 +20,17 @@ module Harbor
   # `runner_state`:
   #
   #   "cli", "provider"       the command line in use and whose model it runs
-  #   "attempt"               1, or 2 once it was started again without --resume
+  #   "attempt"               which start of the command this is: 1, and one
+  #                           more each time it is started again
   #   "received", "digested"  bytes of output taken, and how far lines were read
   #   "raw_base"              where this attempt starts in the raw stream file
   #   "seq"                   the last event number used
   #   "session"               the worktree and terminal, as the backend gave them
-  #   "last_seen_at"          when the runner last sent anything
+  #   "last_seen_at"          when the command last printed anything
+  #   "alive_at"              when the runner last said it was there
+  #   "interrupted", "interruptions", "continuing", "started_over"
+  #                           a session that was cut off (Interruption)
+  #   "watch_round"           which set of checks is the current one (WatchJob)
   #   "timeout_at", "idle_timeout"
   #   "stop_reason", "stop_note"   why Harbor stopped it, when it did
   #   "slots"                 the capacity slots to give back at the end
@@ -51,6 +56,9 @@ module Harbor
     # A slot outlives the session's timeout by this much, so it is given back
     # by the finisher and not by expiring under a session still being stopped.
     SLOT_MARGIN = 10.minutes
+    # How long after the app comes up a session's runner is given to report
+    # before it is asked about (recover!).
+    RECOVER_GRACE = 2.minutes
 
     # Told to every agent, after its own prompt.
     UNATTENDED = <<~TEXT.squish.freeze
@@ -116,6 +124,9 @@ module Harbor
                workspace: nil, **options)
         slash_command = slash_command_for(prompt, slash_command, command_ref)
         run ||= Harbor.run_class.create!({ agent_key: agent.key, status: "queued" }.merge(attributes))
+        # Asked twice (a job run again after a restart): the session it
+        # started the first time is the run's, and nothing more is taken.
+        return run if session?(run) || run.finished?
         owner = "run:#{run.id}"
         ttl = (options.fetch(:timeout, DEFAULT_TIMEOUT) || 1.day).to_i + SLOT_MARGIN.to_i
 
@@ -175,13 +186,43 @@ module Harbor
         Finisher.call(run)
       end
 
+      # Picks up every running session after the app was down: called when
+      # the job workers start (Harbor does this itself under Sidekiq; with
+      # another queue, call it from the host). Sessions kept running where
+      # they were and their runners kept what they printed, so nothing is
+      # started here that is still going. Each session's checks are queued
+      # again, as a new round, in case the queue lost them while it was down;
+      # a session that was interrupted and never started again is tried now;
+      # and one whose runner has gone is found by the silent check, once
+      # runners have had `grace` to say they are still there. Returns the
+      # sessions it looked at.
+      def recover!(grace: RECOVER_GRACE)
+        sessions = Harbor.run_class.where(status: "running").where("runner_state ->> 'cli' IS NOT NULL")
+        sessions.find_each.map do |run|
+          state = run.with_lock do
+            state = run.runner_state.to_h
+            state = state.merge("watch_round" => state["watch_round"].to_i + 1)
+            run.update_columns(runner_state: state)
+            state
+          end
+          round = state["watch_round"]
+          checks = [ ("timeout" if state["timeout_at"].present?), ("idle" if state["idle_timeout"].present?), "silent" ].compact
+          checks.each { |check| WatchJob.set(wait: grace).perform_later(run.id, check, round) }
+          WatchJob.perform_later(run.id, "resume", round) if state["interrupted"].present?
+          run
+        rescue StandardError => e
+          log_failure(run, "picking the session up after a restart", e)
+          run
+        end
+      end
+
       # Whether a run is an agent session (started by start!).
       def session?(run) = run.runner_state.to_h["cli"].present?
 
       # The backend that drives a runtime's sessions.
       def backend(runtime)
         adapter = runtime.adapter
-        return adapter if %i[start restart stop cleanup exited?].all? { |action| adapter.respond_to?(action) }
+        return adapter if %i[start restart stop clear discard cleanup exited?].all? { |action| adapter.respond_to?(action) }
         raise Error, "#{runtime.name} can't run agent sessions: its backend (#{runtime.backend}) doesn't start commands."
       end
 
@@ -202,19 +243,26 @@ module Harbor
       def bundle_file(run, name)
         kept = run.input.to_h["agent_session"].to_h
         case name.to_s
-        when "prompt" then kept["prompt"].to_s
+        when "prompt" then run.runner_state.to_h["continuing"] ? Interruption::CONTINUE : kept["prompt"].to_s
         when "arguments" then kept.dig("command", "slash_command").then { |spec| spec ? SlashCommand.new(spec).arguments_file : "" }
-        when "system" then kept["system"].to_s
+        when "system" then [ kept["system"].to_s, (Interruption::STARTED_OVER if run.runner_state.to_h["started_over"]) ].compact_blank.join("\n\n")
         when "mcp" then JSON.generate(kept["mcp"].presence || EMPTY_MCP)
         when "env" then Environment.file(run, run.runner_state.to_h["provider"])
         end
       end
 
-      # When the session's runner last sent anything; before that, when the
-      # session started.
+      # When the session's command last printed anything; before that, when
+      # the session started.
       def last_heard(run)
         seen = run.runner_state.to_h["last_seen_at"]
         (seen.present? && Time.zone.parse(seen)) || run.started_at || run.created_at
+      end
+
+      # When the session's runner was last heard from at all: its command's
+      # output, or its word that the command is still there.
+      def last_alive(run)
+        alive = run.runner_state.to_h["alive_at"]
+        [ last_heard(run), (Time.zone.parse(alive) if alive.present?) ].compact.max
       end
 
       # Where a run's raw stream is kept: beside its live log.
