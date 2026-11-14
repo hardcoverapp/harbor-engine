@@ -90,6 +90,26 @@ module Harbor
           Session.new(worktree_id: session.worktree_id, worktree_path: session.worktree_path, terminal: terminal.handle)
         end
 
+        # Closes every terminal of the session's worktree, which is the
+        # run's alone: before a command is started there again, nothing of
+        # an earlier one may be left running. False when there was nothing
+        # to ask (the worktree is not known to the server any more).
+        def clear(session)
+          client.close_terminals(worktree: "id:#{session.worktree_id}")
+        rescue Harbor::Orca::Error => e
+          raise unless e.code == "selector_not_found"
+          false
+        end
+
+        # Removes the worktree a run was given by name, when the run never
+        # got to record it. False when there is none.
+        def discard(run)
+          client.remove_worktree("name:#{worktree_name(run)}", force: true, delete_branch: true)
+        rescue Harbor::Orca::Error => e
+          raise unless e.code == "selector_not_found"
+          false
+        end
+
         # Stops the run's command. False when it had already gone.
         def stop(session) = client.close_terminal(session.terminal)
 

@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.18.0
+
+- **A session survives a restart, of the app or of Orca.** Before, a session whose
+  terminal went away (the machine restarted, Orca was shut down) was finished as an
+  `error`, and a session that ended while the app was down lost its result and was
+  finished as an `error` ten minutes after the app came back.
+  - **An interrupted session is started again where it stopped**, in the worktree it
+    already has: `claude --resume <its session>` with a short prompt saying what
+    happened, or, for codex and for a session with no conversation yet, the same command
+    again, told that an earlier attempt was cut off. Interrupted means its terminal
+    went away with no result, its runner was signalled out of a running command when
+    Harbor had not stopped it, or the app went down while it was being started. While
+    Orca can't be asked it is tried again every minute, for up to six hours. Time spent
+    interrupted is not counted against the session's timeout.
+    Setting: **Starts after an interruption** (`agent_session_resume_attempts`, 3;
+    0 keeps the old behaviour). See README "Restarts and interruptions".
+  - **Closing a session's terminal by hand no longer ends it**: that reads as an
+    interruption. Stop a session with `stop!` or on the run's page.
+  - **The runner outlasts the app.** While Harbor gives no answer the command carries
+    on, and its output and result are kept and delivered when Harbor answers again,
+    for up to 12 hours (they were given up on after a few seconds). The files fetched
+    for a command are removed as soon as it ends. A Harbor that isn't answering yet
+    is asked again for a run's files for up to five minutes before the command starts.
+  - **The runner says it is there** every half minute while its command prints nothing
+    (an empty log post). The silent-runner check goes by that, so a busy agent's
+    terminal is no longer asked about, and "nothing for ten minutes" means the runner
+    is gone. The idle limit still goes by what the command prints.
+  - **`Harbor::AgentSession.recover!`** picks up every running session when the job
+    workers start: queues its checks again and starts an interrupted one. Harbor calls
+    it itself under Sidekiq; a host on another queue calls it when its workers start.
+  - `run!` given a run that is already a session (a job run again after a restart)
+    returns it and takes no slots; it used to raise `AlreadyStarted` holding two.
+- The Orca backend gained `clear(session)` (close every terminal of the run's worktree)
+  and `discard(run)` (remove a worktree by the run's name); a backend of a host's own
+  that takes sessions needs both.
+
 ## 0.17.1
 
 - **Enforcing an agent's allow list is now a setting, off by default** ("Enforce agents'

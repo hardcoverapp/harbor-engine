@@ -382,6 +382,68 @@ class HarborRunnerTest < ActionDispatch::IntegrationTest
     assert_empty ran.left_behind
   end
 
+  # --- while Harbor is away ---
+
+  QUICK = { "HARBOR_RUNNER_PAUSE" => "1" }.freeze
+
+  test "a command that ends while Harbor is away keeps its output and its result until Harbor is back" do
+    ran = run_script("echo one; echo two", env: QUICK) { |dir| File.write(File.join(dir, "down"), "9") }
+
+    assert_equal 0, ran.status
+    assert_equal "one\ntwo\n", ran.log
+    assert_equal [ '{"exit_status":0,"signalled":false}' ], ran.results
+    assert_empty ran.left_behind
+  end
+
+  test "Harbor going away in the middle of a command neither stops it nor loses what it printed" do
+    ran = run_script(%q(echo one; echo 4 > "$FAKE_CURL_DIR/down"; sleep 2; echo two; sleep 3; echo three), env: QUICK)
+
+    assert_equal 0, ran.status
+    assert_equal "one\ntwo\nthree\n", ran.log
+    assert_equal 1, ran.results.size
+  end
+
+  test "what was fetched for the command is gone as soon as it ends, however long delivering the output takes" do
+    ran = run_script("echo done", bundle: { "prompt" => "hello", "env" => "export SECRET='s3cret'\n" },
+                                  env: QUICK.merge("HARBOR_RUNNER_BUNDLE" => "prompt env")) do |dir|
+      # Away from the first log post on: the files are fetched, the command runs, then nothing answers.
+      File.write(File.join(dir, "bin/curl"), File.read(FAKE_CURL).sub('if [ -f "$dir/down" ]; then', 'case "$*" in *bundle/*) ;; *) touch "$dir/down.on" ;; esac
+if [ -f "$dir/down.on" ] && [ -f "$dir/down" ]; then'))
+      File.write(File.join(dir, "down"), "4")
+    end
+
+    assert_equal "done\n", ran.log
+    assert_equal "", ran.files.fetch("at_down"), "no prompt and no secrets on disk while it waited for Harbor"
+    assert_empty ran.left_behind
+  end
+
+  test "it gives up when Harbor stays away for longer than its patience, leaving nothing behind" do
+    started = Time.current
+    ran = run_script("echo one", env: QUICK.merge("HARBOR_RUNNER_PATIENCE" => "3")) { |dir| File.write(File.join(dir, "down"), "100000") }
+
+    assert_operator Time.current - started, :<, 30
+    assert_equal 0, ran.status
+    assert_empty ran.results
+    assert_empty ran.left_behind
+  end
+
+  test "a Harbor that isn't answering yet is asked again for the run's files before the command starts" do
+    ran = run_script(%q(cat "$HARBOR_RUN_DIR/prompt"), bundle: { "prompt" => "hello\n" },
+                                                      env: QUICK.merge("HARBOR_RUNNER_BUNDLE" => "prompt")) do |dir|
+      File.write(File.join(dir, "down"), "3")
+    end
+
+    assert_equal 0, ran.status
+    assert_equal "hello\n", ran.log
+  end
+
+  test "a command that prints nothing still says it is there, with an empty post at the place it has reached" do
+    ran = run_script("echo one; sleep 5", env: { "HARBOR_RUNNER_HEARTBEAT" => "2" })
+
+    assert_equal "one\n", ran.log
+    assert_includes ran.posts, [ 4, 0 ]
+  end
+
   test "when Harbor says the run is over, the script stops the command" do
     started = Time.current
     ran = run_script("echo working; sleep 300") { |dir| FileUtils.touch(File.join(dir, "finished")) }

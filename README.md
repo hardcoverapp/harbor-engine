@@ -352,6 +352,15 @@ script is signalled (a closed terminal, a stop, ctrl-c) it stops the command
 and everything the command started, sends what was printed and a result marked
 `signalled`, and removes its files.
 
+A command that prints nothing is still heard from: every half minute the
+script sends an empty post, which says only that it is there. And the script
+outlasts the app. While Harbor gives no answer (a deploy, a restart, a
+network that drops) the command carries on undisturbed, what it prints is
+kept on the runner, and it is all sent when Harbor answers again. A command
+that ends in the meantime keeps its output and its result for up to 12 hours,
+trying again every few seconds; the files fetched for it (its prompt, its
+secrets) are removed as soon as it ends, not when the output is delivered.
+
 The runner needs `sh`, `curl` and the usual base utilities; Harbor needs the
 `orca` command where it runs. An Orca server listens on every interface, so
 never give one a public address.
@@ -547,14 +556,64 @@ host needs a queue that honours `set(wait:)`:
 - **`idle_timeout:`** (off unless given): a session that prints nothing for
   that long is stopped with status `timeout`.
 - **The silent-runner check**: when nothing has arrived for the **Silent runner
-  check** setting (10 minutes), Harbor asks Orca whether the terminal's command
-  is still there. If it has gone, no result is coming and the run is finished
-  as an `error` ("the runner stopped reporting"). A quiet session whose
-  terminal is still busy is left alone.
+  check** setting (10 minutes), not even the runner's word that it is there,
+  Harbor asks Orca whether the terminal's command is still there. If it has
+  gone, no result is coming: the session was interrupted (below). A quiet
+  session whose terminal is still busy is left alone.
 
 A session that was asked to continue an earlier one (`resume_session_id:`) and
 fails before the agent gets a turn, because that session is gone, is started
 once more in the same worktree without `--resume`.
+
+### Restarts and interruptions
+
+Neither the app nor Orca going down ends a session's work.
+
+**The app is down** (a deploy, a restart, a crash). Sessions run in Orca
+terminals, not in the app's jobs, so they carry on. Their runners keep what is
+printed and deliver it, and the result, when the app is back (see Running
+work on another machine). When the job workers start, Harbor picks every
+running session up again (`Harbor::AgentSession.recover!`): its checks are
+queued again in case the queue lost them, and a session that had been
+interrupted is started again. Under Sidekiq this happens by itself; a host on
+another queue calls `recover!` when its workers start.
+
+**A session is interrupted** when it was cut off by something other than its
+own ending and Harbor had not stopped it:
+
+- its terminal went away with no result (the machine restarted, Orca was shut
+  down and took its terminals with it), found by the silent-runner check;
+- its runner reports that it was signalled out of a command that was still
+  running (a closed terminal, a machine shutting down);
+- the app went down while the session was being started, so it has no
+  terminal at all.
+
+An interrupted session is not finished. It is started again in the worktree it
+already has, with everything the agent had written still there:
+
+- **claude** continues its own conversation: `claude --resume <its session>`,
+  with a short prompt saying it was interrupted, that a command may have been
+  cut off part-way, and to carry on. If that conversation turns out to be gone
+  it starts over, as below.
+- **codex**, and a session that had not yet got as far as a conversation,
+  **start over** from the first prompt in the same worktree, with a paragraph
+  added to the system prompt saying an earlier attempt was cut off and its
+  unfinished work may be there.
+
+Whatever is still running in the worktree is closed first, and each start is a
+new attempt, so anything a cut-off runner still sends is refused and it stops
+its command. While Orca can't be asked (it is still coming back up) the
+session waits and is tried again every minute, for up to six hours; after
+that the run is finished as an `error` saying why. The time a session spent
+interrupted is not counted against its `timeout:`.
+
+One session is started again at most **Starts after an interruption** times
+(a setting, 3; 0 finishes an interrupted session as an `error`, as before
+0.18). To end a session, stop it (`stop!`, or the run's page): closing its
+terminal by hand now reads as an interruption.
+
+The run's cost and tokens are those of its last attempt. An attempt that was
+cut off never reports its own, so they are not known.
 
 ### How a session ends
 

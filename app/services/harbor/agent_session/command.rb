@@ -83,6 +83,13 @@ module Harbor
       # The same command starting a new session instead of continuing one.
       def without_resume = self.class.from(to_h.merge("resume_session_id" => nil), mcp_config:)
 
+      # The same command continuing the conversation of the session it was
+      # running when it was interrupted (Interruption). Its prompt is then a
+      # short one of Harbor's, so a slash command is not expanded again.
+      def continuing(session_id)
+        self.class.from(to_h.except("slash_command", "command_ref").merge("resume_session_id" => session_id), mcp_config:)
+      end
+
       # The command line the runner script runs with `sh -c`.
       def shell = cli == "codex" ? codex_shell : claude_shell
 

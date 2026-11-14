@@ -86,7 +86,7 @@ module Harbor
         { "cli" => command.cli, "provider" => @choice.model_provider&.key, "attempt" => 1, "received" => 0, "digested" => 0,
           "raw_base" => 0, "seq" => @run.run_events.maximum(:seq).to_i, "last_seen_at" => nil,
           "timeout" => @timeout, "timeout_at" => (@timeout && (now + @timeout).iso8601), "idle_timeout" => @idle_timeout,
-          "slots" => @slots, "keep_worktree" => @keep_worktree ? true : nil,
+          "slots" => @slots, "keep_worktree" => @keep_worktree ? true : nil, "base" => @base.presence,
           "resume_session_id" => command.resume_session_id }.compact
       end
 

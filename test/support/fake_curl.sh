@@ -10,6 +10,8 @@
 #   lose-answer  take the next log post, then fail as if the answer was lost
 #   rewind       forget all but this many bytes and say so (409) on the next log post
 #   finished     answer every log post with 409 "finished"
+#   down         a count: give no answer at all to that many calls, of any kind,
+#                noting in at_down what the run still had on disk each time
 dir=$FAKE_CURL_DIR
 echo "$*" >> "$dir/argv"
 body="" data="" reply=/dev/null url=""
@@ -23,6 +25,16 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+if [ -f "$dir/down" ]; then
+  left=$(cat "$dir/down")
+  if [ "$left" -gt 0 ]; then
+    echo $((left - 1)) > "$dir/down"
+    ls "$dir"/tmp/*/ >> "$dir/at_down" 2>/dev/null
+    printf '000'
+    exit 7
+  fi
+fi
 
 answer() {
   printf '%s' "$2" > "$reply"

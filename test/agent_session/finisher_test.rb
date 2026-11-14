@@ -316,6 +316,9 @@ class HarborAgentSessionFinisherTest < ActionDispatch::IntegrationTest
   end
 
   test "a session that ran, was stopped, or continued nothing is not started again" do
+    # A runner signalled out of its command was interrupted, which is another
+    # matter (interruption_test.rb); here it only must not count as a failed --resume.
+    Harbor::Setting.set!(:agent_session_resume_attempts, 0)
     ran = start_session(resume_session_id: "old-session")
     post_output ran, ndjson(INIT, RESULT.merge(subtype: "error_max_turns", is_error: true, num_turns: 12))
     post_result ran, 1

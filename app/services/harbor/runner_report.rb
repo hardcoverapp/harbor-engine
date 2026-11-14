@@ -49,7 +49,11 @@ module Harbor
             state["received"] = received + fresh.bytesize
           end
         end
-        state["last_seen_at"] = Time.current.iso8601
+        # An empty piece is the runner saying its command is still there. It
+        # counts as hearing from the runner, not as the command printing.
+        now = Time.current.iso8601
+        state["alive_at"] = now
+        state["last_seen_at"] = now if bytes.bytesize.positive?
         run.update_columns(columns.merge(runner_state: state))
         Reply.none
       end
