@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.21.0
+
+- **The runtime form is two choices, not a backend and its JSON**: "Orca" (work runs on
+  this server) and "Orca (Remote)" (Orca on this server does the work on another machine
+  it reaches over SSH). Orca asks for a repository, chosen from the ones Orca has. Orca
+  (Remote) asks who hosts the machine (DigitalOcean so far), which of Orca's SSH hosts it
+  is, and the project. When Orca can't be asked, the values are typed. Setup hooks and a
+  paired Orca server are under Advanced. **The remote kind was built against Orca
+  1.4.257's commands and has not yet been run against a real remote host.**
+- **Nobody types a runtime's key**: it is made from the name, with a number when that is
+  taken. The form has no Key or Host field.
+- **The Runtimes list is a table**: status (an icon and a word), the runtime with its
+  kind and place, in use against its limit, workspaces, last check, and Edit and
+  Enable/Disable. Each row is a card on a phone.
+- **A runtime has its own page** (`/factory/runtimes/:id/edit`) with its settings, its
+  health check and Remove, which the list used to hold in every card.
+- `Harbor::Runtimes::Backend`: `offered?`, `choices`, `fields_partial` and
+  `settings_from` (class), `label`, `place` and `choice_value` (instance).
+  `Harbor::Runtimes.choices` is what the form offers.
+- `Harbor::Orca::Client#repos`, `#hosts` and `#projects`, and `#create_worktree` takes
+  `project:` and `host:` in place of `repo:`.
+- Icons `:ok`, `:warning` and `:off`, and a `harbor--choice` Stimulus controller (one
+  choice decides which fields follow).
+
+Upgrading from 0.20:
+
+- A host's backend it doesn't want offered for new runtimes defines
+  `def self.offered? = false`. Without that, each registered backend is one more choice
+  on the form, with a host label and its config as JSON.
+- `POST /factory/runtimes` and the edit form send `runtime[type]` (a choice's value) and
+  `runtime[fields][<type>][…]`, not `runtime[backend]` and `runtime[config]`. A `PATCH`
+  with single values (`enabled`, `max_concurrent`, `name`, `host`, `config`) works as
+  before.
+- Removing a runtime that can't be removed, and a health check asked from a runtime's
+  page, go back to that page, not the list.
+- A host test that looked for a runtime's card on the list (`h2`, the "Save limit" form,
+  "Backend config") looks at the table row or the runtime's page now. `[data-runtime]`,
+  `[data-busy]` and `[data-health]` are still on the list.
+
 ## 0.20.0
 
 - **The Agents pages are Harbor's**: the list (`/factory/agents`) with its Task routing

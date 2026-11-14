@@ -1,0 +1,69 @@
+<%# An Orca runtime's fields: the repository (Orca), or the external host,
+    who hosts it and the project (Orca (Remote)). The lists come from the
+    Orca on this server; when it can't be asked, the values are typed. %>
+<% backend = Harbor::Runtimes::Backends::Orca %>
+<% remote = backend.remote_choice?(choice) %>
+<% catalog = (@orca_catalog ||= backend.catalog) %>
+<% config = chosen ? runtime.config : {} %>
+<% value = ->(key) { sent.key?(key) ? sent[key].to_s : config[key.to_s].to_s } %>
+<%# A list with the saved value kept in it, even when Orca no longer has it. %>
+<% pick = lambda do |key, options, blank:|
+     current = value.(key)
+     options += [ [ "#{current} (not in Orca now)", current ] ] if current.present? && options.none? { |_, v| v == current }
+     select_tag "#{prefix}[#{key}]", options_for_select(options, current), include_blank: blank, required: true, class: "field w-full sm:w-96"
+   end %>
+
+<% if catalog.error.present? %>
+  <p class="text-sm text-ink-yellow" data-orca-unreachable>Orca on this server didn't answer, so there are no lists to choose from: <%= catalog.error.truncate(160) %></p>
+<% end %>
+
+<% if remote %>
+  <div>
+    <%= label_tag "#{prefix}[provider]", "Hosted at", class: "block text-sm mb-2" %>
+    <%= select_tag "#{prefix}[provider]", options_for_select(backend::PROVIDERS.invert.to_a, value.(:provider).presence || backend::PROVIDERS.keys.first), required: true, class: "field w-full sm:w-96" %>
+  </div>
+  <div>
+    <%= label_tag "#{prefix}[host]", "External host", class: "block text-sm mb-2" %>
+    <% if catalog.error.present? %>
+      <%= text_field_tag "#{prefix}[host]", value.(:host), required: true, class: "field w-full sm:w-96 font-mono", placeholder: "ssh:…" %>
+    <% else %>
+      <%= pick.(:host, catalog.hosts.map { |host| [ host.connected ? host.name : "#{host.name} (not connected)", host.selector ] }, blank: "Choose a host…") %>
+    <% end %>
+    <p class="meta mt-1">The machines Orca on this server reaches over SSH. To add one: Orca → Settings → SSH hosts.</p>
+  </div>
+  <div>
+    <%= label_tag "#{prefix}[project]", "Project", class: "block text-sm mb-2" %>
+    <% if catalog.error.present? %>
+      <%= text_field_tag "#{prefix}[project]", value.(:project), required: true, class: "field w-full sm:w-96 font-mono", placeholder: "github:owner/repo" %>
+    <% else %>
+      <%= pick.(:project, catalog.projects.map { |project| [ project.name, project.id ] }, blank: "Choose a project…") %>
+    <% end %>
+    <p class="meta mt-1">The repository work happens in. It has to be set up on the external host in Orca first.</p>
+  </div>
+<% else %>
+  <div>
+    <%= label_tag "#{prefix}[repo]", "Repository", class: "block text-sm mb-2" %>
+    <% if catalog.error.present? %>
+      <%= text_field_tag "#{prefix}[repo]", value.(:repo), required: true, class: "field w-full sm:w-96 font-mono", placeholder: "name:app" %>
+    <% else %>
+      <%= pick.(:repo, catalog.repos.map { |repo| [ "#{repo.name} · #{repo.path}", repo.selector ] }, blank: "Choose a repository…") %>
+    <% end %>
+    <p class="meta mt-1">The folder on this server that each run gets its own worktree of.</p>
+  </div>
+<% end %>
+
+<details class="text-sm">
+  <summary class="text-soft cursor-pointer">Advanced</summary>
+  <div class="mt-4 space-y-6">
+    <div>
+      <%= label_tag "#{prefix}[setup]", "The repository's setup hooks", class: "block text-sm mb-2" %>
+      <%= select_tag "#{prefix}[setup]", options_for_select(backend::SETUPS.invert.to_a, value.(:setup).presence || "skip"), class: "field w-full sm:w-96" %>
+      <p class="meta mt-1">Whether a new worktree runs the setup script the repository has in Orca.</p>
+    </div>
+    <div>
+      <%= label_tag "#{prefix}[environment]", "Another Orca server", class: "block text-sm mb-2" %>
+      <%= text_field_tag "#{prefix}[environment]", value.(:environment), class: "field w-full sm:w-96", placeholder: "Leave empty for the Orca on this server" %>
+      <p class="meta mt-1">The name of an Orca server paired with this one (<span class="font-mono">orca environment add</span>), to ask it instead.</p>
+    </div>
+  </div>
+</details>

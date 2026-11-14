@@ -5,8 +5,9 @@ class HarborRuntimePagesTest < ActionDispatch::IntegrationTest
 
   class PageBackend < Harbor::Runtimes::Backend
     class << self
-      attr_accessor :healthy
+      attr_accessor :healthy, :offered
       def label = "Page test"
+      def offered? = offered != false
     end
     def health_check = self.class.healthy ? true : raise("no answer")
     def warnings = [ "Check the cable." ]
@@ -31,24 +32,68 @@ class HarborRuntimePagesTest < ActionDispatch::IntegrationTest
     Harbor.config.availability_changed = nil
   end
 
-  test "the runtimes page shows each runtime's limit, busy count, health and workspaces" do
+  # Answers the Orca commands the runtime form asks: its repos, hosts and
+  # projects, as Orca 1.4.257 gives them.
+  class ListingOrca
+    attr_reader :commands
+    attr_accessor :down
+
+    def initialize = @commands = []
+
+    def call(argv, timeout:)
+      @commands << argv[1, 2].join(" ")
+      return [ "", "orca: not running", 1 ] if down
+      result = case argv[1, 2].join(" ")
+      when "repo list" then { "repos" => [ { "id" => "r-1", "displayName" => "app", "path" => "/code/app" } ] }
+      when "host list"
+        { "hosts" => [ { "kind" => "local", "name" => "this machine", "id" => "local" },
+                       { "kind" => "ssh", "name" => "droplet-1", "id" => "ssh-1", "connected" => true },
+                       { "kind" => "ssh", "name" => "droplet-2", "id" => "ssh-2", "connected" => false } ] }
+      when "project list" then { "projects" => [ { "id" => "github:acme/app", "displayName" => "App" } ] }
+      when "status" then { "runtime" => { "appVersion" => "1.4.257", "state" => "ready" } }
+      else {}
+      end
+      [ JSON.generate("ok" => true, "result" => result), "", 0 ]
+    end
+  end
+
+  def with_orca(down: false)
+    Harbor::Orca.runner = ListingOrca.new.tap { |orca| orca.down = down }
+    yield Harbor::Orca.runner
+  ensure
+    Harbor::Orca.runner = nil
+  end
+
+  test "the runtimes page is a table: each runtime's status, kind, use, workspaces and last check" do
     Harbor::Runtimes::Slots.acquire(@cloud, "run-1", ttl: 60)
+    @laptop.update!(enabled: false)
+    Harbor::Runtime.create!(name: "Broken", backend: "orca", config: {})
     get harbor.runtimes_path
     assert_response :success
-    assert_select "[data-runtime=cloud]" do
-      assert_select "h2", "Cloud"
-      assert_select "[data-busy]", text: /1 \/ 3/
+    assert_select "table thead th", text: "Status"
+    assert_select "tr[data-runtime=cloud][data-state=ok]" do
+      assert_select "[data-status]", text: "Taking work"
+      assert_select "[data-status] svg.harbor-icon"
+      assert_select "a[href=?]", harbor.edit_runtime_path(@cloud), text: "Cloud"
+      assert_select "p", text: "Page test · cloud.example"
+      assert_select "[data-busy]", text: "1 / 3"
       assert_select "[data-health]", text: "Taking new work"
-      assert_select "p", text: /Page test · cloud.example · cloud/
-      assert_select "p", text: "In Default"
+      assert_select "[data-workspaces]", text: /Default/
       assert_select "p", text: "Check the cable."
-      assert_select "form[action=?]", harbor.check_runtime_path(@cloud)
+      assert_select "a[href=?]", harbor.edit_runtime_path(@cloud), text: "Edit"
+    end
+    assert_select "tr[data-runtime=laptop][data-state=off] [data-status]", text: "Off"
+    assert_select "tr[data-runtime=broken][data-state=warning]" do
+      assert_select "[data-status]", text: "Not taking work"
+      assert_select "p", text: "No repository set"
+      assert_select "p", text: "Orca · This server"
+      assert_select "[data-workspaces]", text: /None yet/
     end
     assert_select "[data-controller='harbor--poll']"
     assert_select "[data-harbor-nav] a[aria-current=page]", text: "Runtimes"
   end
 
-  test "a runtime is switched off, limited and configured from the page" do
+  test "a runtime is switched off, limited and configured with single values" do
     patch harbor.runtime_path(@cloud), params: { runtime: { enabled: false } }
     assert_redirected_to harbor.runtimes_path
     assert_not @cloud.reload.enabled?
@@ -68,56 +113,166 @@ class HarborRuntimePagesTest < ActionDispatch::IntegrationTest
     patch harbor.runtime_path(@laptop), params: { runtime: { config: "[1]" } }
     assert_equal "Config must be a JSON object.", flash[:alert]
     patch harbor.runtime_path(@laptop), params: { runtime: { config: "{not json" } }
-    assert flash[:alert].present?
+    assert_equal "Config must be valid JSON.", flash[:alert]
     assert_equal({ "repo" => "name:app" }, @laptop.reload.config)
   end
 
-  test "a runtime is added from the page, with each backend saying what its config means" do
-    get harbor.new_runtime_path
-    assert_response :success
-    assert_select "select[name='runtime[backend]'] option[value=orca]", text: "Orca (orca)"
-    assert_select "select[name='runtime[backend]'] option[value=page]"
-    assert_select "[data-backend-help]", text: /Orca:.*repo is the Orca repo/m
+  test "the new runtime form offers Orca and Orca (Remote), with lists from Orca and no key to think up" do
+    with_orca do
+      get harbor.new_runtime_path
+      assert_response :success
+      assert_select "input[name='runtime[key]']", count: 0
+      assert_select "[data-runtime-choice=orca]", text: /Orca\s+Work runs on this server/
+      assert_select "[data-runtime-choice='orca:remote']", text: /Orca \(Remote\)\s+Orca still runs on this server/
+      assert_select "input[name='runtime[type]'][value=orca][checked]"
+      assert_select "[data-choice=orca]:not([hidden]) select[name='runtime[fields][orca][repo]'] option[value='id:r-1']", text: "app · /code/app"
+      assert_select "[data-choice='orca:remote'][hidden]" do
+        assert_select "select[name='runtime[fields][orca:remote][provider]'] option[value=digitalocean]", text: "DigitalOcean"
+        assert_select "select[name='runtime[fields][orca:remote][host]'] option", count: 3, message: "a blank and the two SSH hosts, not this machine"
+        assert_select "select[name='runtime[fields][orca:remote][host]'] option[value='ssh:ssh-2']", text: "droplet-2 (not connected)"
+        assert_select "select[name='runtime[fields][orca:remote][project]'] option[value='github:acme/app']", text: "App"
+      end
+      assert_select "[data-choice=page] textarea[name='runtime[fields][page][config]']"
+    end
+  end
 
-    assert_difference("Harbor::Runtime.count", 1) do
-      post harbor.runtimes_path, params: { runtime: { name: "Sam's laptop", backend: "orca", max_concurrent: 2, enabled: "1",
-                                                      config: '{"repo": "name:app", "environment": "sam"}' } }
+  test "an Orca runtime is added for a repository on this server, its key made from its name" do
+    with_orca do
+      assert_difference("Harbor::Runtime.count", 1) do
+        post harbor.runtimes_path, params: { runtime: { name: "Sam's laptop", type: "orca", max_concurrent: 2, enabled: "1",
+                                                        fields: { "orca" => { repo: "id:r-1", setup: "run", environment: "sam" },
+                                                                  "orca:remote" => { host: "ssh:ssh-1", project: "ignored" } } } }
+      end
     end
     assert_redirected_to harbor.runtimes_path
     added = Harbor::Runtime.find_by!(key: "sam-s-laptop")
-    assert_equal [ "Sam's laptop", "orca", 2, true, { "repo" => "name:app", "environment" => "sam" } ],
+    assert_equal [ "Sam's laptop", "orca", 2, true, { "repo" => "id:r-1", "setup" => "run", "environment" => "sam" } ],
                  [ added.name, added.backend, added.max_concurrent, added.enabled, added.config ]
+    assert_equal [ "Orca", "sam", false ], [ added.adapter.label, added.adapter.place, added.adapter.remote? ]
     assert_operator added.position, :>, @laptop.position, "a new runtime goes last"
     assert_empty added.workspace_profiles, "and takes no work until a workspace lists it"
     assert_equal 0, @changes, "so nothing waiting is told to look again"
   end
 
+  test "an Orca (Remote) runtime needs its external host, who hosts it and a project" do
+    with_orca do
+      remote = { provider: "digitalocean", host: "ssh:ssh-1", project: "github:acme/app" }
+      { host: /Choose the external host/, provider: /Choose who hosts/, project: /Choose the project/ }.each do |missing, message|
+        assert_no_difference("Harbor::Runtime.count") do
+          post harbor.runtimes_path, params: { runtime: { name: "Droplet", type: "orca:remote", max_concurrent: 1, fields: { "orca:remote" => remote.except(missing) } } }
+        end
+        assert_response :unprocessable_entity
+        assert_select "[role=alert]", text: message
+        assert_select "input[name='runtime[type]'][value='orca:remote'][checked]", true, "the form comes back on the kind that was chosen"
+        assert_select "input[name='runtime[name]'][value=Droplet]"
+      end
+      assert_select "select[name='runtime[fields][orca:remote][host]'] option[selected][value='ssh:ssh-1']", true, "with what was sent still filled in"
+
+      post harbor.runtimes_path, params: { runtime: { name: "Droplet", type: "orca:remote", max_concurrent: 1, enabled: "1", fields: { "orca:remote" => remote } } }
+      assert_redirected_to harbor.runtimes_path
+    end
+    added = Harbor::Runtime.find_by!(key: "droplet")
+    assert_equal({ "provider" => "digitalocean", "host" => "ssh:ssh-1", "host_name" => "droplet-1", "project" => "github:acme/app" }, added.config)
+    assert_equal [ "Orca (Remote)", "DigitalOcean · droplet-1", true ], [ added.adapter.label, added.adapter.place, added.adapter.remote? ]
+    assert_equal({ project: "github:acme/app", host: "ssh:ssh-1" }, added.adapter.worktree_place)
+  end
+
+  test "when Orca doesn't answer, the form says so and takes what is typed" do
+    with_orca(down: true) do
+      get harbor.new_runtime_path
+      assert_select "[data-choice=orca] [data-orca-unreachable]", text: /Orca on this server didn't answer/
+      assert_select "input[type=text][name='runtime[fields][orca][repo]']"
+      assert_select "input[type=text][name='runtime[fields][orca:remote][host]']"
+      post harbor.runtimes_path, params: { runtime: { name: "Typed", type: "orca:remote", max_concurrent: 1,
+                                                      fields: { "orca:remote" => { provider: "digitalocean", host: "ssh-9", project: "app" } } } }
+    end
+    assert_equal({ "provider" => "digitalocean", "host" => "ssh:ssh-9", "project" => "app" }, Harbor::Runtime.find_by!(key: "typed").config)
+  end
+
+  test "a second runtime of the same name gets a key of its own" do
+    with_orca do
+      2.times { post harbor.runtimes_path, params: { runtime: { name: "Cloud", type: "orca", max_concurrent: 1, fields: { "orca" => { repo: "id:r-1" } } } } }
+    end
+    assert_equal %w[cloud cloud-2 cloud-3], Harbor::Runtime.where(name: "Cloud").order(:id).pluck(:key)
+  end
+
   test "a runtime that isn't valid is shown again with what is wrong, and nothing is added" do
     assert_no_difference("Harbor::Runtime.count") do
-      post harbor.runtimes_path, params: { runtime: { name: "", backend: "nope", max_concurrent: 0, config: "{}" } }
+      post harbor.runtimes_path, params: { runtime: { name: "", type: "nope", max_concurrent: 0 } }
       assert_response :unprocessable_entity
-      assert_select "[role=alert]", text: /Name can't be blank.*not a registered backend.*greater than 0/m
+      assert_select "[role=alert]", text: /Choose what kind of runtime this is/
 
-      post harbor.runtimes_path, params: { runtime: { name: "Odd", backend: "page", max_concurrent: 1, config: "{not json" } }
+      post harbor.runtimes_path, params: { runtime: { name: "", type: "page", max_concurrent: 0 } }
+      assert_response :unprocessable_entity
+      assert_select "[role=alert]", text: /Name can't be blank.*greater than 0/m
+
+      post harbor.runtimes_path, params: { runtime: { name: "Odd", type: "page", max_concurrent: 1, fields: { page: { config: "{not json" } } } }
       assert_response :unprocessable_entity
       assert_select "[role=alert]", text: /Config must be valid JSON/
       assert_select "input[name='runtime[name]'][value=Odd]"
+      assert_select "textarea[name='runtime[fields][page][config]']", text: "{not json"
 
-      post harbor.runtimes_path, params: { runtime: { name: "List", backend: "page", max_concurrent: 1, config: "[1]" } }
+      post harbor.runtimes_path, params: { runtime: { name: "List", type: "page", max_concurrent: 1, fields: { page: { config: "[1]" } } } }
       assert_select "[role=alert]", text: /Config must be a JSON object/
 
-      post harbor.runtimes_path, params: { runtime: { name: "Cloud again", key: "cloud", backend: "page", max_concurrent: 1, config: "{}" } }
-      assert_select "[role=alert]", text: /Key has already been taken/
+      post harbor.runtimes_path, params: { runtime: { name: "Orca", type: "orca", max_concurrent: 1 } }
+      assert_select "[role=alert]", text: /Choose the repository to work in/
     end
+  end
+
+  test "a backend that isn't offered is left off the new runtime form, and its runtimes are still edited" do
+    PageBackend.offered = false
+    get harbor.new_runtime_path
+    assert_select "[data-runtime-choice=page]", count: 0
+    assert_no_difference("Harbor::Runtime.count") do
+      post harbor.runtimes_path, params: { runtime: { name: "Sneaked", type: "page", max_concurrent: 1 } }
+    end
+    assert_select "[role=alert]", text: /Choose what kind of runtime this is/
+
+    get harbor.edit_runtime_path(@cloud)
+    assert_select "[data-runtime-choice=page]"
+    patch harbor.runtime_path(@cloud), params: { runtime: { name: "Cloud two", type: "page", max_concurrent: 4, enabled: "1",
+                                                           fields: { page: { host: "two.example", config: '{"a": 1}' } } } }
+    assert_redirected_to harbor.runtimes_path
+    assert_equal [ "Cloud two", 4, "two.example", { "a" => 1 }, "cloud" ], @cloud.reload.then { |r| [ r.name, r.max_concurrent, r.host, r.config, r.key ] }
+  ensure
+    PageBackend.offered = true
+  end
+
+  test "a runtime's own page holds its settings, its health and its removal" do
+    with_orca do
+      orca = Harbor::Runtime.create!(name: "Droplet", backend: "orca", max_concurrent: 2,
+                                     config: { "provider" => "digitalocean", "host" => "ssh:gone", "host_name" => "old-droplet", "project" => "github:acme/app" })
+      get harbor.edit_runtime_path(orca)
+      assert_response :success
+      assert_select "h1", "Droplet"
+      assert_select "[data-runtime-health]", text: /Taking new work|Not taking new work/
+      assert_select "form[action=?]", harbor.check_runtime_path(orca)
+      assert_select "input[name='runtime[type]']", count: 2, message: "only its own backend's kinds: a runtime doesn't change backend"
+      assert_select "input[name='runtime[type]'][value='orca:remote'][checked]"
+      assert_select "select[name='runtime[fields][orca:remote][host]'] option[selected][value='ssh:gone']", text: "ssh:gone (not in Orca now)"
+      assert_select "form[action=?] input[name=_method][value=delete]", harbor.runtime_path(orca)
+
+      patch harbor.runtime_path(orca), params: { runtime: { name: "Droplet", type: "orca", max_concurrent: 5, enabled: "0", fields: { orca: { repo: "id:r-1" } } } }
+      assert_redirected_to harbor.runtimes_path
+      assert_equal [ 5, false, { "repo" => "id:r-1" }, "droplet" ], orca.reload.then { |r| [ r.max_concurrent, r.enabled, r.config, r.key ] }
+      assert_equal 1, @changes
+
+      patch harbor.runtime_path(orca), params: { runtime: { name: "", type: "orca", max_concurrent: 5, fields: { orca: { repo: "id:r-1" } } } }
+      assert_response :unprocessable_entity
+      assert_select "[role=alert]", text: /Name can't be blank/
+      assert_select "h1", "Droplet"
+    end
+    get harbor.edit_runtime_path(@cloud)
+    assert_select "input[name=_method][value=delete]", count: 0, message: "a runtime in a workspace offers no Remove"
+    assert_select "p", text: "Check the cable."
   end
 
   test "only a runtime nothing depends on can be removed" do
     spare = Harbor::Runtime.create!(key: "spare", name: "Spare", backend: "page")
-    get harbor.runtimes_path
-    assert_select "[data-runtime=spare] form[action=?] input[name=_method][value=delete]", harbor.runtime_path(spare)
-    assert_select "[data-runtime=cloud] input[name=_method][value=delete]", count: 0, message: "a runtime in a workspace offers no Remove"
 
     delete harbor.runtime_path(@cloud)
+    assert_redirected_to harbor.edit_runtime_path(@cloud)
     assert_match "Cloud can't be removed", flash[:alert]
     assert Harbor::Runtime.exists?(@cloud.id)
 
@@ -131,13 +286,15 @@ class HarborRuntimePagesTest < ActionDispatch::IntegrationTest
     assert_not Harbor::Runtime.exists?(spare.id)
   end
 
-  test "a health check records its result either way" do
+  test "a health check records its result either way, and goes back to where it was asked" do
     PageBackend.healthy = false
     post harbor.check_runtime_path(@cloud)
+    assert_redirected_to harbor.runtimes_path
     assert_match "Cloud failed its health check: RuntimeError: no answer", flash[:alert]
     assert_match "unhealthy", @cloud.reload.unavailable_reason
     PageBackend.healthy = true
-    post harbor.check_runtime_path(@cloud)
+    post harbor.check_runtime_path(@cloud), params: { from: "edit" }
+    assert_redirected_to harbor.edit_runtime_path(@cloud)
     assert_equal "Cloud is healthy.", flash[:notice]
     assert_nil @cloud.reload.unavailable_reason
   end

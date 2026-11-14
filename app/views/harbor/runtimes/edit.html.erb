@@ -1,0 +1,28 @@
+<% content_for :title, "#{@runtime.name_was.presence || @runtime.name} · Runtimes" %>
+<%= render "harbor/shared/section_nav" %>
+<% reason = @runtime.persisted? ? Harbor.runtime_class.find(@runtime.id).unavailable_reason : nil %>
+<p class="meta mb-2"><%= link_to "Runtimes", runtimes_path, class: "underline" %></p>
+<header class="flex flex-wrap justify-between items-start gap-4 mb-8">
+  <div>
+    <h1 class="display text-3xl"><%= @runtime.name_was.presence || @runtime.name %></h1>
+    <p class="meta mt-1.5">Named <span class="font-mono"><%= @runtime.key %></span> in logs · <%= @runtime.usage_label %></p>
+  </div>
+  <%= button_to "Check health", check_runtime_path(@runtime), params: { from: "edit" }, class: "btn-quiet" %>
+</header>
+
+<section class="card p-5 mb-8 max-w-3xl space-y-1" data-runtime-health>
+  <p class="text-sm text-body"><%= reason ? "Not taking new work: #{reason}" : "Taking new work" %></p>
+  <% @runtime.adapter.warnings.each do |warning| %><p class="text-xs text-ink-yellow"><%= warning %></p><% end %>
+  <% if @runtime.last_error.present? %><p class="text-xs text-ink-yellow">Last check failed: <%= @runtime.last_error %></p><% end %>
+  <p class="meta"><%= @runtime.checked_at ? "Checked #{time_ago_in_words(@runtime.checked_at)} ago" : "Health has not been checked" %> · In <%= @runtime.workspace_profiles.map(&:name).sort.to_sentence.presence || "no workspace yet" %></p>
+</section>
+
+<%= render "form" %>
+
+<% if @runtime.workspace_profiles.empty? %>
+  <div class="max-w-3xl mt-10 pt-6 border-t border-hairline">
+    <%= button_to "Remove #{@runtime.name_was.presence || @runtime.name}", runtime_path(@runtime), method: :delete, class: "text-sm text-ink-red underline",
+          data: { turbo_confirm: "Remove #{@runtime.name}? Only a runtime no workspace lists and no run used can be removed." } %>
+    <p class="meta mt-1">Only a runtime no workspace lists and no run used can be removed. Otherwise, switch it off.</p>
+  </div>
+<% end %>

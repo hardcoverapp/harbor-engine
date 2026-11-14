@@ -19,6 +19,10 @@ module Harbor
       proposals:   '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/>',
       settings:    '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
       page:        '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
+      # Status marks, for a table's first column.
+      ok:          '<circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16 9.5"/>',
+      warning:     '<path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.5h.01"/>',
+      off:         '<circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/>',
       collapse:    '<path d="m11 17-5-5 5-5M18 17l-5-5 5-5"/>'
     }.freeze
 

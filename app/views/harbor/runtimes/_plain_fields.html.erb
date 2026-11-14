@@ -1,0 +1,13 @@
+<%# The fields of a backend with none of its own: a label for where it is,
+    and its config as JSON. %>
+<% klass = choice.backend_class %>
+<% config = sent.key?(:config) ? sent[:config] : JSON.pretty_generate(chosen && runtime.config.present? ? runtime.config : (runtime.persisted? ? {} : klass.config_example)) %>
+<div>
+  <%= label_tag "#{prefix}[host]", "Host", class: "block text-sm mb-2" %>
+  <%= text_field_tag "#{prefix}[host]", sent.key?(:host) ? sent[:host] : (chosen ? runtime.host : nil), class: "field w-full sm:w-96", placeholder: "Shown beside the runtime; optional" %>
+</div>
+<div>
+  <%= label_tag "#{prefix}[config]", "Config (JSON)", class: "block text-sm mb-2" %>
+  <%= text_area_tag "#{prefix}[config]", config, rows: 5, class: "field w-full font-mono text-sm" %>
+  <% if klass.config_help.present? %><p class="meta mt-2" data-backend-help><%= klass.config_help %></p><% end %>
+</div>

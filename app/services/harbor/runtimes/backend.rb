@@ -37,6 +37,28 @@ module Harbor
         def config_example = {}
 
         def capabilities = { enforces_tool_policy: enforces_tool_policy?, keeps_workspaces: keeps_workspaces? }
+
+        # Whether the "New runtime" page offers this backend. A backend a
+        # host keeps only for the runtimes it already has says false; those
+        # runtimes are still shown and edited.
+        def offered? = true
+
+        # What the runtime form offers for this backend, registered as
+        # `name`: usually one kind of runtime, sometimes more (Orca: on this
+        # server, or on a host it reaches).
+        def choices(name) = [ Harbor::Runtimes::Choice.new(value: name, backend: name, label: label, description: nil) ]
+
+        # The partial with this backend's own fields on the runtime form, or
+        # nil for the plain ones (a host label and the config as JSON). It is
+        # rendered once for each choice, with `runtime`, `choice` and
+        # `prefix` (the fields' name prefix).
+        def fields_partial = nil
+
+        # The runtime's `config` and `host`, from what the form sent for
+        # `choice`. Raises ArgumentError with what is wrong.
+        def settings_from(fields, choice:, **)
+          { "config" => Harbor::Runtimes.parse_config(fields[:config]), "host" => fields[:host].to_s.strip.presence }
+        end
       end
 
       attr_reader :runtime, :options
@@ -59,6 +81,14 @@ module Harbor
       def warnings = []
 
       def runner_name = runtime.host.presence || runtime.name
+
+      # What kind of runtime this one is, in a word or two, and which of its
+      # backend's choices it is.
+      def label = self.class.label
+      def choice_value = runtime.backend
+
+      # Where the work happens, as the runtimes page says it.
+      def place = runtime.host.presence
     end
   end
 end

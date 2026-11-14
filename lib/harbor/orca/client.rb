@@ -19,6 +19,15 @@ module Harbor
 
     Worktree = Struct.new(:id, :path, :branch, keyword_init: true)
     Terminal = Struct.new(:handle, :worktree_id, keyword_init: true)
+    Repo = Struct.new(:id, :name, :path, keyword_init: true) do
+      def selector = "id:#{id}"
+    end
+    Project = Struct.new(:id, :name, keyword_init: true)
+    # `selector` is what `--host` takes: "local", or "ssh:<id>".
+    Host = Struct.new(:id, :name, :kind, :connected, keyword_init: true) do
+      def ssh? = kind == "ssh"
+      def selector = ssh? ? "ssh:#{id}" : id
+    end
     # Whether a terminal's command has finished. Orca does not report how: with
     # 1.4.250 its exit code is 0 for a command that exited 3, so there is none
     # here. A run reports its own result to Harbor.
@@ -32,7 +41,8 @@ module Harbor
     #
     # Everything Harbor asks of Orca goes through here, so a change in Orca's
     # commands, or a move to an API, is a change to this class only. The
-    # commands and reply shapes were checked against Orca 1.4.250.
+    # commands and reply shapes were checked against Orca 1.4.250 (repos, hosts
+    # and projects against 1.4.257).
     class Client
       DEFAULT_TIMEOUT = 60
 
@@ -52,13 +62,39 @@ module Harbor
         { version: runtime["appVersion"], ready: runtime["state"] == "ready" && runtime["reachable"] != false }
       end
 
-      # A new worktree of `repo` (an Orca repo selector: "id:…", "name:…" or
-      # "path:…"), branched from `base`. `setup` is whether the repository's
-      # own setup hooks run: "run", "skip" or "inherit".
-      def create_worktree(repo:, name:, base: nil, setup: "skip")
-        args = [ "worktree", "create", "--repo", repo, "--name", name, "--setup", setup ]
+      # A new worktree, branched from `base`. Where it is made is one of:
+      # `repo`, an Orca repo selector ("id:…", "name:…" or "path:…") for a
+      # folder on the server's own machine; or `project` (an Orca project's id
+      # or name) with `host` (an Orca host: "local", or "ssh:<id>" for a
+      # machine the server reaches over SSH). `setup` is whether the
+      # repository's own setup hooks run: "run", "skip" or "inherit".
+      def create_worktree(name:, repo: nil, project: nil, host: nil, base: nil, setup: "skip")
+        raise ArgumentError, "a worktree needs a repo, or a project and its host" if repo.blank? && project.blank?
+        args = [ "worktree", "create" ]
+        args += repo.present? ? [ "--repo", repo ] : [ "--project", project, *([ "--host", host ] if host.present?) ]
+        args += [ "--name", name, "--setup", setup ]
         args += [ "--base-branch", base ] if base.present?
         worktree(call(*args, timeout: 300).fetch("worktree"))
+      end
+
+      # The repositories the server knows, each a folder on its own machine.
+      def repos
+        call("repo", "list").fetch("repos", []).map do |repo|
+          Repo.new(id: repo["id"], name: repo["displayName"].presence || File.basename(repo["path"].to_s), path: repo["path"])
+        end
+      end
+
+      # The machines the server can make worktrees on: its own ("local") and
+      # the ones it reaches over SSH.
+      def hosts
+        call("host", "list").fetch("hosts", []).map do |host|
+          Host.new(id: host["id"], name: host["name"], kind: host["kind"], connected: host["connected"])
+        end
+      end
+
+      # The projects the server knows: a repository, wherever its folders are.
+      def projects
+        call("project", "list").fetch("projects", []).map { |project| Project.new(id: project["id"], name: project["displayName"].presence || project["id"]) }
       end
 
       def worktree(found)

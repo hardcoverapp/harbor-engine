@@ -1,0 +1,57 @@
+<%# The runtime form, for a new runtime and an existing one. The kind of
+    runtime chosen decides which fields follow (harbor--choice): each kind has
+    its own panel, drawn by its backend's partial, or the plain one. %>
+<%= form_with model: @runtime, scope: :runtime, url: (@runtime.persisted? ? runtime_path(@runtime) : runtimes_path),
+      class: "max-w-3xl space-y-8", data: { controller: "harbor--choice" } do |form| %>
+  <% if @runtime.errors.any? %>
+    <div role="alert" class="bg-pale-red text-ink-red rounded-lg p-4 text-sm"><%= @runtime.errors.full_messages.join(". ") %></div>
+  <% end %>
+
+  <div>
+    <%= form.label :name, class: "block text-sm mb-2" %>
+    <%= form.text_field :name, required: true, class: "field w-full sm:w-96", placeholder: "Main server" %>
+  </div>
+
+  <fieldset>
+    <legend class="block text-sm mb-2">Where work runs</legend>
+    <% if @choices.empty? %>
+      <p class="text-sm text-soft">No kind of runtime can be added here.</p>
+    <% end %>
+    <div class="grid sm:grid-cols-2 gap-3">
+      <% @choices.each do |choice| %>
+        <label class="card p-4 flex gap-3 items-start cursor-pointer has-[:checked]:border-ink" data-runtime-choice="<%= choice.value %>">
+          <%= radio_button_tag "runtime[type]", choice.value, choice.value == @choice&.value, id: "runtime_type_#{choice.value.parameterize}", class: "mt-1",
+                data: { "harbor--choice-target": "option", action: "harbor--choice#show" } %>
+          <span>
+            <span class="block text-sm font-medium text-ink"><%= choice.label %></span>
+            <% if choice.description.present? %><span class="block text-sm text-soft mt-0.5"><%= choice.description %></span><% end %>
+          </span>
+        </label>
+      <% end %>
+    </div>
+  </fieldset>
+
+  <% @choices.each do |choice| %>
+    <% chosen = choice.value == @choice&.value %>
+    <%# What the form last sent for this kind, when it is being shown again. %>
+    <% sent = chosen ? (@fields || {}) : {} %>
+    <div class="space-y-6" data-harbor--choice-target="panel" data-choice="<%= choice.value %>" <%= "hidden" unless chosen %>>
+      <%= render choice.backend_class.fields_partial || "harbor/runtimes/plain_fields",
+            runtime: @runtime, choice: choice, chosen: chosen, sent: sent, prefix: "runtime[fields][#{choice.value}]" %>
+    </div>
+  <% end %>
+
+  <div class="flex flex-wrap gap-x-8 gap-y-4 items-end">
+    <div>
+      <%= form.label :max_concurrent, "Limit", class: "block text-sm mb-2" %>
+      <%= form.number_field :max_concurrent, min: 1, required: true, class: "field w-24" %>
+      <p class="meta mt-1">Workspaces in use at once.</p>
+    </div>
+    <label class="text-sm flex gap-2 items-center pb-7"><%= form.check_box :enabled %> Takes new work</label>
+  </div>
+
+  <div class="flex gap-4 items-center">
+    <%= form.submit (@runtime.persisted? ? "Save runtime" : "Add runtime"), class: "btn-primary cursor-pointer" %>
+    <%= link_to "Cancel", runtimes_path, class: "text-sm text-soft" %>
+  </div>
+<% end %>

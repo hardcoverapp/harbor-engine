@@ -57,6 +57,28 @@ class HarborOrcaClientTest < ActiveSupport::TestCase
     assert_equal "/work/spaces/run-8", client(orca).create_worktree(repo: "name:app", name: "run-8").path
   end
 
+  test "creates a worktree of a project on a host the server reaches" do
+    orca = FakeOrca.new(ok("worktree" => WORKTREE))
+    client(orca).create_worktree(project: "github:acme/app", host: "ssh:ssh-1", name: "run-7")
+    assert_equal %w[orca worktree create --project github:acme/app --host ssh:ssh-1 --name run-7 --setup skip --json], orca.argv
+    assert_raises(ArgumentError) { client(orca).create_worktree(name: "run-7") }
+  end
+
+  test "lists the server's repositories, hosts and projects" do
+    orca = FakeOrca.new(
+      ok("repos" => [ { "id" => "r-1", "displayName" => "app", "path" => "/code/app" }, { "id" => "r-2", "path" => "/code/site" } ]),
+      ok("hosts" => [ { "kind" => "local", "name" => "this machine", "id" => "local" },
+                      { "kind" => "ssh", "name" => "droplet", "id" => "ssh-1", "connected" => false } ]),
+      ok("projects" => [ { "id" => "github:acme/app", "displayName" => "App" } ]))
+    orca_client = client(orca)
+    assert_equal [ [ "id:r-1", "app", "/code/app" ], [ "id:r-2", "site", "/code/site" ] ], orca_client.repos.map { |r| [ r.selector, r.name, r.path ] }
+    assert_equal %w[orca repo list --json], orca.argv
+    assert_equal [ [ "local", false, nil ], [ "ssh:ssh-1", true, false ] ], orca_client.hosts.map { |h| [ h.selector, h.ssh?, h.connected ] }
+    assert_equal %w[orca host list --json], orca.argv
+    assert_equal [ [ "github:acme/app", "App" ] ], orca_client.projects.map { |p| [ p.id, p.name ] }
+    assert_equal %w[orca project list --json], orca.argv
+  end
+
   test "looks a worktree up by path, id or selector" do
     orca = FakeOrca.new(ok("worktree" => WORKTREE), ok("worktree" => WORKTREE), ok("worktree" => WORKTREE))
     c = client(orca)

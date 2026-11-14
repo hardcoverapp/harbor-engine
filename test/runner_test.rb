@@ -491,6 +491,35 @@ if [ -f "$dir/down.on" ] && [ -f "$dir/down" ]; then'))
     assert_match "no runner address set", runtime.unavailable_reason
   end
 
+  test "a remote Orca runtime makes its worktree on the external host, and needs an address that host can reach" do
+    runtime = Harbor::Runtime.create!(name: "Droplet", backend: "orca", config: { "provider" => "digitalocean", "host" => "ssh:ssh-1", "host_name" => "droplet-1" })
+    assert_match "no project set", runtime.unavailable_reason
+    runtime.update!(config: runtime.config.merge("project" => "github:acme/app"))
+    assert_nil runtime.unavailable_reason
+    assert_empty runtime.adapter.warnings
+
+    orca = FakeOrca.new(
+      { "ok" => true, "result" => { "worktree" => { "id" => "r1::/w/x", "path" => "/w/x", "branch" => "b" } } },
+      { "ok" => true, "result" => { "terminal" => { "handle" => "term-1", "worktreeId" => "r1::/w/x" } } },
+      { "ok" => true, "result" => { "runtime" => { "appVersion" => "1.4.257", "state" => "ready" } } },
+      { "ok" => true, "result" => { "hosts" => [ { "kind" => "ssh", "id" => "ssh-1", "name" => "droplet-1" } ] } },
+      { "ok" => true, "result" => { "runtime" => { "appVersion" => "1.4.257", "state" => "ready" } } },
+      { "ok" => true, "result" => { "hosts" => [] } })
+    backend = runtime.adapter(client: Harbor::Orca::Client.new(bin: "orca", runner: orca))
+    backend.start(run: @run, command: "make test")
+    assert_equal [ "orca", "worktree", "create", "--project", "github:acme/app", "--host", "ssh:ssh-1", "--name", "harbor-run-#{@run.id}", "--setup", "skip", "--json" ],
+                 orca.calls.first
+
+    assert backend.health_check
+    error = assert_raises(RuntimeError) { backend.health_check }
+    assert_match "doesn't know the host droplet-1", error.message
+
+    Harbor::Setting.set!(:runner_url, "http://127.0.0.1:3000")
+    assert_match(/runner address \(http:\/\/127.0.0.1:3000\) is this machine's own, which droplet-1 can't reach/, runtime.adapter.warnings.first)
+    local = Harbor::Runtime.create!(name: "Here", backend: "orca", config: { "repo" => "name:app" })
+    assert_empty local.adapter.warnings, "the Orca on this machine reaches it"
+  end
+
   test "a worktree whose terminal can't be started is removed again" do
     runtime = Harbor::Runtime.create!(key: "flaky", name: "Flaky", backend: "orca", config: { "repo" => "name:app" })
     orca = FakeOrca.new(

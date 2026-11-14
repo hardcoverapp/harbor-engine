@@ -1,18 +1,30 @@
 module Harbor
   module Runtimes
     module Backends
-      # An Orca server: the one beside Harbor, or one paired with this machine
-      # (a teammate's computer, a cloud workspace). Orca makes the worktree; a
-      # run is a command in an Orca terminal there, wrapped so it reports its
-      # output and result back to Harbor (Harbor::Runner).
+      # Work in Orca: a run is a command in an Orca terminal, in a worktree
+      # Orca makes for it, wrapped so it reports its output and result back to
+      # Harbor (Harbor::Runner). There are two kinds of Orca runtime:
       #
-      # The runtime's config:
-      #   "repo"         the Orca repo selector work happens in ("name:app",
-      #                  "path:/code/app", "id:…")
-      #   "environment"  the paired server's name (`orca environment add`);
-      #                  blank for the Orca on this machine
+      # Orca: the worktree is a folder on the Orca server's own machine.
+      #   "repo"       the Orca repo selector work happens in ("id:…",
+      #                "name:app", "path:/code/app")
+      #
+      # Orca (Remote): the same Orca server makes the worktree on another
+      # machine it reaches over SSH, and the run's command runs there.
+      #   "host"       the Orca host ("ssh:<id>", as `orca host list` has it)
+      #   "host_name"  that host's name, to show
+      #   "project"    the Orca project (its id or name) to work in
+      #   "provider"   who hosts the machine (PROVIDERS)
+      #
+      # Either kind:
       #   "setup"        whether the repo's own setup hooks run in a new
       #                  worktree: "run", "skip" (default) or "inherit"
+      #   "environment"  another Orca server to ask, paired with this machine
+      #                  (`orca environment add`); blank for the Orca here
+      #
+      # The remote kind was built against Orca 1.4.257's commands
+      # (`worktree create --project … --host ssh:…`) and has not yet been run
+      # against a real remote host.
       class Orca < Harbor::Runtimes::Backend
         # What a started run holds on the server, to stop and clean up with.
         Session = Struct.new(:worktree_id, :worktree_path, :terminal, keyword_init: true) do
@@ -20,16 +32,62 @@ module Harbor
           def self.from(hash) = new(worktree_id: hash["worktree_id"], worktree_path: hash["worktree_path"], terminal: hash["terminal"])
         end
 
+        # Who hosts a remote machine. More are added here as they are used.
+        PROVIDERS = { "digitalocean" => "DigitalOcean" }.freeze
+        SETUPS = { "skip" => "Skip them", "run" => "Run them", "inherit" => "As the repository says" }.freeze
+        REMOTE = ":remote".freeze
+
+        # What the form's lists are filled from: the server's repositories,
+        # the machines it reaches over SSH and its projects. `error` says why
+        # there are none (Orca isn't running here, say); the form then takes
+        # what is typed.
+        Catalog = Struct.new(:repos, :hosts, :projects, :error, keyword_init: true)
+
         class << self
           def label = "Orca"
 
           def config_help
             "repo is the Orca repo work happens in (\"name:app\", \"path:/code/app\" or \"id:…\", as `orca repo list` shows them). " \
+              "For a remote host instead: host (\"ssh:<id>\", as `orca host list` shows them), project and provider. " \
               "environment is the paired server's name (`orca environment add`); leave it out for the Orca on this machine. " \
               "setup says whether the repo's own setup hooks run in a new worktree: \"skip\" (the default), \"run\" or \"inherit\"."
           end
 
           def config_example = { "repo" => "name:app" }
+
+          def choices(name)
+            [ Harbor::Runtimes::Choice.new(value: name, backend: name, label: "Orca",
+                                           description: "Work runs on this server, in the Orca that runs beside the app."),
+              Harbor::Runtimes::Choice.new(value: "#{name}#{REMOTE}", backend: name, label: "Orca (Remote)",
+                                           description: "Orca still runs on this server, and does the work on another machine it reaches over SSH.") ]
+          end
+
+          def fields_partial = "harbor/runtimes/orca_fields"
+
+          def remote_choice?(choice) = choice.value.end_with?(REMOTE)
+
+          def catalog(client: Harbor::Orca::Client.new)
+            Catalog.new(repos: client.repos, hosts: client.hosts.select(&:ssh?), projects: client.projects)
+          rescue Harbor::Orca::Error => e
+            Catalog.new(repos: [], hosts: [], projects: [], error: e.message)
+          end
+
+          def settings_from(fields, choice:, catalog: nil)
+            config = { "setup" => fields[:setup].presence_in(SETUPS.keys), "environment" => fields[:environment].to_s.strip.presence }
+            if remote_choice?(choice)
+              host = fields[:host].to_s.strip
+              raise ArgumentError, "Choose the external host the work runs on." if host.blank?
+              raise ArgumentError, "Choose who hosts the external host." unless PROVIDERS.key?(fields[:provider].to_s)
+              raise ArgumentError, "Choose the project to work in." if fields[:project].blank?
+              host = "ssh:#{host}" unless host.include?(":")
+              name = (catalog || self.catalog).hosts.find { |found| found.selector == host }&.name
+              config.merge!("provider" => fields[:provider], "host" => host, "host_name" => name, "project" => fields[:project].to_s.strip)
+            else
+              raise ArgumentError, "Choose the repository to work in." if fields[:repo].blank?
+              config["repo"] = fields[:repo].to_s.strip
+            end
+            { "config" => config.compact, "host" => nil }
+          end
           def keeps_workspaces? = true
 
           # An agent's tool rules are flags on the agent command, so they hold
@@ -49,19 +107,49 @@ module Harbor
           end
         end
 
+        def remote? = host.present?
+        def label = remote? ? "Orca (Remote)" : "Orca"
+        def choice_value = remote? ? "#{runtime.backend}#{REMOTE}" : runtime.backend
+        def provider_name = PROVIDERS[runtime.config["provider"].to_s]
+        def host_name = runtime.config["host_name"].presence || host
+
+        def place
+          return [ provider_name, host_name ].compact_blank.join(" · ") if remote?
+          environment || "This server"
+        end
+
         def unready_reason
-          return "no repository set (config \"repo\")" if repo.blank?
+          if remote?
+            return "no project set" if project.blank?
+          elsif repo.blank?
+            return "no repository set"
+          end
           "no runner address set (Settings)" unless Harbor::Runner.configured?
         end
 
-        # Raises unless the server answers and can take work.
+        # A remote host posts its output to the runner address, so one that
+        # only this machine can reach is no use to it.
+        def warnings
+          return [] unless remote? && Harbor::Runner.configured?
+          address = URI.parse(Harbor::Runner.base_url).host.to_s rescue ""
+          return [] unless address.in?(%w[localhost 127.0.0.1 ::1 [::1] 0.0.0.0])
+          [ "The runner address (#{Harbor::Runner.base_url}) is this machine's own, which #{host_name} can't reach. Set one it can reach on the Settings page." ]
+        end
+
+        # Raises unless the server answers and can take work, and (for a
+        # remote runtime) still knows the host.
         def health_check
           status = client.status
           raise "Orca #{status[:version]} is not ready" unless status[:ready]
+          raise "Orca doesn't know the host #{host_name} any more" if remote? && client.hosts.none? { |found| found.selector == host }
           status
         end
 
         def runner_name = [ runtime.name, environment ].compact_blank.uniq.join(" · ")
+
+        # Where a new worktree is made: Orca::Client#create_worktree's
+        # arguments.
+        def worktree_place = remote? ? { project:, host: } : { repo: }
 
         def worktree_name(run) = "harbor-run-#{run.id}"
 
@@ -70,7 +158,7 @@ module Harbor
         # output and result. `runner` is what the runner script is told
         # besides the command (Harbor::Runner.command_for: bundle:, attempt:).
         def start(run:, command:, base: nil, title: nil, **runner)
-          worktree = client.create_worktree(repo:, name: worktree_name(run), base:, setup: runtime.config["setup"].presence || "skip")
+          worktree = client.create_worktree(**worktree_place, name: worktree_name(run), base:, setup: runtime.config["setup"].presence || "skip")
           begin
             terminal = client.start_terminal(worktree:, command: Harbor::Runner.command_for(run, command, **runner),
                                              title: title || "Run #{run.id}")
@@ -132,6 +220,8 @@ module Harbor
         private
 
         def repo = runtime.config["repo"].to_s.strip.presence
+        def host = runtime.config["host"].to_s.strip.presence
+        def project = runtime.config["project"].to_s.strip.presence
         def environment = runtime.config["environment"].to_s.strip.presence
       end
     end

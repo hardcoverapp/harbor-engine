@@ -10,6 +10,12 @@ module Harbor
   module Runtimes
     class UnknownBackend < ArgumentError; end
 
+    # One kind of runtime the form offers: `value` is what the form sends,
+    # `backend` the registered backend behind it.
+    Choice = Struct.new(:value, :backend, :label, :description, keyword_init: true) do
+      def backend_class = Harbor::Runtimes.backend(backend)
+    end
+
     class << self
       def register(name, class_name)
         backends[name.to_s] = class_name.to_s
@@ -25,6 +31,25 @@ module Harbor
       end
 
       def backend_classes = backends.values.map(&:constantize)
+
+      # What the "New runtime" page offers: every choice of every backend
+      # that is offered.
+      def choices
+        backend_names.flat_map { |name| backend(name).offered? ? backend(name).choices(name) : [] }
+      end
+
+      # The choices of one backend, offered or not (to edit a runtime it has).
+      def choices_for(name) = backend(name).choices(name.to_s)
+
+      # A runtime's config as typed: a JSON object, or nothing. Raises
+      # ArgumentError saying what is wrong.
+      def parse_config(json)
+        config = JSON.parse(json.presence || "{}")
+        raise ArgumentError, "Config must be a JSON object." unless config.is_a?(Hash)
+        config
+      rescue JSON::ParserError
+        raise ArgumentError, "Config must be valid JSON."
+      end
 
       # Tests only.
       def unregister(name) = backends.delete(name.to_s)

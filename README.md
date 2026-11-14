@@ -496,6 +496,30 @@ The code that drives one is its backend, a subclass of
 Harbor::Runtimes.register "laptop", "Backends::Laptop"
 ```
 
+A backend says what the runtime pages need to know about it, each with a default:
+`offered?` (false keeps it off the "New runtime" page, for a backend a host has only
+for the runtimes it already has), `choices(name)` (the kinds of runtime the form
+offers for it: usually one), `fields_partial` (its own fields on the form; without
+one the form has a host label and the config as JSON) and `settings_from(fields,
+choice:)` (the runtime's config from what the form sent). An instance gives `label`
+and `place`, which is how the list names the runtime's kind and where it is.
+
+### The Runtimes pages
+
+**The list** (`/factory/runtimes`) is a table, one runtime per row: whether it is
+taking work (an icon and a word: taking work, not taking work with the reason, or
+off), its name, kind and place, how many workspaces are in use against its limit, the
+workspaces that list it, when its health was last checked, and Edit and Enable/Disable.
+On a phone each row is a card.
+
+**A runtime's own page** (`/factory/runtimes/7/edit`) has everything else: its name,
+kind and that kind's fields, its limit, whether it takes new work, a health check, and
+Remove (only for a runtime no workspace lists and no run used).
+
+**New runtime** asks for a name, the kind and its fields, and a limit. Nobody types a
+key: it is made from the name (`Harbor::Runtime` does this for any runtime created
+without one), with a number added when the name is taken.
+
 A workspace (`Harbor::WorkspaceProfile`) is an ordered list of runtimes, and an
 agent picks one. `agent.placement` walks the list and returns the first runtime
 that is switched on, healthy, below its limit and able to run one of the
@@ -514,13 +538,27 @@ end
 
 ### Orca
 
-Harbor's own backend is `orca`: a runtime is an [Orca](https://github.com/stablyai/orca)
-server, the one beside Harbor or one paired with its machine
-(`orca environment add`). Its config says where:
+Harbor's own backend is `orca`: work runs in [Orca](https://github.com/stablyai/orca),
+in a worktree Orca makes for each run. There are two kinds of Orca runtime, and the
+runtime form offers both:
 
-```json
-{ "repo": "name:app", "environment": "sam-laptop", "setup": "skip" }
-```
+- **Orca**: the work runs on this server, in a folder of the Orca that runs beside the
+  app. Its config names the repository: `{ "repo": "id:…" }` (an Orca repo selector:
+  `id:…`, `name:app` or `path:/code/app`).
+- **Orca (Remote)**: Orca still runs on this server, and does the work on another
+  machine it reaches over SSH. Its config names that machine, who hosts it and the
+  project: `{ "host": "ssh:<id>", "host_name": "droplet-1", "provider": "digitalocean",
+  "project": "github:acme/app" }`. The host is one of Orca's SSH hosts (`orca host list`;
+  add one in Orca's settings), and the project has to be set up on it in Orca first.
+  Providers are listed in `Harbor::Runtimes::Backends::Orca::PROVIDERS`, which has
+  DigitalOcean so far. The runner address (Settings) has to be one the remote machine
+  can reach; the runtime's page warns when it is this machine's own. **This kind was
+  built against Orca 1.4.257's commands and has not yet been run against a real remote
+  host.**
+
+Either kind also takes `"setup"` (whether the repository's own setup hooks run in a new
+worktree: `"skip"`, the default, `"run"` or `"inherit"`) and `"environment"` (another
+Orca server to ask instead, paired with this machine by `orca environment add`).
 
 A run there is a command in a terminal of a fresh worktree. The command is
 wrapped in a small sh script that posts its output and exit status back to
