@@ -6,10 +6,10 @@ Rails.application.routes.draw do
   delete "logout" => "sessions#destroy", as: :logout
   get "reports" => "pages#reports", as: :reports
 
-  # Two of the pages Harbor's menu names that this host happens to have. The
-  # rest of Harbor's entries have no route here, so the menu leaves them out.
+  # One of the pages Harbor's menu names that this host happens to have. The
+  # rest of Harbor's entries that are still a host's have no route here, so
+  # the menu leaves them out.
   get "automations" => "pages#placeholder", as: :automations
-  get "runs" => "pages#home", as: :runs
 
   mount Harbor::Engine => "/", as: :harbor
 end

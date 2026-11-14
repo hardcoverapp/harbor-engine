@@ -7,8 +7,7 @@
   <% if @runs.empty? %><p class="text-sm text-soft">Backup and restore runs will appear here.</p><% end %>
   <div class="card divide-y divide-hairline">
     <% @runs.each do |run| %>
-      <% path = harbor_run_path(run) %>
-      <%= content_tag(path ? :a : :div, href: path, id: "operation-#{run.id}", class: "block px-5 py-3 text-sm hover:bg-bone") do %>
+      <%= content_tag(:a, href: run_path(run), id: "operation-#{run.id}", class: "block px-5 py-3 text-sm hover:bg-bone") do %>
         <span class="flex flex-wrap items-center justify-between gap-3">
           <span><%= run.label %> <span class="text-soft">· <%= run.input["database"] || "All databases" %><%= " · #{run.input['variant']}" if run.input["variant"] %></span></span>
           <span class="flex items-center gap-2 text-soft"><%= harbor_status_pill(run.status) %> <%= time_ago_in_words(run.created_at) %> ago</span>

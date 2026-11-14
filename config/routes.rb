@@ -7,6 +7,16 @@ Harbor::Engine.routes.draw do
     resources :settings, only: %i[index update destroy], param: :key
     resources :webhooks, only: :index
 
+    # Runs: the list, a run's page with its live log, the raw stream it kept,
+    # and Stop. A host adds actions of its own under the same addresses in
+    # its own routes (`resources :runs, only: [] do member { … } end`).
+    resources :runs, only: %i[index show] do
+      member do
+        get :raw
+        post :stop
+      end
+    end
+
     # Models: providers and their usage, and the aliases agents are given.
     resources :models, only: :index do
       collection { post :refresh }

@@ -168,7 +168,7 @@ class HarborDatabasePagesTest < ActionDispatch::IntegrationTest
   test "backup starts an operation for the chosen database and kind, as the person who asked" do
     post harbor.backup_database_path("ledger"), params: { variant: "full" }
     assert_equal [ [ "db-backup", "Sam Settings", { database: "ledger", variant: "full" } ] ], @started
-    assert_redirected_to harbor.databases_path(tab: "operations")
+    assert_redirected_to harbor.run_path(Harbor::Run.order(:id).last), "to the run's own page, where its log is"
     follow_redirect!
     assert_select "[data-notice]", text: "Database operation queued."
 

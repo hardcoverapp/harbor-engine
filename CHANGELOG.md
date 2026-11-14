@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.19.0
+
+- **The Runs pages are Harbor's**: the list (`/factory/runs`), a run's own page
+  (`/factory/runs/:id`), the raw stream download (`…/raw`) and Stop (`POST …/stop`),
+  in `Harbor::RunsController`. A site with no code of its own gets the whole of both:
+  a run's name, status, agent, model, cost, tokens, where it ran, its command, the
+  runs it delegated, its events, its live log (which stays on its newest line while
+  the run is under way), its error, input and output. Both pages are laid out for a
+  phone. The menu's Runs entry is Harbor's own route now.
+- **Places for a host on the run's page**, as partials in the host's
+  `app/views/harbor/runs/`: `_show_actions` (buttons beside Stop), `_show_meta` (the
+  end of the header's first line) and `_show_extras` (sections of its own). A host
+  replaces how an agent is shown (`_agent`) and the details card (`_details`) with a
+  partial of the same name. See README "Runs pages".
+- **`config.run_stop`**: called with (run, current user) to stop a run that isn't an
+  agent session. Without it, Stop is offered for sessions and queued runs only.
+- `Harbor::Run.for_page(filters)` (what the list holds), `#delegated_runs`,
+  `#own_cost_usd` and `#raw_log_file`, each of which a host's run class can override.
+- A `harbor--details` Stimulus controller: a `<details>` stays as the reader left it
+  while the page morph-refreshes.
+- `harbor_run_link` is always a link, and starting a database operation goes to the
+  run's page.
+
+Upgrading from 0.18:
+
+- **Delete the host's `/runs` routes for `index`, `show`, `raw` and `stop`, its
+  controller actions and its views.** A host route at the same address is matched
+  first and hides Harbor's page. Keep the host's own actions under the same prefix:
+  `resources :runs, only: [] do member { post :retry } end`.
+- `run_path(run)` and `runs_path` are the engine's helpers now: `harbor.run_path(run)`
+  from a host view. A host with many calls keeps the old names with
+  `direct(:run) { |run, options| … }` in its routes.
+- Move what the host's run page showed beyond Harbor's into the partials above, the
+  list's filters into `Run.for_page`, and how the host stops its own runs into
+  `config.run_stop`.
+- A host that defined `own_cost_usd` or `delegated_runs` on its run class: Harbor
+  has both now; keep only what differs.
+
 ## 0.18.0
 
 - **A session survives a restart, of the app or of Orca.** Before, a session whose

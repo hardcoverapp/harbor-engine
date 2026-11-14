@@ -171,16 +171,17 @@ To restyle the side nav, set any of its variables after that import:
 The full list, with what each one colours, is at the top of
 `app/assets/tailwind/harbor/engine.css`.
 
-Harbor's JavaScript is two small Stimulus controllers (the side nav's collapse,
-and a log that follows its newest line). On `importmap-rails` with the usual
+Harbor's JavaScript is a few small Stimulus controllers (the side nav's collapse,
+a log that follows its newest line, a page that refreshes itself). On `importmap-rails` with the usual
 `eagerLoadControllersFrom("controllers", application)` there is nothing to do:
 Harbor pins them under `controllers/harbor/`.
 
-The Settings page itself still expects a few class names to mean something in
+Harbor's pages still expect a few class names to mean something in
 the host's stylesheet: `card`, `pill`, `meta`, `display`, `field`, `btn-quiet`,
+`chip` (a short piece of code in a sentence), `log-pre` (a block of log or JSON),
 and the colour utilities `bg-pale-green`, `text-ink-green`, `bg-pale-red`,
-`text-ink-red`, `text-soft`, `text-ink`, `border-hairline`. Without them it
-works and looks plain.
+`text-ink-red`, `text-soft`, `text-ink`, `border-hairline`. Without them they
+work and look plain.
 
 ### 7. Check it
 
@@ -235,6 +236,97 @@ end
 ```
 
 The log location has to be a disk the web process and the workers both see.
+
+## Runs pages
+
+Two pages, under `Harbor.path` like the rest: **the list** (`/factory/runs`) and **a
+run's own page** (`/factory/runs/12`), with the raw stream it kept as a download
+(`/factory/runs/12/raw`) and Stop (`POST /factory/runs/12/stop`). Link to them with
+`harbor.runs_path` and `harbor.run_path(run)`, or `harbor_run_link(run)` from any view.
+
+The list has the newest hundred runs, one per row: its name and status, its agent, how
+long it took and when, and Stop while it can be stopped. Runs a run delegated sit under
+it. On a phone a row is two lines.
+
+A run's page has its name and status; the skill, when it started and how long it took;
+its agent, model, cost, tokens and session; what it is, where it ran (runtime and
+runner), its command, what started it and its timings; progress, when the work reports
+any; the runs it delegated with what each cost; its parsed events (`Harbor::RunEvent`),
+folded away; its live log; its error; and its input and output. While the run is under
+way the page refreshes itself every five seconds (a morph, with Turbo), and the log is a
+window that stays on its newest line.
+
+### What a host adds
+
+A host adds to these pages with partials in its own `app/views/harbor/runs/`. Harbor
+renders each one where the page has a place for it, when the file exists, and nothing
+when it doesn't:
+
+| Partial | Where | Locals |
+|---|---|---|
+| `_show_actions.html.erb` | A run's page, in the heading beside Stop: the host's own buttons for a run | `run` |
+| `_show_meta.html.erb` | A run's page, at the end of the header's first line (after when it started): who started it, say. Inline content | `run` |
+| `_show_extras.html.erb` | A run's page, below the details and above the delegated runs, events and log: whole sections of the host's own | `run` |
+
+A partial is rendered by Harbor's controller, so the host's helpers work in it, and so do
+its route helpers (`retry_run_path(run)`). A button in one posts to a route of the host's.
+The host can put that route at the same address as the pages:
+
+```ruby
+# config/routes.rb, above the engine's mount
+scope Harbor.path do
+  resources :runs, only: [] do
+    member { post :retry }
+  end
+end
+```
+
+### What a host replaces
+
+Two parts of the pages are partials of Harbor's that a host can replace with its own. **A
+partial of the same name in the host's `app/views/harbor/runs/` is used instead of
+Harbor's**, because Rails looks in an application's views before an engine's. This holds
+however the engine is mounted; it does not hold for a host that prepends other view paths
+ahead of its own.
+
+| Partial | Harbor's | Locals |
+|---|---|---|
+| `_agent.html.erb` | The agent's name, plain. Rendered wherever a run's agent is named: each row of the list, the run page's header, the delegated runs | `run` (always one with an `agent_key`), `detail` (true in the run page's header and details, where there is room to say more; false in lists) |
+| `_details.html.erb` | The card saying what the run is, its agent, where it ran, its model, command, what started it and its timings | `run` |
+
+### What a host's run class decides
+
+Three methods of `Harbor::Run` that a host's subclass (`c.run_class`) can override:
+
+- `Run.for_page(filters)`: what the list holds, before the limit. `filters` is the page's
+  query string as a hash with symbol keys. Harbor's is `top_level.recent.includes(:child_runs)`.
+  A host overrides it to add a filter of its own (`/factory/runs?mine=1`) or to load what
+  its partials show.
+- `run.delegated_runs`: the child runs listed in the cost breakdown. Harbor's is every
+  child run.
+- `run.raw_log_file`: the file the raw download sends. Harbor's is `raw_log_path` under
+  the log location, which is where agent sessions keep it.
+
+### Stop
+
+Harbor stops what it runs itself: a running agent session (`Harbor::AgentSession.stop!`),
+and a queued run, which it finishes as `canceled`. Stop is offered for those and for
+nothing else, and never for a run `run.cancelable?` rules out.
+
+A host that runs work some other way says how to stop it:
+
+```ruby
+# config/initializers/harbor.rb
+c.run_stop = ->(run, user) do
+  MyWorkers.cancel(run.id)
+  "Stopping run ##{run.id}."
+end
+```
+
+It is called with the run and the current user, and returns the notice to show. Raising
+says why the run couldn't be stopped, which is shown as an alert. With the hook set, Stop
+is offered for every run that is `cancelable?`; sessions are still stopped by Harbor, and
+everything else, queued runs included, goes to the hook.
 
 ## Models
 

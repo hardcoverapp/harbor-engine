@@ -37,6 +37,12 @@ module Harbor
     scope :queued_or_running, -> { where(status: ACTIVE) }
     scope :unresolved, -> { where(resolved_at: nil) }
 
+    # What the Runs page lists, newest first: top-level runs, each with the
+    # runs it delegated nested under it. `filters` is the page's query string
+    # as a hash. Harbor has no filters of its own; a host overrides this to
+    # add one, or to load what its rows show in the same query.
+    def self.for_page(_filters = {}) = top_level.recent.includes(:child_runs)
+
     # Where this run's live log is, relative to the log location; nil when the
     # run has nothing to name a log by. A run restarted on another model logs
     # each attempt to its own file.
@@ -58,6 +64,23 @@ module Harbor
     # Best-known cost: the CLI-reported actual when there is one, the
     # token-based estimate (delegated child runs) otherwise.
     def cost_usd = cost_usd_actual || cost_usd_estimate
+
+    # Child runs this run's session spawned and billed into its total, for the
+    # cost breakdown on the run's page. A host whose runs have children with a
+    # bill of their own overrides this to leave those out.
+    def delegated_runs = child_runs.to_a
+
+    # What this run cost without its delegated runs: its total is the whole
+    # session's, so its own share is the total less the children's estimates.
+    def own_cost_usd
+      return cost_usd if delegated_runs.empty?
+      [ cost_usd.to_f - delegated_runs.sum { |child| child.cost_usd.to_f }, 0 ].max.round(6)
+    end
+
+    # The file holding the run's raw stream (exactly what its command
+    # printed), or nil for a run that kept none. Harbor keeps it beside the
+    # live log; a host that keeps some runs' streams elsewhere overrides this.
+    def raw_log_file = raw_log_path.presence && Harbor::LiveLog.absolute(raw_log_path)
 
     # "421k in (388k cached) / 19k out". Cache reads stay distinct from fresh
     # input: they cost a fraction, and merging them would misrepresent cheap runs.

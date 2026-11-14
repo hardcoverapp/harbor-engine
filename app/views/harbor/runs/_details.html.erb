@@ -1,0 +1,50 @@
+<%# What is known about how a run ran: what it is, where, on which model, with
+    what command, what started it and when. A host that knows more about its
+    runs (what record one is about, its place in a queue) has a partial of
+    the same name, which is found first and replaces this. locals: run %>
+<% runtime = harbor_run_runtime(run) %>
+<% where = [ runtime&.name, run.runner_name.presence, (run.executor.presence unless runtime) ].compact %>
+<% model = [ harbor_model_name(run.model).presence, run.effort.presence && "#{run.effort} effort" ].compact %>
+<% started_by = [ run.trigger_source, run.trigger, run.trigger_ref ].compact_blank.uniq %>
+<section id="run-details" class="mb-8 card p-4 sm:p-5" data-run-details>
+  <dl class="grid grid-cols-1 sm:grid-cols-[8rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm [overflow-wrap:anywhere]">
+    <dt class="text-faint">What</dt>
+    <dd>
+      <% if run.loader.present? %>loader <code class="chip"><%= run.loader %></code>
+      <% elsif run.skill.present? %>skill <code class="chip"><%= run.skill %></code>
+      <% else %><%= run.label %><% end %>
+      <% if run.task_type.present? %> · <code class="chip"><%= run.task_type %></code><% end %>
+    </dd>
+
+    <% if run.agent_key.present? %>
+      <dt class="text-faint">Agent</dt>
+      <dd><%= render "harbor/runs/agent", run: run, detail: true %></dd>
+    <% end %>
+
+    <% if where.any? %>
+      <dt class="text-faint">Where</dt>
+      <dd data-run-where><%= where.join(" · ") %></dd>
+    <% end %>
+
+    <% if model.any? %>
+      <dt class="text-faint">Model</dt>
+      <dd><%= model.join(" · ") %></dd>
+    <% end %>
+
+    <% if run.command.present? %>
+      <dt class="text-faint">Command</dt>
+      <dd><code class="text-xs" data-run-command><%= run.command %></code></dd>
+    <% end %>
+
+    <dt class="text-faint">Started by</dt>
+    <dd><%= started_by.join(" · ") %></dd>
+
+    <dt class="text-faint">Timing</dt>
+    <dd>
+      queued <%= l(run.created_at, format: :short) %>
+      <% if run.started_at %>· started <%= l(run.started_at, format: :short) %><% end %>
+      <% if run.ended_at %>· ended <%= l(run.ended_at, format: :short) %><% end %>
+      <% if run.duration_seconds %>· <%= harbor_short_duration(run.duration_seconds) %><% end %>
+    </dd>
+  </dl>
+</section>

@@ -57,6 +57,13 @@ module Harbor
     # command has ended. nil: Harbor finishes the run as ok or error itself.
     attr_accessor :run_reported
 
+    # Called with (run, current user) when someone presses Stop on a run that
+    # is not an agent session, which Harbor stops itself: a queued run, or one
+    # the host is running some other way. Stops it and returns the notice to
+    # show; raising says why it couldn't be stopped. nil: Harbor offers Stop
+    # for sessions and for queued runs only, and cancels a queued run itself.
+    attr_accessor :run_stop
+
     # Called with nothing when where or on what work can run has changed: a
     # runtime switched on or off, a limit raised, a workspace reordered. A host
     # with work waiting for availability looks again. nil: nothing happens.
@@ -178,6 +185,7 @@ module Harbor
       @slot_key = ->(line) { "harbor:slots:#{line}" }
       @sticky_runtime = nil
       @run_reported = nil
+      @run_stop = nil
       @availability_changed = nil
       @refresh_model_usage = nil
       @model_name = ->(model) { model }

@@ -61,7 +61,7 @@ class HarborSectionTest < ActionDispatch::IntegrationTest
   test "Harbor's Stimulus controllers are where the import map pins them" do
     pins = Harbor::Engine.root.join("config/importmap.rb").read
     assert_includes pins, 'under: "controllers/harbor"'
-    %w[side_nav log_follow].each do |name|
+    %w[side_nav log_follow poll details].each do |name|
       assert Harbor::Engine.root.join("app/javascript/harbor/controllers/#{name}_controller.js").file?
     end
   end

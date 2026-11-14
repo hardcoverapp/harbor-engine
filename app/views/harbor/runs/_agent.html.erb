@@ -1,0 +1,6 @@
+<%# Who a run belongs to, wherever the Runs pages name a run's agent: its name,
+    plain. A host that shows its agents another way (an avatar, a link to the
+    agent's page) has a partial of the same name, which is found first.
+    locals: run (always one with an agent_key), detail (true in the run
+    page's header, where there is room to say more; false in lists). %>
+<%= harbor_run_agent_name(run) %>

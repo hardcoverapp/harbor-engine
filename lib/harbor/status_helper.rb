@@ -19,16 +19,9 @@ module Harbor
       content_tag(:span, status.to_s.tr("_", " "), class: "pill #{STATUS_CLASSES.fetch(status.to_s, MUTED)}", data: { status: status })
     end
 
-    # A link to a run's page, wherever that page lives: Harbor's own once it
-    # has one, the host's until then. Plain text when neither has a run page.
-    def harbor_run_link(run, **options)
-      path = harbor_run_path(run)
-      path ? link_to("Run ##{run.id}", path, **options) : content_tag(:span, "Run ##{run.id}", **options)
-    end
+    # A link to a run's page, from any page of the host's or Harbor's.
+    def harbor_run_link(run, **options) = link_to("Run ##{run.id}", harbor_run_path(run), **options)
 
-    def harbor_run_path(run)
-      return harbor.run_path(run) if harbor.respond_to?(:run_path)
-      main_app.run_path(run) if main_app.respond_to?(:run_path)
-    end
+    def harbor_run_path(run) = harbor.run_path(run)
   end
 end

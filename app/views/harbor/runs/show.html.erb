@@ -1,0 +1,167 @@
+<% content_for :title, "#{@run.label} · Run ##{@run.id}" %>
+<% turbo_refreshes_with(method: :morph, scroll: :preserve) if respond_to?(:turbo_refreshes_with) %>
+<%= render "harbor/shared/section_nav" %>
+
+<% live = @run.running? || @run.pending? %>
+<% if live %>
+  <%# While the run is under way the page refreshes itself. With Turbo that is
+      a morph: new lines and numbers arrive in the page as it stands, without
+      moving the reader or closing what they opened. %>
+  <div data-controller="harbor--poll" data-harbor--poll-interval-value="5" hidden></div>
+<% end %>
+
+<%# Everything on this page wraps instead of pushing the page sideways on a
+    phone: long skill names, commands, log paths and unbroken log lines. %>
+<header id="run-header" class="mb-8">
+  <%= link_to "All runs", runs_path, class: "meta hover:text-ink transition-colors duration-200" %>
+  <h1 class="display text-3xl mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+    <span class="min-w-0 [overflow-wrap:anywhere]"><%= @run.label %></span> <%= harbor_status_pill(@run.status) %>
+    <span class="ml-auto flex flex-wrap items-center gap-2" data-run-actions>
+      <% if harbor_run_stoppable?(@run) %>
+        <%= button_to (@run.pending? ? "Cancel run" : "Stop run"), stop_run_path(@run), method: :post, form_class: "inline",
+              class: "btn-quiet text-ink-red !py-1 !px-3 text-xs",
+              data: { turbo_confirm: @run.pending? ? "Cancel this queued run? It won't start." : "Stop this run? The agent process will be killed." } %>
+      <% end %>
+      <%# A host's own buttons for a run (retry it, say) sit beside Stop. %>
+      <% if harbor_runs_partial?("show_actions") %><%= render "harbor/runs/show_actions", run: @run %><% end %>
+    </span>
+  </h1>
+  <p class="text-sm text-soft mt-2 [overflow-wrap:anywhere]">
+    <% if @run.skill.present? %><code class="chip"><%= @run.skill %></code> · <% end %>
+    started <%= @run.started_at ? l(@run.started_at, format: :short) : "—" %>
+    <% if @run.duration_seconds %> · <%= "%.1fs" % @run.duration_seconds %><% end %>
+    <%# What a host adds to this line, such as who started the run. %>
+    <% if harbor_runs_partial?("show_meta") %><%= render "harbor/runs/show_meta", run: @run %><% end %>
+  </p>
+  <% if @run.agent_key.present? || @run.cost_usd.present? %>
+    <p class="text-sm text-soft mt-1.5 [overflow-wrap:anywhere]" data-run-facts>
+      <%= safe_join([ (render("harbor/runs/agent", run: @run, detail: true) if @run.agent_key.present?),
+            [ harbor_model_name(@run.model), @run.effort ].compact_blank.join(" ").presence,
+            @run.cost_usd && "$#{'%.4f' % @run.cost_usd}",
+            @run.token_summary,
+            @run.session_id && "session #{@run.session_id.first(8)}" ].compact, " · ") %>
+      <% if @run.raw_log_path.present? %>
+        · <%= link_to "raw NDJSON", raw_run_path(@run), class: "underline decoration-hairline underline-offset-4 hover:text-ink" %>
+      <% end %>
+    </p>
+  <% end %>
+  <% if @run.workflow_run_id %>
+    <p class="text-sm text-soft mt-1.5 [overflow-wrap:anywhere]">
+      Step <code class="chip"><%= @run.workflow_step_key %></code> of
+      <% workflow_run = harbor_workflow_run_path(@run.workflow_run_id) %>
+      <%= link_to_if workflow_run, "workflow run ##{@run.workflow_run_id}", workflow_run, class: "underline decoration-hairline underline-offset-4 hover:text-ink" %>
+    </p>
+  <% end %>
+  <% if @run.parent_run %>
+    <p class="text-sm text-soft mt-1.5 [overflow-wrap:anywhere]">
+      delegated by <%= link_to "run ##{@run.parent_run.id} (#{@run.parent_run.label})", run_path(@run.parent_run),
+            class: "underline decoration-hairline underline-offset-4 hover:text-ink" %>
+    </p>
+  <% end %>
+</header>
+
+<%= render "harbor/shared/run_progress", run: @run %>
+
+<%= render "harbor/runs/details", run: @run %>
+
+<%# A host's own sections about a run (what judged it, say), above the runs it
+    delegated, its events and its log. %>
+<% if harbor_runs_partial?("show_extras") %><%= render "harbor/runs/show_extras", run: @run %><% end %>
+
+<% delegated = @run.delegated_runs %>
+<% if delegated.any? %>
+  <%# Cost rolls up: the total in the header is the whole session's; this is
+      how it divides between the run's own work and the runs it delegated. %>
+  <section id="run-delegated-runs" class="mb-8">
+    <h2 class="text-sm font-medium text-soft uppercase tracking-[0.05em] mb-3">Delegated runs</h2>
+    <ul class="card divide-y divide-hairline overflow-hidden">
+      <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 sm:px-5">
+        <span class="text-sm text-ink min-w-0"><% if @run.agent_key.present? %><%= render "harbor/runs/agent", run: @run, detail: false %><% else %>main<% end %> (this run)</span>
+        <span class="ml-auto meta"><%= @run.own_cost_usd ? "$#{'%.4f' % @run.own_cost_usd}" : "—" %></span>
+      </li>
+      <% delegated.sort_by(&:id).each do |child| %>
+        <li id="<%= dom_id(child) %>" class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 sm:px-5" data-child-run="<%= child.id %>">
+          <span class="meta">└</span>
+          <%= link_to child.label, run_path(child), class: "min-w-0 text-sm text-ink [overflow-wrap:anywhere] hover:underline decoration-hairline underline-offset-4" %>
+          <% if child.agent_key.present? %><span class="meta"><%= render "harbor/runs/agent", run: child, detail: false %></span><% end %>
+          <%= harbor_status_pill(child.status) %>
+          <% if child.token_summary %><span class="meta"><%= child.token_summary %></span><% end %>
+          <span class="ml-auto meta"><%= child.cost_usd ? "$#{'%.4f' % child.cost_usd}" : "—" %></span>
+        </li>
+      <% end %>
+      <% if @run.cost_usd %>
+        <li class="flex items-center gap-3 px-4 py-2.5 sm:px-5 bg-hairline/20">
+          <span class="text-sm font-medium text-ink">Total</span>
+          <span class="ml-auto text-sm font-medium text-ink">$<%= "%.4f" % @run.cost_usd %></span>
+        </li>
+      <% end %>
+    </ul>
+  </section>
+<% end %>
+
+<% if @run.run_events.any? %>
+  <section id="run-events" class="mb-8">
+    <details class="card p-4 sm:p-5" data-controller="harbor--details"
+             data-action="turbo:before-morph-attribute->harbor--details#preserveOpen">
+      <summary class="text-sm font-medium text-body cursor-pointer hover:text-ink select-none">
+        <%= @run.run_events.size %> stream events (tool calls, retries, result)
+      </summary>
+      <ul class="mt-4 space-y-1.5 border-t border-hairline pt-4">
+        <% @run.run_events.ordered.each do |event| %>
+          <li id="<%= dom_id(event) %>" class="meta [overflow-wrap:anywhere]">
+            <span class="text-faint"><%= event.seq %>.</span>
+            <span class="text-faint"><%= event.event_type %><%= "/#{event.subtype}" if event.subtype %></span>
+            <% if event.tool_name %><code class="chip"><%= event.tool_name %></code><% end %>
+            <%= event.summary %>
+          </li>
+        <% end %>
+      </ul>
+    </details>
+  </section>
+<% end %>
+
+<% if @live_log.present? %>
+  <section id="run-live-log" class="mb-8">
+    <h2 class="text-sm font-medium text-soft uppercase tracking-[0.05em] mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+      Live log
+      <% if @run.running? %>
+        <span class="pill bg-pale-blue text-ink-blue">streaming</span>
+      <% end %>
+      <code class="ml-auto min-w-0 text-xs text-faint font-mono [overflow-wrap:anywhere]"><%= @live_log %></code>
+    </h2>
+    <% if @live_body.present? %>
+      <% if @run.running? %>
+        <%# While the run writes, the log is a window that stays on its newest
+            line as the page refreshes; scroll up in it to read and it stays
+            put. Once the run is over the whole log is on the page. %>
+        <pre class="log-pre [overflow-wrap:anywhere] max-h-[70vh] overflow-y-auto" data-controller="harbor--log-follow" tabindex="0" aria-label="Live log of run <%= @run.id %>"><%= @live_body %></pre>
+      <% else %>
+        <pre class="log-pre [overflow-wrap:anywhere]"><%= @live_body %></pre>
+      <% end %>
+    <% elsif @run.running? %>
+      <p class="text-faint text-sm">Waiting for first output…</p>
+    <% else %>
+      <p class="text-faint text-sm">No log content was written for this run.</p>
+    <% end %>
+  </section>
+<% end %>
+
+<% if @run.error.present? %>
+  <section id="run-error" class="mb-8">
+    <h2 class="text-sm font-medium text-soft uppercase tracking-[0.05em] mb-3">
+      <%= @run.waiting_for_model? ? "Waiting for model" : "Error" %>
+    </h2>
+    <pre class="rounded-xl <%= @run.waiting_for_model? ? 'bg-pale-yellow text-ink-yellow' : 'bg-pale-red text-ink-red' %> p-4 sm:p-5 text-xs overflow-x-auto whitespace-pre-wrap [overflow-wrap:anywhere]"><%= @run.error %></pre>
+  </section>
+<% end %>
+
+<div id="run-payloads" class="grid gap-6 sm:grid-cols-2">
+  <section class="min-w-0">
+    <h2 class="text-sm font-medium text-soft uppercase tracking-[0.05em] mb-3">Input</h2>
+    <pre class="log-pre [overflow-wrap:anywhere]"><%= JSON.pretty_generate(@run.input) %></pre>
+  </section>
+  <section class="min-w-0">
+    <h2 class="text-sm font-medium text-soft uppercase tracking-[0.05em] mb-3">Output</h2>
+    <pre class="log-pre [overflow-wrap:anywhere]"><%= JSON.pretty_generate(@run.output) %></pre>
+  </section>
+</div>

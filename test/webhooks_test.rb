@@ -28,12 +28,11 @@ class HarborWebhooksTest < ActionDispatch::IntegrationTest
     assert_select "[data-harbor-nav] a[aria-current=page]", text: "Webhooks"
   end
 
-  test "a delivery that started a run names it; with no run page anywhere it is plain text" do
+  test "a delivery that started a run links to the run's page" do
     run = Harbor::Run.create!(skill: "review")
     event = delivery(run: run)
     get harbor.webhooks_path
-    assert_select "[data-webhook-event='#{event.id}'] span", text: "Run ##{run.id}"
-    assert_select "[data-webhook-event='#{event.id}'] a", text: "Run ##{run.id}", count: 0
+    assert_select "[data-webhook-event='#{event.id}'] a[href=?]", harbor.run_path(run), text: "Run ##{run.id}"
   end
 
   test "a row keeps the status beside the name and lets the rest wrap, so nothing overlaps on a phone" do

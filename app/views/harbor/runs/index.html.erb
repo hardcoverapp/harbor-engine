@@ -1,0 +1,55 @@
+<% content_for :title, "Runs" %>
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-10">
+  <h1 class="display text-3xl">Runs</h1>
+  <p class="text-sm text-soft mt-1.5">Every piece of background work, newest first, with its status and log.</p>
+</header>
+
+<% if @runs.empty? %>
+  <p class="text-soft text-sm">No runs yet.</p>
+<% else %>
+  <%# One run per row. On a phone a row is two lines: what ran and how it
+      went, then who, how long and when. From sm up it is a single line (the
+      meta line's children join the row: sm:contents). %>
+  <ul class="card divide-y divide-hairline overflow-hidden" data-reveal>
+    <% @runs.each do |run| %>
+      <li class="px-4 py-3 sm:px-5" data-run="<%= run.id %>">
+        <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 sm:flex sm:gap-3">
+          <%= link_to run.label, run_path(run),
+                class: "min-w-0 text-sm font-medium sm:font-normal text-ink leading-snug [overflow-wrap:anywhere] sm:order-1 hover:underline decoration-hairline underline-offset-4" %>
+          <span class="justify-self-end sm:order-4"><%= harbor_status_pill(run.status) %></span>
+          <div class="col-span-2 min-w-0 flex flex-wrap items-center gap-x-2.5 gap-y-1 meta sm:contents" data-run-meta>
+            <% if run.agent_key.present? %><span class="meta sm:order-2"><%= render "harbor/runs/agent", run: run, detail: false %></span><% end %>
+            <%# The label is usually the skill's own name; saying it twice only costs width. %>
+            <% if run.skill.present? && !run.skill.casecmp?(run.label.to_s) %><span class="meta font-mono [overflow-wrap:anywhere] sm:order-3"><%= run.skill %></span><% end %>
+            <% if run.child_runs.any? && run.cost_usd %>
+              <span class="meta whitespace-nowrap sm:order-5">$<%= "%.2f" % run.cost_usd %> total</span>
+            <% end %>
+            <span class="meta whitespace-nowrap sm:order-6 sm:ml-auto">
+              <%= run.duration_seconds ? "#{harbor_short_duration(run.duration_seconds)} · " : "" %><%= time_ago_in_words(run.created_at) %> ago
+            </span>
+            <% if harbor_run_stoppable?(run) %>
+              <%= button_to "Stop", stop_run_path(run), method: :post, form_class: "inline ml-auto sm:ml-0 sm:order-7",
+                    class: "btn-quiet text-ink-red !py-1 !px-3 sm:!py-0.5 sm:!px-2 text-xs",
+                    data: { turbo_confirm: "Stop this run? The agent process will be killed." } %>
+            <% end %>
+          </div>
+        </div>
+        <% if run.child_runs.any? %>
+          <ul class="mt-2 space-y-1.5 sm:mt-1.5 sm:space-y-1">
+            <% run.child_runs.sort_by(&:id).each do |child| %>
+              <li class="flex flex-wrap items-center gap-x-2.5 gap-y-1 pl-3 text-faint sm:gap-3 sm:pl-6">
+                <span class="meta">└</span>
+                <%= link_to child.label, run_path(child), class: "meta min-w-0 [overflow-wrap:anywhere] hover:text-ink hover:underline decoration-hairline underline-offset-4" %>
+                <% if child.agent_key.present? %><span class="meta"><%= render "harbor/runs/agent", run: child, detail: false %></span><% end %>
+                <%= harbor_status_pill(child.status) %>
+                <% if child.cost_usd %><span class="meta">$<%= "%.2f" % child.cost_usd %></span><% end %>
+              </li>
+            <% end %>
+          </ul>
+        <% end %>
+      </li>
+    <% end %>
+  </ul>
+<% end %>

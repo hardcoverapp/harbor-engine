@@ -91,7 +91,7 @@ module Harbor
       def start(operation, **input)
         user = respond_to?(:current_user, true) ? send(:current_user) : nil
         run = Harbor.config.database_operation.call(operation, user:, input:)
-        redirect_to helpers.harbor_run_path(run) || databases_path(tab: "operations"), notice: "Database operation queued."
+        redirect_to run_path(run), notice: "Database operation queued."
       end
 
       def environments_tab
