@@ -105,6 +105,12 @@ module Harbor
     def last_run = runs.recent.first
     def in_flight = runs.queued_or_running.order(:id).first
 
+    # What starts it, as data: a list of hashes shaped like a workflow's
+    # triggers, which Overview asks each stage about (`starts_on`). Harbor's
+    # own triggers have a kind and nothing more; a host whose trigger says
+    # more (which event, on what) returns that in its subclass.
+    def trigger_data = [ { "kind" => trigger_kind } ]
+
     # What starts it, in words, for the list's Trigger column.
     def trigger_summary
       case trigger_kind

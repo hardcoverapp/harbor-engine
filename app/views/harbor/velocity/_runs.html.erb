@@ -1,0 +1,68 @@
+<%# The Runs tab: how many runs, how they ended, and whose they were.
+    locals: period. %>
+<% r = Harbor::Velocity::Runs.new(since: period.since, now: period.now)
+   median = r.median_seconds
+   rate = r.failure_rate %>
+
+<%= render "harbor/velocity/tiles", tiles: harbor_velocity_tiles("runs", period, [
+      harbor_velocity_tile(:runs, "Runs", number_with_delimiter(r.count), "#{number_with_delimiter(r.active)} under way"),
+      harbor_velocity_tile(:ok, "Ended ok", number_with_delimiter(r.ok), "finished as they should"),
+      harbor_velocity_tile(:failed, "Failed", number_with_delimiter(r.failed), (rate ? "#{rate}% of the runs that ended" : "errors and timeouts")),
+      harbor_velocity_tile(:median, "Median time", (median ? harbor_short_duration(median) : "—"), "runs that ended ok")
+    ]) %>
+
+<section class="card p-6 mb-6" data-reveal>
+  <div class="flex items-baseline gap-2 mb-4">
+    <span class="meta uppercase tracking-[0.05em]">Runs per week</span>
+    <span class="meta">by the week they were made</span>
+  </div>
+  <% weekly = r.weekly %>
+  <% if weekly.any? { |_, n| n.positive? } %>
+    <%= render "harbor/shared/bar_series", series: weekly, label: "runs", height: 56, color: "blue", weekly: true %>
+  <% else %>
+    <p class="text-sm text-faint">No runs in this range.</p>
+  <% end %>
+</section>
+
+<div class="grid gap-6 lg:grid-cols-2">
+  <%= render "harbor/velocity/runs_by_agent", by_agent: r.by_agent %>
+
+  <section class="card p-6" data-reveal>
+    <div class="meta uppercase tracking-[0.05em] mb-4">Runs by task type</div>
+    <table class="w-full text-sm">
+      <tbody class="divide-y divide-hairline">
+        <% types = r.by_task_type %>
+        <% if types.empty? %>
+          <tr><td class="py-3 text-faint">No agent runs in this range.</td></tr>
+        <% end %>
+        <% types.each do |type, n| %>
+          <tr>
+            <td class="py-2"><code class="chip"><%= type %></code></td>
+            <td class="py-2 text-right"><%= number_with_delimiter(n) %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card p-6" data-reveal>
+    <div class="meta uppercase tracking-[0.05em] mb-4">Runs by runtime</div>
+    <table class="w-full text-sm">
+      <tbody class="divide-y divide-hairline">
+        <% runtimes = r.by_runtime %>
+        <% if runtimes.empty? %>
+          <tr><td class="py-3 text-faint">No run was placed on a runtime in this range.</td></tr>
+        <% end %>
+        <% runtimes.each do |name, n| %>
+          <tr>
+            <td class="py-2 text-ink"><%= name %></td>
+            <td class="py-2 text-right"><%= number_with_delimiter(n) %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </section>
+
+  <%# Whole cards of the host's own, in the same grid. %>
+  <%= render "harbor/velocity/runs_cards", period: period if harbor_velocity_partial?("runs_cards") %>
+</div>

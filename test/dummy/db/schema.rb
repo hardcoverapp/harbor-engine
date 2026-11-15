@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_14_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_14_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -94,6 +94,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_160000) do
     t.index ["database_key", "created_at"], name: "index_database_backups_on_database_key_and_created_at"
     t.index ["path"], name: "index_database_backups_on_path", unique: true
     t.index ["run_id"], name: "index_database_backups_on_run_id"
+  end
+
+  create_table "factory_notes", force: :cascade do |t|
+    t.string "stage_key", null: false
+    t.text "body", default: "", null: false
+    t.bigint "updated_by_user_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["stage_key"], name: "index_factory_notes_on_stage_key", unique: true
+    t.index ["updated_by_user_id"], name: "index_factory_notes_on_updated_by_user_id"
   end
 
   create_table "harbor_settings", force: :cascade do |t|

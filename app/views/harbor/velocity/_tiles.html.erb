@@ -1,0 +1,12 @@
+<%# The row of numbers at the top of a tab. locals: tiles
+    (Harbor::Velocity::Tile: label, value, note, wide). %>
+<% columns = { 1 => "lg:grid-cols-1", 2 => "lg:grid-cols-2", 3 => "lg:grid-cols-3" }.fetch(tiles.sum { |tile| tile.wide ? 2 : 1 }, "lg:grid-cols-4") %>
+<div class="grid gap-4 sm:grid-cols-2 <%= columns %> mb-8" data-reveal>
+  <% tiles.each do |tile| %>
+    <div class="card p-5<%= " sm:col-span-2" if tile.wide %>">
+      <div class="meta uppercase tracking-[0.05em]"><%= tile.label %></div>
+      <div class="display text-3xl mt-1"><%= tile.value %></div>
+      <div class="meta mt-1"><%= tile.note %></div>
+    </div>
+  <% end %>
+</div>

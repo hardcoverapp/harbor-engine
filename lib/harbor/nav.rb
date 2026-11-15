@@ -28,13 +28,10 @@ module Harbor
       [ :settings,       nil ]
     ].freeze
 
-    # Harbor's pages. Most of their routes still live in the host Harbor is
-    # being extracted from, and move here one area at a time; an entry switches
-    # to `scope: :harbor` when its routes do. Until then an entry shows only in
-    # a host that defines its route.
+    # Harbor's pages, every one a route of the engine's own.
     DEFAULTS = [
-      [ "Overview",      :factory_path,               { key: :overview,    group: :overview } ],
-      [ "Velocity",      :velocity_path,              { key: :velocity,    group: :overview } ],
+      [ "Overview",      :overview_path,              { key: :overview,    group: :overview, scope: :harbor } ],
+      [ "Velocity",      :velocity_path,              { key: :velocity,    group: :overview, scope: :harbor } ],
       [ "Workflows",     :workflows_path,             { key: :workflows,   group: :flows, also: [ "/workflow_runs" ], scope: :harbor } ],
       [ "Automations",   :automations_path,           { key: :automations, group: :flows, scope: :harbor } ],
       [ "Runs",          :runs_path,                  { key: :runs,        group: :activity, scope: :harbor } ],

@@ -1,0 +1,17 @@
+<% content_for :title, "#{@stage.title} note" %>
+
+<%= harbor_stage_note_frame_tag(@stage) do %>
+  <%= form_with model: @note, scope: :factory_note, url: stage_note_path(@stage.key), method: :patch, class: "max-w-3xl" do |form| %>
+    <% if @note.errors.any? %>
+      <p role="alert" class="mb-3 rounded-lg bg-pale-red text-ink-red px-4 py-2.5 text-sm"><%= @note.errors.full_messages.to_sentence %></p>
+    <% end %>
+    <%= form.label :body, "What happens in #{@stage.title}#{' (markdown)' if Harbor.config.markdown}", class: "meta block mb-1.5" %>
+    <%= form.text_area :body, rows: 5, class: "field w-full text-sm", placeholder: @stage.summary, autofocus: true %>
+    <div class="mt-2 flex items-center gap-3">
+      <%= form.submit "Save note", class: "btn-quiet !py-1.5 !px-3 text-xs cursor-pointer" %>
+      <%= link_to "Cancel", stage_note_path(@stage.key), class: "meta hover:text-ink" %>
+      <%# Where a host says what else a save does (a copy it keeps, say). %>
+      <%= render "harbor/overview/note_form_hint" if harbor_overview_partial?("note_form_hint") %>
+    </div>
+  <% end %>
+<% end %>

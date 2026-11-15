@@ -1,0 +1,24 @@
+<%# The ways work arrives, as the host declared them (Harbor::Overview.way_in).
+    locals: snapshot. %>
+<% ways = Harbor::Overview.ways_in %>
+<% if ways.any? %>
+<section id="ways-in" class="mb-14" data-reveal>
+  <h2 class="display text-xl mb-4">Ways in</h2>
+  <div class="grid gap-4 md:grid-cols-2">
+    <% ways.each do |way| %>
+      <% stage = Harbor::Overview.find_stage(way.stage) %>
+      <article class="card p-5">
+        <p class="font-medium text-ink"><%= harbor_inline_markdown(way.title) %></p>
+        <p class="text-sm text-soft mt-1"><%= harbor_inline_markdown(way.body) %></p>
+        <p class="meta mt-2">
+          <% if way.task_type %>
+            <% route = snapshot.route(way.task_type) %>
+            <code class="chip"><%= way.task_type %></code> → <%= harbor_route_label(route) %> ·
+          <% end %>
+          <% if stage %>starts at <%= link_to stage.title, "##{stage.anchor}", class: "underline decoration-hairline underline-offset-4 hover:text-ink" %><% end %>
+        </p>
+      </article>
+    <% end %>
+  </div>
+</section>
+<% end %>

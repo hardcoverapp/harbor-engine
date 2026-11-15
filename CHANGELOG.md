@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.26.0
+
+- **Overview is Harbor's**: the section's front page, at the section's own address
+  (`/factory`, `harbor.overview_path`), in `Harbor::OverviewController`. A site with no
+  code of its own sees one number for each thing Harbor keeps (runs, spend, agents,
+  workflows, automations, runtimes, scorers, proposals, review rounds), who does each
+  kind of work, what runs it, how long it takes and what it costs, and what changed
+  lately, all read from the records when the page is drawn. See README "Overview".
+- **Stage notes**: `Harbor::StageNote`, on the table `factory_notes`, which Harbor's
+  migration creates; edited in place on Overview (`Harbor::StageNotesController`,
+  `/factory/notes/<stage>`) and handed to `config.export` as `factory/notes/<stage>.md`
+  on every save.
+- **Velocity is Harbor's**: `/factory/velocity` (`harbor.velocity_path`), in
+  `Harbor::VelocityController`, over the last 7, 30 or 90 days, 12 weeks or 6 months.
+  Three tabs from Harbor's own records: Runs (how many, how they ended, the median time,
+  per week, by agent, by task type, by runtime), Spending (the total, per week, by agent,
+  by model) and Scorers (each scorer's pass rate and what the judging cost). See README
+  "Velocity".
+- **Every page of the menu is Harbor's own route now.** The Overview and Velocity entries
+  are the engine's (`scope: :harbor`), so a site with no code of its own has the whole
+  menu.
+- **What a host declares on Overview** (`Harbor::Overview`): `stage` (the stages work
+  moves through, in place of the one stage that holds everything), `part` (more lines
+  under a stage's "What it runs"), `way_in` and `steer` (the "Ways in" and "How to steer"
+  sections), `change_source` (another source for "What changed", or one of Harbor's
+  replaced), `tile` (another number in "At a glance"), `section` and `hide_section`.
+- **What a host declares on Velocity** (`Harbor::Velocity`): `tab` and `remove_tab`, and
+  `tile` (a number in the row at the top of a tab).
+- **Places for a host on the pages**: `harbor/overview/_intro` and
+  `harbor/velocity/_intro` (the heading in the host's words, and the page's title),
+  `harbor/overview/_note_form_hint`, `harbor/velocity/_spending_cards` and
+  `harbor/velocity/_runs_cards`.
+- `config.markdown`: how the host draws markdown, for stage notes and the steering text.
+  Without it they are shown as written.
+- `Harbor::Agent.edited_here` (the agents "What changed" lists) and
+  `Harbor::Agent#effort_label`; `Harbor::Automation#trigger_data` (what starts an
+  automation, as the data a stage's `starts_on` is asked about).
+- A Stimulus controller, `harbor--autosubmit`: a form that submits when a control in it
+  changes.
+
+Upgrading from 0.25:
+
+- A host that already has the `factory_notes` table keeps it: the migration creates the
+  table and its indexes only when they are missing.
+- A host that had its own Overview and Velocity pages removes its controllers, views and
+  routes for them: a host route at an address Harbor serves is matched first and hides
+  Harbor's page. To keep `factory_path` and `velocity_path` working without naming the
+  engine, define them with `direct` in the host's routes, as for the other pages.
+- A host with a page of its own at `factory_path` or `velocity_path` in Harbor's menu:
+  the entries are the engine's routes now (`overview_path`, `velocity_path`), so the
+  host's pages are no longer linked.
+- A host with no page there gains two entries at the top of the menu. A site that
+  doesn't want one switches it off on the Settings page (`page_overview`,
+  `page_velocity`).
+- A host that redirects an old address to `/factory/notes/…` stops: that is the notes'
+  own address now.
+- What was the host's on those pages comes back through the declarations above. A host
+  whose stage notes belonged to a user sets `c.user_class` (as for workflows); one whose
+  notes were markdown sets `c.markdown`.
+
 ## 0.25.1
 
 - **An Orca runtime can reach its server by a pairing code**: the runtime's config names

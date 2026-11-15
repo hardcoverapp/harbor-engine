@@ -48,7 +48,12 @@ class HarborPathTest < ActionDispatch::IntegrationTest
     runner, pages = paths.partition { |path| path.start_with?("/harbor/runner/") }
     assert_equal 3, runner.size, "the runner's address never moves: firewalls and runners are given it"
     assert pages.any?
-    pages.each { |path| assert path.start_with?("/factory/"), "#{path} is outside /factory" }
+    # Overview is the section's own address; every other page is beneath it.
+    assert_includes pages, "/factory(.:format)"
+    (pages - [ "/factory(.:format)" ]).each { |path| assert path.start_with?("/factory/"), "#{path} is outside /factory" }
+    assert_equal "/factory", harbor.overview_path
+    assert_equal "/factory/velocity", harbor.velocity_path
+    assert_equal "/factory/notes/work", harbor.stage_note_path("work")
   end
 
   test "the config file's path: moves the pages, and / puts them at the root" do

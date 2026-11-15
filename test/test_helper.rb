@@ -372,3 +372,75 @@ module HarborQuality
                                    reasoning: "No test run after the last edit.", scored_at: }.merge(attributes))
   end
 end
+
+# Overview and Velocity: empty tables, nothing declared by a host (put back
+# afterwards), four task types, two agents and one assignment, and ways to
+# make a workflow, an automation and a finished run.
+module HarborOverviewSetup
+  def self.included(base)
+    base.include HarborTestConfig
+    base.setup do
+      [ Harbor::StageNote, Harbor::ScorerResult, Harbor::Proposal, Harbor::Scorer, Harbor::ReviewCheckRun, Harbor::ReviewRound,
+        Harbor::ReviewRuleVersion, Harbor::ReviewRule, Harbor::WorkflowWait, Harbor::WorkflowStepRun ].each(&:delete_all)
+      Harbor::Run.delete_all
+      Harbor::Workflow.update_all(current_version_id: nil)
+      [ Harbor::WorkflowRun, Harbor::WorkflowVersion, Harbor::Workflow, Harbor::Automation, Harbor::TaskAssignment, Harbor::AgentDocument,
+        Harbor::AgentSetting, Harbor::Agent, Harbor::WorkspaceProfileRuntime, Harbor::WorkspaceProfile, Harbor::Runtime,
+        Harbor::ModelChoice, Harbor::ModelAlias, Harbor::ModelProvider ].each(&:delete_all)
+      @overview = Harbor::Overview.snapshot
+      @velocity = Harbor::Velocity.snapshot
+      @workflow_registry = Harbor::Workflows.snapshot
+      @markdown = Harbor.config.markdown
+      Harbor::Overview.reset!
+      Harbor::Velocity.reset!
+      Harbor::TaskTypes.reset!
+      Harbor::TaskTypes.declare "review"
+      Harbor::TaskTypes.declare "rebase", fallback: "review"
+      Harbor::TaskTypes.declare "triage", default_agent: "planner"
+      Harbor::TaskTypes.declare "audit"
+
+      provider = Harbor::ModelProvider.create!(key: "anthropic")
+      @alias = Harbor::ModelAlias.create!(name: "Thinking", model_choices_attributes: [
+        { model_provider: provider, model: "claude-sonnet-5-5", effort: "high", position: 0 } ])
+      @writer = Harbor::Agent.create!(key: "writer", name: "Wren", system_prompt: "Write plainly.", model_alias: @alias)
+      @planner = Harbor::Agent.create!(key: "planner", name: "Piper", system_prompt: "Plan.")
+      Harbor::TaskAssignment.create!(task_type: "review", agent_key: "writer")
+    end
+    base.teardown do
+      Harbor::Overview.restore!(@overview)
+      Harbor::Velocity.restore!(@velocity)
+      Harbor::Workflows.restore!(@workflow_registry)
+      Harbor.config.markdown = @markdown
+      Harbor::TaskTypes.reset!
+    end
+  end
+
+  def workflow(key, name, definition, mode: "live", **attrs)
+    Harbor::Workflow.new(key:, name:, mode:, **attrs).tap do |record|
+      _, errors = record.save_definition!(definition)
+      raise errors.join("; ") if errors.any?
+    end
+  end
+
+  def agent_step(agent) = { "key" => "work", "type" => "agent", "name" => "Do it", "agent" => agent, "prompt" => "Go." }
+
+  def manual(steps) = { "triggers" => [ { "kind" => "manual" } ], "steps" => steps }
+
+  def automation(key, name, **attrs)
+    Harbor::Automation.create!({ key:, name:, kind: "agent", agent_key: "writer", prompt: "Do it.", trigger_kind: "schedule",
+                                 cron: "0 3 * * 6" }.merge(attrs))
+  end
+
+  def finished(task_type, minutes:, cost: nil, status: "ok", started: 2.days.ago, **attrs)
+    Harbor::Run.create!({ task_type:, status:, trigger_source: "webhook", started_at: started, created_at: started,
+                          ended_at: started + minutes.minutes, cost_usd_actual: cost }.merge(attrs))
+  end
+
+  def declare_stages
+    Harbor::Overview.stage "triage", title: "Triage", summary: "A ticket is read.", task_types: %w[triage],
+                                     automations: %w[sweep], starts_on: ->(trigger) { trigger["kind"] == "ticket" }
+    Harbor::Overview.stage "review", title: "Review", summary: "The change is read.", task_types: %w[review rebase],
+                                     claims: %w[reviewing]
+    Harbor::Overview.stage "ship", title: "Ship", summary: "It goes out."
+  end
+end

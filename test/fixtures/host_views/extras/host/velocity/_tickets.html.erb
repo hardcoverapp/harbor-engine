@@ -1,0 +1,2 @@
+<%# A host's own tab on Velocity. locals: period. %>
+<section data-host-tab><h2>Tickets</h2><p>Since <%= period.since.to_date %>: <%= period.fetch(:tickets) { 7 } %> closed</p></section>

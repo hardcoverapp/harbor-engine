@@ -110,6 +110,13 @@ module Harbor
     # dashboard shows what the checks cost and leaves this out.
     attr_accessor :review_cost
 
+    # --- Overview and Velocity (see README "Overview" and "Velocity") ---
+
+    # Called with text a person wrote in markdown (a stage's note, a line of
+    # "How to steer"); returns it as HTML that is safe to show. nil: the
+    # text is shown as written, in plain paragraphs.
+    attr_accessor :markdown
+
     # The classes Harbor finds runtimes and workspaces with, by name.
     attr_accessor :runtime_class, :workspace_profile_class
 
@@ -352,6 +359,7 @@ module Harbor
       @review_rule_preview = nil
       @review_rule_preview_sample = "recent pull requests"
       @review_cost = nil
+      @markdown = nil
       @runtime_class = "Harbor::Runtime"
       @workspace_profile_class = "Harbor::WorkspaceProfile"
       @workflow_class = "Harbor::Workflow"

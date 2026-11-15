@@ -58,12 +58,19 @@ class HarborNavTest < ActiveSupport::TestCase
     assert_equal [ "Runs" ], links.select(&:active).map(&:label)
   end
 
-  test "an item whose route the host doesn't have is left out" do
-    labels = @nav.links(View.new("/", %i[velocity_path factory_path])).map(&:label)
-    assert_not_includes labels, "Velocity"
-    assert_not_includes labels, "Overview"
+  test "a page of the host's whose route it doesn't have is left out" do
+    @nav.add "Reports", :reports_path, after: "Automations"
+    @nav.add "Invoices", :invoices_path
+    labels = @nav.links(View.new("/", %i[reports_path])).map(&:label)
+    assert_not_includes labels, "Reports"
+    assert_includes labels, "Invoices"
     assert_includes labels, "Runs"
     assert_includes labels, "Settings"
+  end
+
+  test "every page of Harbor's is a route of the engine's own" do
+    assert_equal [ :harbor ], @nav.items.map(&:scope).uniq
+    assert_equal %i[overview_path velocity_path], @nav.items.first(2).map(&:route)
   end
 
   test "a path that only shares a prefix is not the page" do
@@ -128,8 +135,9 @@ class HarborNavTest < ActiveSupport::TestCase
   end
 
   test "a group with no page to show is left out, heading and all" do
-    missing = %i[factory_path velocity_path]
-    assert_not_includes groups(@nav, "/", missing).map(&:first), :overview
+    @nav.add "Invoices", :invoices_path, group: :billing
+    assert_includes groups(@nav).map(&:first), :billing
+    assert_not_includes groups(@nav, "/", %i[invoices_path]).map(&:first), :billing
   end
 
   test "Workflows is current on its runs pages, which sit outside its path" do
@@ -142,9 +150,9 @@ class HarborNavTest < ActiveSupport::TestCase
 
   test "the page at the section's own address is current only there" do
     view = Class.new(View) do
-      def main_app
+      def harbor
         routes = super
-        routes.define_singleton_method(:factory_path) { "/factory" }
+        routes.define_singleton_method(:overview_path) { "/factory" }
         routes
       end
     end

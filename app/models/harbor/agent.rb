@@ -40,8 +40,17 @@ module Harbor
 
     scope :enabled, -> { where(enabled: true) }
 
+    # The agents whose latest change was made on their page, for Overview's
+    # "What changed". Every one, unless a host that also writes agents some
+    # other way (an import) leaves those out in its subclass.
+    def self.edited_here = all
+
     # What the agent's model is called where a person reads it.
     def model_label = model_alias&.name
+
+    # How hard its model is asked to think, where a person reads it: the
+    # first choice of its model alias.
+    def effort_label = model_alias&.model_choices&.first&.effort.presence
 
     # The model choice this agent would run on `backend` (a runtime backend
     # class) under a tool policy. Raises the model alias's Unavailable.

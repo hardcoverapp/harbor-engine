@@ -1,0 +1,16 @@
+<%# A stage's note, in the Turbo frame it is edited in. locals: stage, note
+    (nil when nothing is written yet). %>
+<%= harbor_stage_note_frame_tag(stage) do %>
+  <% if note&.body.present? %>
+    <div class="md text-sm text-body max-w-3xl"><%= harbor_markdown(note.body) %></div>
+    <p class="meta mt-1.5">
+      <% if (editor = note.editor_label) %><%= editor %> · <% end %>edited <%= time_ago_in_words(note.updated_at) %> ago ·
+      <%= link_to "Edit", edit_stage_note_path(stage.key), class: "underline decoration-hairline underline-offset-4 hover:text-ink" %>
+    </p>
+  <% else %>
+    <p class="text-sm text-soft max-w-3xl"><%= stage.summary %></p>
+    <p class="meta mt-1.5">
+      <%= link_to "Write what happens here", edit_stage_note_path(stage.key), class: "underline decoration-hairline underline-offset-4 hover:text-ink" %>
+    </p>
+  <% end %>
+<% end %>

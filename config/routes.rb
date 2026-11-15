@@ -3,7 +3,17 @@
 Harbor::Engine.routes.draw do
   # Every page sits under Harbor.path ("/factory" unless the config file's
   # `path:` says otherwise), so the section's addresses are its own.
+  # Overview is the section's front page: the section's own address, or
+  # /overview where the section's pages sit at the root, which is the host's.
+  get (Harbor.path.presence || "/overview"), to: "overview#show", as: :overview
+
   scope path: Harbor.path.presence do
+    # A stage's note on Overview, edited in place.
+    resources :stage_notes, path: "notes", param: :stage_key, only: %i[show edit update]
+
+    # Velocity: runs, spending and scorers over a range.
+    get "velocity", to: "velocity#show", as: :velocity
+
     resources :settings, only: %i[index update destroy], param: :key
     resources :webhooks, only: :index
 

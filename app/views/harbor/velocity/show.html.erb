@@ -1,0 +1,28 @@
+<%# The intro is drawn first so that a host's own may name the page
+    (`content_for :title`); Harbor names it only when the intro didn't. %>
+<% intro = render("harbor/velocity/intro") %>
+<% content_for(:title, "Velocity") unless content_for?(:title) %>
+
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-8 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <%= intro %>
+  </div>
+  <%= form_with url: velocity_path, method: :get, class: "flex items-center gap-2", data: { controller: "harbor--autosubmit" } do |form| %>
+    <%= form.hidden_field :tab, value: @tab.key %>
+    <%= form.label :range, "Range", class: "sr-only" %>
+    <%= form.select :range, Harbor::Velocity::RANGES.map { |k, (label, _)| [ label, k ] }, { selected: @range },
+          class: "field", data: { action: "change->harbor--autosubmit#submit" } %>
+  <% end %>
+</header>
+
+<div class="flex flex-wrap gap-2 mb-8">
+  <% @tabs.each do |tab| %>
+    <%= link_to tab.label, velocity_path(tab: tab.key, range: @range),
+          class: "pill !px-3.5 !py-1.5 text-sm " + (tab == @tab ? "bg-ink text-surface" : "bg-surface text-soft border border-hairline hover:text-ink") %>
+  <% end %>
+</div>
+
+<%# Harbor's tab, or the host's (Harbor::Velocity.tab). %>
+<%= render @tab.partial, period: @period %>

@@ -1,0 +1,38 @@
+<%# The Scorers tab: each scorer's pass rate over the range, and what the
+    judging cost. locals: period. %>
+<% s = Harbor::Velocity::Scoring.new(since: period.since, now: period.now) %>
+
+<%= render "harbor/velocity/tiles", tiles: harbor_velocity_tiles("scorers", period, [
+      harbor_velocity_tile(:judgements, "Judgements", number_with_delimiter(s.judge_count), "judge runs in range"),
+      harbor_velocity_tile(:judge_spend, "Judge spend", "$#{'%.2f' % s.judge_spend}", "what the scoring cost"),
+      harbor_velocity_tile(:scorers, "Scorers", safe_join([ s.scorers.count { |x| x.enabled? }, " ", tag.span("enabled", class: "text-base text-soft") ]),
+                           link_to("Manage scorers", scorers_path, class: "underline"), wide: true)
+    ]) %>
+
+<% if s.scorers.empty? %>
+  <p class="text-sm text-faint">No scorers yet — <%= link_to "create one", new_scorer_path, class: "underline" %>.</p>
+<% end %>
+<div class="grid gap-6 lg:grid-cols-2">
+  <% s.scorers.each do |scorer| %>
+    <% sum = s.summary(scorer) %>
+    <section class="card p-6" data-reveal>
+      <div class="flex items-baseline gap-2 mb-1">
+        <%= link_to scorer.name, scorer_path(scorer), class: "font-medium text-ink hover:underline" %>
+        <% unless scorer.enabled? %><span class="pill bg-bone text-faint border border-hairline">off</span><% end %>
+        <span class="ml-auto meta"><%= sum[:pass_rate] ? "#{sum[:pass_rate]}% pass" : "nothing judged" %> · <%= sum[:total] %> judged</span>
+      </div>
+      <p class="meta mb-4"><%= scorer.description %></p>
+      <% if sum[:total].positive? %>
+        <%= render "harbor/shared/bar_series", series: sum[:series], label: "% pass", height: 48, color: "green", weekly: true %>
+        <div class="flex flex-wrap gap-2 mt-3">
+          <% sum[:by_label].each do |label, n| %>
+            <span class="pill <%= scorer.score_for(label).to_f >= scorer.pass_threshold.to_f ? "bg-pale-green text-ink-green" : "bg-pale-red text-ink-red" %>"><%= label %> <%= n %></span>
+          <% end %>
+          <% if sum[:errors].positive? %><span class="pill bg-pale-yellow text-ink-yellow"><%= sum[:errors] %> judge errors</span><% end %>
+        </div>
+      <% else %>
+        <p class="text-sm text-faint">No verdicts in this range.</p>
+      <% end %>
+    </section>
+  <% end %>
+</div>

@@ -1,0 +1,59 @@
+<%# The Spending tab: what the agents cost over the range and where it went.
+    locals: period. %>
+<% s = Harbor::Velocity::Spending.new(since: period.since, now: period.now) %>
+
+<%= render "harbor/velocity/tiles", tiles: harbor_velocity_tiles("spending", period, [
+      harbor_velocity_tile(:spend, "Spend", "$#{number_with_delimiter('%.2f' % s.total)}", "CLI-reported actuals"),
+      harbor_velocity_tile(:runs, "Runs", number_with_delimiter(s.run_count), "#{number_with_delimiter(s.costed_count)} with a cost"),
+      harbor_velocity_tile(:per_run, "Per run", (s.costed_count.zero? ? "—" : "$#{'%.2f' % (s.total / s.costed_count)}"), "mean, costed runs")
+    ]) %>
+
+<section class="card p-6 mb-6" data-reveal>
+  <div class="flex items-baseline gap-2 mb-4">
+    <span class="meta uppercase tracking-[0.05em]">Spend per week</span>
+    <span class="meta">USD, top-level runs by the week they started</span>
+  </div>
+  <% if s.weekly.any? { |_, c| c.positive? } %>
+    <%= render "harbor/shared/bar_series", series: s.weekly, label: "USD", height: 56, color: "orange", weekly: true %>
+  <% else %>
+    <p class="text-sm text-faint">No costed runs in this range.</p>
+  <% end %>
+</section>
+
+<div class="grid gap-6 lg:grid-cols-2">
+  <%# Whole cards of the host's own, ahead of Harbor's in the same grid:
+      spend by whatever the host's work is about. %>
+  <%= render "harbor/velocity/spending_cards", period: period if harbor_velocity_partial?("spending_cards") %>
+
+  <section class="card p-6" data-reveal>
+    <div class="meta uppercase tracking-[0.05em] mb-4">Spend by agent</div>
+    <table class="w-full text-sm">
+      <tbody class="divide-y divide-hairline">
+        <% agents = s.by_agent %>
+        <% if agents.empty? %><tr><td class="py-3 text-faint">No agent spend in this range.</td></tr><% end %>
+        <% agents.each do |key, cost, runs| %>
+          <tr>
+            <td class="py-2 text-ink font-medium"><%= key %> <span class="meta"><%= runs %> runs</span></td>
+            <td class="py-2 text-body font-mono text-xs text-right">$<%= "%.2f" % cost %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card p-6" data-reveal>
+    <div class="meta uppercase tracking-[0.05em] mb-4">Spend by model</div>
+    <table class="w-full text-sm">
+      <tbody class="divide-y divide-hairline">
+        <% models = s.by_model %>
+        <% if models.empty? %><tr><td class="py-3 text-faint">No costed runs in this range.</td></tr><% end %>
+        <% models.each do |model, cost, count| %>
+          <tr>
+            <td class="py-2 text-ink"><%= model || "(unknown)" %> <span class="meta"><%= count %> runs</span></td>
+            <td class="py-2 text-body font-mono text-xs text-right">$<%= "%.2f" % cost.to_f %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </section>
+</div>

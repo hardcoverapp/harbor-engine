@@ -13,12 +13,12 @@ class HarborSectionTest < ActionDispatch::IntegrationTest
     assert_select "main.harbor-shell > aside.harbor-aside > nav.harbor-nav[data-controller='harbor--side-nav']", count: 1
     assert_select "main.harbor-shell > div.harbor-page h1", text: "Reports"
     groups = css_select("[data-harbor-nav] [data-nav-group]").map { |group| [ group["data-nav-group"], group.css("a").map { |a| a.text.strip } ] }
-    assert_equal [ [ "flows", %w[Workflows Automations Reports] ], [ "activity", %w[Runs Webhooks] ], [ "agents", %w[Agents Models] ],
+    assert_equal [ [ "overview", %w[Overview Velocity] ], [ "flows", %w[Workflows Automations Reports] ], [ "activity", %w[Runs Webhooks] ], [ "agents", %w[Agents Models] ],
                    [ "infrastructure", %w[Runtimes Workspaces Databases] ], [ "quality", [ "Review policy", "Scorers", "Proposals" ] ],
                    [ "settings", %w[Settings] ] ], groups
     assert_select "[data-harbor-nav] .harbor-nav-heading", count: 5
-    assert_select "[data-harbor-nav] a.harbor-nav-item svg.harbor-icon[aria-hidden=true]", count: 14
-    assert_select "[data-harbor-nav] a.harbor-nav-item[title]", count: 14
+    assert_select "[data-harbor-nav] a.harbor-nav-item svg.harbor-icon[aria-hidden=true]", count: 16
+    assert_select "[data-harbor-nav] a.harbor-nav-item[title]", count: 16
     assert_select "[data-harbor-nav] a[aria-current=page]", text: "Reports", count: 1
     assert_select "[data-harbor-nav] button[data-action='harbor--side-nav#toggle'][aria-expanded=true]", count: 1
   end
@@ -71,7 +71,7 @@ class HarborSectionTest < ActionDispatch::IntegrationTest
   test "Harbor's Stimulus controllers are where the import map pins them" do
     pins = Harbor::Engine.root.join("config/importmap.rb").read
     assert_includes pins, 'under: "controllers/harbor"'
-    %w[side_nav log_follow poll details workflow_builder].each do |name|
+    %w[side_nav log_follow poll details workflow_builder autosubmit].each do |name|
       assert Harbor::Engine.root.join("app/javascript/harbor/controllers/#{name}_controller.js").file?
     end
   end

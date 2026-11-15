@@ -1,0 +1,132 @@
+<%# Each stage with its note, who does it, what it runs, how long it takes
+    and where people come in; then whatever no stage holds. A site that
+    declared no stages has one, holding everything. locals: snapshot, stages. %>
+<section id="lifecycle" class="mb-14">
+  <h2 class="display text-xl mb-4"><%= Harbor::Overview.stages_declared? ? "The lifecycle" : "What is set up" %></h2>
+  <ol class="grid gap-4">
+    <% stages.each_with_index do |stage, i| %>
+      <% parts = snapshot.parts_for(stage) %>
+      <% routing, workflows, automations, timings, steering = parts.values_at(:routing, :workflows, :automations, :timings, :steering).map(&:call) %>
+      <%# The host's parts (Harbor::Overview.part), in the order declared. %>
+      <% extra = Harbor::Overview.parts.to_h { |part| [ part.title, parts[part.name].call ] }.select { |_, items| items.any? } %>
+      <li id="<%= stage.anchor %>" class="card p-5 md:p-6 scroll-mt-20">
+        <div class="flex items-baseline gap-3 mb-2">
+          <span class="meta tabular-nums"><%= format("%02d", i + 1) %></span>
+          <h3 class="display text-lg text-ink"><%= stage.title %></h3>
+        </div>
+
+        <%= render "harbor/overview/note", stage:, note: @notes[stage.key] %>
+
+        <div class="grid gap-6 mt-5 md:grid-cols-2">
+          <% if routing.any? %>
+            <div>
+              <h4 class="meta uppercase tracking-[0.05em] mb-2">Who does it</h4>
+              <ul class="space-y-1.5 text-sm">
+                <% routing.each do |route| %>
+                  <li>
+                    <code class="chip"><%= route.task_type %></code>
+                    <% if route.agent %>
+                      <%= link_to harbor_route_label(route), agent_path(route.agent), class: "text-ink hover:underline" %>
+                      <% unless route.source == "assigned" %><span class="meta">(<%= route.source %>)</span><% end %>
+                    <% else %>
+                      <%= link_to "unassigned", agents_path, class: "text-ink-red hover:underline" %>
+                    <% end %>
+                  </li>
+                <% end %>
+              </ul>
+            </div>
+          <% end %>
+
+          <% if workflows.any? || automations.any? || extra.any? %>
+            <div>
+              <h4 class="meta uppercase tracking-[0.05em] mb-2">What it runs</h4>
+              <ul class="space-y-1.5 text-sm">
+                <% workflows.each do |wf| %>
+                  <li>
+                    <%= link_to wf.name, workflow_path(wf), class: "text-ink hover:underline" %>
+                    <%= harbor_workflow_mode_pill(wf.mode) %>
+                    <span class="meta">workflow v<%= wf.current_version&.number || 0 %>
+                      <% steps = wf.definition.steps.map { |s| harbor_step_title(s) } %>
+                      <% if steps.any? %>· <%= steps.join(" → ") %><% end %></span>
+                  </li>
+                <% end %>
+                <% automations.each do |a| %>
+                  <li>
+                    <%= link_to a.name, edit_automation_path(a), class: "text-ink hover:underline" %>
+                    <%= harbor_enabled_pill(a.enabled?) %>
+                    <span class="meta">automation · <%= a.trigger_summary %></span>
+                  </li>
+                <% end %>
+                <% extra.each do |title, items| %>
+                  <% items.each do |item| %>
+                    <li>
+                      <%= item.url ? link_to(item.label, item.url, class: "text-ink hover:underline") : item.label %>
+                      <% if item.mode %><%= harbor_workflow_mode_pill(item.mode) %><% end %>
+                      <span class="meta"><%= title.to_s.singularize.downcase %><% if item.detail.present? %> · <%= item.detail %><% end %></span>
+                    </li>
+                  <% end %>
+                <% end %>
+              </ul>
+            </div>
+          <% end %>
+
+          <% if timings.any? %>
+            <div>
+              <h4 class="meta uppercase tracking-[0.05em] mb-2">How long, what it costs <span class="normal-case tracking-normal">· last <%= Harbor::Overview::WINDOW.in_days.round %> days</span></h4>
+              <table class="w-full text-sm">
+                <thead class="text-left">
+                  <tr class="meta">
+                    <th class="font-normal pb-1">Task</th>
+                    <th class="font-normal pb-1 text-right">Median</th>
+                    <th class="font-normal pb-1 text-right">p90</th>
+                    <th class="font-normal pb-1 text-right">Cost</th>
+                    <th class="font-normal pb-1 text-right">Runs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% timings.each do |t| %>
+                    <tr class="border-t border-hairline">
+                      <td class="py-1"><code class="chip"><%= t.task_type %></code></td>
+                      <td class="py-1 text-right tabular-nums"><%= Harbor::Overview::Timings.duration_label(t.median_seconds) %></td>
+                      <td class="py-1 text-right tabular-nums text-soft"><%= Harbor::Overview::Timings.duration_label(t.p90_seconds) %></td>
+                      <td class="py-1 text-right tabular-nums" title="p90 <%= Harbor::Overview::Timings.cost_label(t.p90_cost) %>"><%= Harbor::Overview::Timings.cost_label(t.median_cost) %></td>
+                      <td class="py-1 text-right tabular-nums text-soft"><%= t.runs %><% if t.failed.positive? %> <span class="text-ink-red">+<%= t.failed %> failed</span><% end %></td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+          <% end %>
+
+          <% if steering.any? %>
+            <div>
+              <h4 class="meta uppercase tracking-[0.05em] mb-2">Where people come in</h4>
+              <ul class="space-y-1.5 text-sm">
+                <% steering.each do |row| %>
+                  <li><span aria-hidden="true">🙋</span> <span class="text-ink"><%= row.want %>:</span>
+                    <span class="text-soft"><%= harbor_inline_markdown(row.action) %></span></li>
+                <% end %>
+              </ul>
+            </div>
+          <% end %>
+        </div>
+      </li>
+    <% end %>
+  </ol>
+
+  <% unplaced = [ snapshot.unplaced_workflows, snapshot.unplaced_automations ] %>
+  <% if unplaced.any?(&:any?) %>
+    <div class="mt-6 card p-5">
+      <h3 class="meta uppercase tracking-[0.05em] mb-2">Also running</h3>
+      <ul class="space-y-1.5 text-sm">
+        <% snapshot.unplaced_workflows.each do |wf| %>
+          <li><%= link_to wf.name, workflow_path(wf), class: "text-ink hover:underline" %> <%= harbor_workflow_mode_pill(wf.mode) %> <span class="meta">workflow</span></li>
+        <% end %>
+        <% snapshot.unplaced_automations.each do |a| %>
+          <li><%= link_to a.name, edit_automation_path(a), class: "text-ink hover:underline" %> <%= harbor_enabled_pill(a.enabled?) %>
+            <span class="meta">automation · <%= a.trigger_summary %></span></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+</section>

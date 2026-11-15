@@ -109,8 +109,9 @@ And, if the host has a menu of its own, Harbor's pages in it:
 <% end %>
 ```
 
-The side nav lists only the pages that exist in the host, in groups (Flows,
-Activity, Agents, Infrastructure, Quality), each with an icon. It collapses to
+The side nav lists every page of Harbor's that is switched on and the host's
+own, in groups (Overview and Velocity first, then Flows, Activity, Agents,
+Infrastructure, Quality), each with an icon. It collapses to
 a rail of icons and remembers that in the browser. Below 768px it is hidden;
 list the pages in the host's own mobile menu.
 
@@ -172,8 +173,8 @@ The full list, with what each one colours, is at the top of
 `app/assets/tailwind/harbor/engine.css`.
 
 Harbor's JavaScript is a few small Stimulus controllers (the side nav's collapse,
-a log that follows its newest line, a page that refreshes itself) and the workflow
-builder. On `importmap-rails` with the usual
+a log that follows its newest line, a page that refreshes itself, a picker that
+submits its form when changed) and the workflow builder. On `importmap-rails` with the usual
 `eagerLoadControllersFrom("controllers", application)` there is nothing to do:
 Harbor pins them under `controllers/harbor/`.
 
@@ -1784,6 +1785,171 @@ Harbor's records:
 4. Records `Harbor::ReviewFeedback` and `Harbor::ReviewEscape` as it learns what
    happened afterwards.
 
+## Overview
+
+Overview is the section's front page, at the section's own address (`/factory`,
+`harbor.overview_path`; `/overview` where the section's pages sit at the root). It says
+what is set up and how it has been going, **read from Harbor's records every time the page
+is drawn**, so it can't fall behind them. Only the short note on each stage is written by
+hand. A site with no code of its own sees:
+
+- **At a glance**: one number each for runs in the last 30 days (with how many failed and
+  how many are under way), what they spent, agents switched on, workflows live,
+  automations and runtimes on, the share of judged runs the scorers passed, proposals
+  waiting for a person, and review rounds. Each links to its page; one whose page is
+  switched off is left out.
+- **What is set up**: one stage, "Work", holding all of it. *Who does it*: every declared
+  task type with the agent routing would give it to, its model and effort, and whether
+  that is its own assignment, its fallback's or its default agent. *What it runs*: every
+  workflow with its mode, version and steps, and every automation with whether it is on
+  and what starts it. *How long, what it costs*: per task type over the last 30 days, the
+  median and 90th percentile time of the runs that ended ok, the median cost, and how
+  many ran and failed (`Harbor::Overview::Timings`).
+- **What changed**: the newest fifty changes to the configuration, with who made them
+  where that is recorded, and a "This week" filter (`?changes=week`). The sources are
+  workflow versions, agents, agent documents, shared context, task routing, model
+  choices, stage notes and review rule versions (`Harbor::Overview::Changes.recent`,
+  which a host's own code can read too).
+
+### Stage notes
+
+Each stage has a note, edited in place on the page (`/factory/notes/<stage>`,
+`harbor.stage_note_path`): `Harbor::StageNote`, on the table `factory_notes`, one per
+stage. Until one is written the stage shows its summary. Every save is handed to
+`config.export` as `factory/notes/<stage>.md`, with the stage, the time and who saved it
+on top. With `config.user_class` set a note records who saved it. The note is shown as
+plain paragraphs unless the host says how markdown is drawn:
+
+```ruby
+c.markdown = ->(text) { MyMarkdown.render(text) }   # returns HTML that is safe to show
+```
+
+The same renderer draws the ways in and the steering rows below, which may then use
+backticks and bold.
+
+### What a host declares
+
+All optional, in an initializer (`Harbor::Overview`):
+
+```ruby
+# The stages work moves through, in order. Declaring any replaces "Work".
+Harbor::Overview.stage "triage", title: "Triage", summary: "A ticket is read and given to someone.",
+  task_types: %w[ticket_triage], automations: %w[ticket-sweep], claims: %w[triage],
+  starts_on: ->(trigger) { trigger["kind"] == "ticket" }
+
+# More lines under a stage's "What it runs".
+Harbor::Overview.part(:checks, "Checks") do |stage, snapshot|
+  stage.key == "review" ? [ Harbor::Overview::Item.new(label: "Spelling", mode: "live", url: "/checks/1", detail: "every change") ] : []
+end
+
+# How work arrives, and what a person can do about it.
+Harbor::Overview.way_in "desk", title: "The help desk", body: "A ticket opened there.", stage: "triage", task_type: "ticket_triage"
+Harbor::Overview.steer "hold", want: "Pause it", action: "add the `hold` label", result: "work stops", stage: "triage"
+
+# Another source for "What changed", or one of Harbor's replaced by its name.
+Harbor::Overview.change_source(:prices, "Price list") do |since:, limit:|
+  PriceChange.recent(since:, limit:).map { |c| Harbor::Overview::Change.new(at: c.created_at, source: :prices, title: c.name, detail: c.summary, who: c.author, url: c.path) }
+end
+
+# Another number in "At a glance": the block is given the time it looks back to.
+Harbor::Overview.tile(:tickets, label: "Tickets", after: :runs) { |since| { value: Ticket.open.count, note: "open", url: "/tickets" } }
+
+# A section of the host's own, and one of Harbor's left out.
+Harbor::Overview.section :costs, partial: "overview/costs", after: :lifecycle
+Harbor::Overview.hide_section :summary
+```
+
+- **`stage`**: a stage holds the task types it names; the automations it names by key;
+  the workflows that claim one of its `claims` (see Workflows, `register_claim`); the
+  workflows and automations one of whose triggers its `starts_on` says yes to; and the
+  workflows whose first agent step does one of its task types (`"agent": "task:<type>"`).
+  `starts_on` is called with a trigger as a Hash: a workflow's trigger from its
+  definition, or an automation's `trigger_data`, which is `[{ "kind" => trigger_kind }]`
+  unless the host's automation class says more. A workflow or an automation no stage
+  holds is listed under "Also running", so nothing live is left off the page. Declaring a
+  stage again replaces it where it is.
+- **`part`**: the block is called for every stage with the stage and the page's
+  `Harbor::Overview::Snapshot`, and returns `Harbor::Overview::Item`s (`label`, and
+  optionally `detail`, `mode` and `url`). Each is a line under "What it runs", after the
+  workflows and automations, named by the part's title in the singular.
+- **`way_in`** and **`steer`**: the "Ways in" and "How to steer" sections, which appear
+  once there is something in them. A steering row also shows on its stage, under "Where
+  people come in". A way in with a `task_type` says who that task goes to.
+- **`change_source`**: the block is given `since:` (nil for "everything recent") and
+  `limit:`, and returns `Harbor::Overview::Change`s.
+- **`tile`**: `after:` names one of Harbor's tiles (`:runs`, `:spend`, `:agents`,
+  `:workflows`, `:automations`, `:runtimes`, `:scorers`, `:proposals`, `:reviews`) or
+  another of the host's; without it the tile goes last.
+- **`section`**: Harbor's sections are `summary`, `ways_in`, `lifecycle`, `steering` and
+  `changes`. The partial is rendered by Harbor's controller with `snapshot` and `stages`.
+
+Two things are the host's classes' to say. `Harbor::Agent.edited_here` is the scope of
+agents whose latest change was made on their page (every agent, unless a host that also
+imports agents leaves those out in its subclass), which is what "What changed" lists.
+`Harbor::Agent#effort_label` is the effort shown beside an agent's model (the first
+choice of its model alias).
+
+Two partials in the host's `app/views/harbor/overview/`:
+
+| Partial | Where | Locals |
+|---|---|---|
+| `_intro.html.erb` | **Replaces** Harbor's heading and the paragraph under it. It may name the page too (`content_for :title`); Harbor names it "Overview" when it doesn't | none |
+| `_note_form_hint.html.erb` | Beside the buttons of a stage note's form: what else a save does | none |
+
+## Velocity
+
+Velocity (`/factory/velocity`, `harbor.velocity_path`) is how much work ran over a
+range, how it ended and what it cost. The range is one of the last 7, 30 or 90 days, 12
+weeks (which the page opens on) or 6 months (`?range=30d`), and the tab is `?tab=`. A
+site with no code of its own has three tabs, each read from Harbor's records:
+
+- **Runs** (`Harbor::Velocity::Runs`): how many runs, how many ended ok and failed (an
+  error or a timeout) with the failure rate, and the median time of the ones that ended
+  ok; runs per week; each agent's runs and how they ended; runs by task type (top-level
+  runs, so a delegated run isn't counted beside its parent); and runs by runtime.
+- **Spending** (`Harbor::Velocity::Spending`): the total, how many runs had a cost and
+  the mean per run; spend per week; spend by agent; spend by model. Costs are the
+  actuals each run reported. A parent's total includes the runs it delegated, so only
+  top-level runs are summed, plus the scorers' judge runs, which are billed on their own.
+- **Scorers** (`Harbor::Velocity::Scoring`): how many judge runs there were and what
+  they cost, and for each scorer its pass rate, its verdicts by label, its pass rate by
+  week and its judge errors.
+
+### What a host adds
+
+```ruby
+# config/initializers/harbor.rb
+Harbor::Velocity.tab "tickets", label: "Tickets", partial: "velocity/tickets", before: "runs"
+Harbor::Velocity.remove_tab "runs"
+Harbor::Velocity.tile("spending", :per_ticket, label: "Per ticket", note: "median", after: :runs) do |period|
+  "$%.2f" % Ticket.median_cost(period.range)
+end
+```
+
+- **`tab`**: a tab of the host's own, before or after one of Harbor's (`runs`,
+  `spending`, `scorers`) or last. Its partial is rendered by Harbor's controller with
+  `period` (`Harbor::Velocity::Period`: `since`, `now`, `range`). The page opens on the
+  first tab. `remove_tab` takes one of Harbor's away, for a host whose own tab says the
+  same thing its way.
+- **`tile`**: a number in the row at the top of a tab, after the tile it names
+  (`after:`) or last. The block is given the period and returns what the tile shows.
+  Harbor's tiles are `:runs`, `:ok`, `:failed` and `:median` on Runs; `:spend`, `:runs`
+  and `:per_run` on Spending; `:judgements`, `:judge_spend` and `:scorers` on Scorers.
+- **`period.fetch(:key) { … }`** keeps something built once per page, for a host whose
+  tile and cards read the same figures.
+
+Partials in the host's `app/views/harbor/velocity/`:
+
+| Partial | Where | Locals |
+|---|---|---|
+| `_intro.html.erb` | **Replaces** Harbor's heading and the paragraph under it. It may name the page too (`content_for :title`) | none |
+| `_spending_cards.html.erb` | The Spending tab's grid of cards, ahead of Harbor's: spend by whatever the host's work is about | `period` |
+| `_runs_cards.html.erb` | The Runs tab's grid of cards, after Harbor's | `period` |
+
+A host's own tab can show Harbor's cards: `harbor/velocity/runs_by_agent` (local
+`by_agent`, `Harbor::Velocity::Runs#by_agent`) and `harbor/velocity/tiles` (local
+`tiles`).
+
 ## Webhooks
 
 `Harbor::WebhookEvent` is the record of every inbound delivery, and the
@@ -2078,6 +2244,9 @@ Mount the engine at `/`. Harbor puts every page of its own under one path,
 path: /ops      # or / to put the pages at the root
 ```
 
+Overview is the page at the path itself (`/factory`). With the pages at the
+root it is at `/overview`, because the root is the host's.
+
 It is read when routes are drawn, so a change takes a restart. A host with
 pages of the same section in its own routes puts them under the same path:
 
@@ -2166,6 +2335,8 @@ What scoring and proposals take (`scorer_judge`, `scorer_judge_wait`, `proposal_
 What Review policy takes (`review_rule_class`, `review_rule_version_class`,
 `review_document_schema`, `review_pull_request_url`, `review_rule_preview`, `review_cost`,
 and what a host declares with `Harbor::Reviews`) is under Review policy.
+What Overview and Velocity take (`markdown`, and what a host declares with
+`Harbor::Overview` and `Harbor::Velocity`) is under Overview and Velocity.
 
 ### Settings
 

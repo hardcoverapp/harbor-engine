@@ -1,0 +1,23 @@
+<%# The intro is drawn first so that a host's own may name the page
+    (`content_for :title`); Harbor names it only when the intro didn't. %>
+<% intro = render("harbor/overview/intro") %>
+<% content_for(:title, "Overview") unless content_for?(:title) %>
+
+<%= render "harbor/shared/section_nav" %>
+
+<header class="mb-10">
+  <%= intro %>
+  <% if @stages.size > 1 %>
+    <nav aria-label="Stages" class="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+      <% @stages.each_with_index do |stage, i| %>
+        <% if i.positive? %><span class="text-faint" aria-hidden="true">→</span><% end %>
+        <%= link_to stage.title, "##{stage.anchor}", class: "text-soft hover:text-ink" %>
+      <% end %>
+    </nav>
+  <% end %>
+</header>
+
+<%# Harbor's sections and the host's (Harbor::Overview.section), in order. %>
+<% Harbor::Overview.sections.each do |section| %>
+  <%= render section.partial, snapshot: @snapshot, stages: @stages %>
+<% end %>

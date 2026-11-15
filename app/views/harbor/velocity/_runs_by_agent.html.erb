@@ -1,0 +1,31 @@
+<%# Each agent's runs over the range and how they ended. A host's own tab
+    can render this card too. locals: by_agent ({ [agent key, status] => runs },
+    Harbor::Velocity::Runs#by_agent). %>
+  <section class="card p-6" data-reveal>
+    <div class="meta uppercase tracking-[0.05em] mb-4">Runs by agent — outcome</div>
+    <table class="w-full text-sm">
+      <thead class="text-left"><tr class="border-b border-hairline">
+        <th class="py-2 meta uppercase tracking-[0.05em] font-medium">Agent</th>
+        <th class="py-2 meta uppercase tracking-[0.05em] font-medium">ok</th>
+        <th class="py-2 meta uppercase tracking-[0.05em] font-medium">failed</th>
+        <th class="py-2 meta uppercase tracking-[0.05em] font-medium">Failure %</th>
+      </tr></thead>
+      <tbody class="divide-y divide-hairline">
+        <% agents = by_agent.keys.map(&:first).uniq.sort %>
+        <% if agents.empty? %>
+          <tr><td colspan="4" class="py-3 text-faint">No agent runs in this range.</td></tr>
+        <% end %>
+        <% agents.each do |key| %>
+          <% ok = by_agent[[ key, "ok" ]] || 0
+             failed = %w[error timeout].sum { |s| by_agent[[ key, s ]] || 0 }
+             total = ok + failed %>
+          <tr>
+            <td class="py-2 text-ink font-medium"><%= key %></td>
+            <td class="py-2"><%= ok %></td>
+            <td class="py-2"><%= failed %></td>
+            <td class="py-2 text-body"><%= total.zero? ? "—" : "#{(100.0 * failed / total).round}%" %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </section>

@@ -1,0 +1,29 @@
+<%# What changed in the configuration, newest first (Harbor::Overview::Changes),
+    with a "this week" filter. %>
+<section id="changes" class="mb-6" data-reveal>
+  <div class="flex flex-wrap items-baseline justify-between gap-3 mb-4">
+    <h2 class="display text-xl">What changed</h2>
+    <div class="flex items-center gap-4 text-sm">
+      <%= link_to "Recent", overview_path(anchor: "changes"), class: (@week ? "text-soft hover:text-ink" : "text-ink font-medium"), aria: { current: (@week ? nil : "page") } %>
+      <%= link_to "This week", overview_path(changes: "week", anchor: "changes"), class: (@week ? "text-ink font-medium" : "text-soft hover:text-ink"), aria: { current: (@week ? "page" : nil) } %>
+    </div>
+  </div>
+  <% if @changes.empty? %>
+    <p class="text-sm text-soft"><%= @week ? "Nothing changed this week." : "No changes recorded yet." %></p>
+  <% else %>
+    <ul class="divide-y divide-hairline border-y border-hairline">
+      <% @changes.each do |c| %>
+        <li class="py-2.5 grid gap-1 md:grid-cols-[9rem_1fr_auto] md:items-baseline text-sm">
+          <span class="meta"><%= Harbor::Overview::Changes.label_for(c.source) %></span>
+          <span>
+            <%= c.url ? link_to(c.title, c.url, class: "text-ink hover:underline") : c.title %>
+            <span class="text-soft"><%= c.detail %></span>
+          </span>
+          <span class="meta md:text-right whitespace-nowrap" title="<%= c.at.iso8601 %>">
+            <%= c.who.presence || "—" %> · <%= time_ago_in_words(c.at) %> ago
+          </span>
+        </li>
+      <% end %>
+    </ul>
+  <% end %>
+</section>
