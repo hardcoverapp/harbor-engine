@@ -88,6 +88,14 @@ module Harbor
         end
       end
 
+      # Tells the server about a repository: a folder on its own machine,
+      # given by its absolute path there. A server that has just been started
+      # knows none.
+      def add_repo(path:)
+        repo = call("repo", "add", "--path", path).fetch("repo")
+        Repo.new(id: repo["id"], name: repo["displayName"].presence || File.basename(repo["path"].to_s), path: repo["path"])
+      end
+
       # The machines the server can make worktrees on: its own ("local") and
       # the ones it reaches over SSH.
       def hosts

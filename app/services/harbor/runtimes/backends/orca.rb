@@ -151,7 +151,11 @@ module Harbor
         def health_check
           status = client.status
           raise "Orca #{status[:version]} is not ready" unless status[:ready]
-          raise "Orca doesn't know the host #{host_name} any more" if remote? && client.hosts.none? { |found| found.selector == host }
+          # Orca answers `host list` only for the machine it is asked on, never
+          # through a pairing code, so a server reached by one can't be asked.
+          if remote? && !pairing_code_env && client.hosts.none? { |found| found.selector == host }
+            raise "Orca doesn't know the host #{host_name} any more"
+          end
           status
         end
 
@@ -168,7 +172,7 @@ module Harbor
         # output and result. `runner` is what the runner script is told
         # besides the command (Harbor::Runner.command_for: bundle:, attempt:).
         def start(run:, command:, base: nil, title: nil, **runner)
-          worktree = client.create_worktree(**worktree_place, name: worktree_name(run), base:, setup: runtime.config["setup"].presence || "skip")
+          worktree = create_worktree(run, base)
           begin
             terminal = client.start_terminal(worktree:, command: Harbor::Runner.command_for(run, command, **runner),
                                              title: title || "Run #{run.id}")
@@ -223,6 +227,19 @@ module Harbor
         # Removes the run's worktree, changes and all.
         def cleanup(session, delete_branch: true)
           client.remove_worktree("id:#{session.worktree_id}", force: true, delete_branch:)
+        end
+
+        # Makes the run's worktree. A server that has just been started knows
+        # no repository, so one named by its folder ("path:/abs/repo") that
+        # the server doesn't know is added to it, once, and asked for again.
+        def create_worktree(run, base)
+          place = worktree_place
+          setup = runtime.config["setup"].presence || "skip"
+          client.create_worktree(**place, name: worktree_name(run), base:, setup:)
+        rescue Harbor::Orca::Error => e
+          raise unless e.code == "repo_not_found" && place[:repo].to_s.start_with?("path:/")
+          added = client.add_repo(path: place[:repo].delete_prefix("path:"))
+          client.create_worktree(repo: added.selector, name: worktree_name(run), base:, setup:)
         end
 
         def client = options[:client] || (@client ||= Harbor::Orca::Client.new(environment:, pairing_code:))

@@ -520,6 +520,32 @@ if [ -f "$dir/down.on" ] && [ -f "$dir/down" ]; then'))
     assert_empty local.adapter.warnings, "the Orca on this machine reaches it"
   end
 
+  test "a server that doesn't know the repository yet is told about its folder, once, and the worktree is made" do
+    runtime = Harbor::Runtime.create!(name: "Fresh", backend: "orca", config: { "repo" => "path:/srv/app" })
+    orca = FakeOrca.new(
+      { "ok" => false, "error" => { "code" => "repo_not_found", "message" => "repo_not_found" } },
+      { "ok" => true, "result" => { "repo" => { "id" => "r-9", "path" => "/srv/app", "displayName" => "app" } } },
+      { "ok" => true, "result" => { "worktree" => { "id" => "r-9::/w/x", "path" => "/w/x", "branch" => "b" } } },
+      { "ok" => true, "result" => { "terminal" => { "handle" => "term-1", "worktreeId" => "r-9::/w/x" } } })
+    runtime.adapter(client: Harbor::Orca::Client.new(bin: "orca", runner: orca)).start(run: @run, command: "make test")
+    assert_equal [ %w[worktree create --repo path:/srv/app], %w[repo add --path /srv/app], %w[worktree create --repo id:r-9] ],
+                 orca.calls.first(3).map { |argv| argv[1, 4] }
+
+    named = Harbor::Runtime.create!(name: "Named", backend: "orca", config: { "repo" => "name:app" })
+    refusing = FakeOrca.new({ "ok" => false, "error" => { "code" => "repo_not_found", "message" => "repo_not_found" } })
+    error = assert_raises(Harbor::Orca::Error) { named.adapter(client: Harbor::Orca::Client.new(bin: "orca", runner: refusing)).start(run: @run, command: "make test") }
+    assert_equal "repo_not_found", error.code, "a repository named any other way is not guessed at"
+    assert_equal 1, refusing.calls.size
+  end
+
+  test "a remote runtime reached by a pairing code is not asked for its hosts, which Orca won't list that way" do
+    runtime = Harbor::Runtime.create!(name: "Paired", backend: "orca",
+                                      config: { "host" => "ssh:ssh-1", "host_name" => "droplet-1", "project" => "app", "pairing_code_env" => "HARBOR_TEST_ORCA_CODE" })
+    orca = FakeOrca.new({ "ok" => true, "result" => { "runtime" => { "appVersion" => "1.4.257", "state" => "ready" } } })
+    assert runtime.adapter(client: Harbor::Orca::Client.new(bin: "orca", runner: orca)).health_check
+    assert_equal 1, orca.calls.size
+  end
+
   test "a worktree whose terminal can't be started is removed again" do
     runtime = Harbor::Runtime.create!(key: "flaky", name: "Flaky", backend: "orca", config: { "repo" => "name:app" })
     orca = FakeOrca.new(

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.28.1
+
+The pairing-code way of reaching an Orca server (0.25.1) has now been run against a
+real one: a second, headless Orca server (`ORCA_SERVE_RUNTIME=orcad`, Orca 1.4.257),
+asked for its status, told about a repository, and used to make a worktree, run a
+command in a terminal there, close it and remove the worktree, every command carrying
+the code and nothing saved on the calling machine. Two things it showed are fixed:
+
+- **A server that doesn't know the repository yet is told about it.** A server that
+  has just been started knows none, and `worktree create` answered `repo_not_found`.
+  When a runtime names its repository by folder (`"repo": "path:/srv/app"`), Harbor now
+  adds that folder to the server (`orca repo add`) and asks again, once. A repository
+  named by id or name is not guessed at. `Harbor::Orca::Client#add_repo`.
+- **A remote runtime reached by a pairing code passes its health check.** Orca answers
+  `host list` only for the machine it is asked on, never through a pairing code, so the
+  check no longer asks. For the same reason the runtime form can't list such a server's
+  SSH hosts; type the host.
+
 ## 0.28.0
 
 - **Conductor Cloud is a kind of runtime.** The "New runtime" page offers a third kind,

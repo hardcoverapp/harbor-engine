@@ -591,8 +591,11 @@ against the Orca on its own machine. For an Orca server elsewhere there are two 
 (`orca serve` prints one), which Harbor sends with every command. The second keeps
 nothing on disk, so it is the one for an app in a container: put the `orca` command in
 the image and the code in the container's environment (it is a secret; the runtime only
-names the variable). The second way was checked against Orca 1.4.257's command line and
-has not yet been run against a real remote server.
+names the variable). The second way has been run against a real headless Orca server (1.4.257). A server
+that has just been started knows no repository: name it by its folder there
+(`"repo": "path:/srv/app"`) and Harbor adds it the first time. Orca won't list a
+server's SSH hosts through a pairing code, so for Orca (Remote) on such a server the
+host is typed.
 
 Either kind also takes `"setup"` (whether the repository's own setup hooks run in a new
 worktree: `"skip"`, the default, `"run"` or `"inherit"`) and `"environment"` (another
