@@ -16,9 +16,7 @@ module Harbor
     has_many :workspace_profiles, through: :workspace_profile_runtimes
     has_many :runs, class_name: Harbor.class_name_for(:run_class), foreign_key: :runtime_id, dependent: :restrict_with_error
 
-    # The key is how code and logs name a runtime. Nobody has to think one
-    # up: it is made from the name, with a number when that is taken.
-    before_validation :generate_key, on: :create
+    include Harbor::KeyFromName
 
     validates :key, presence: true, uniqueness: true, format: { with: /\A[a-z0-9][a-z0-9-]*\z/ }
     validates :name, presence: true
@@ -64,13 +62,6 @@ module Harbor
     def usage_label = "#{busy}/#{max_concurrent} busy"
 
     private
-
-    def generate_key
-      return if key.present? || name.blank?
-      base = name.parameterize.presence || "runtime"
-      taken = self.class.where("key = ? OR key LIKE ?", base, "#{self.class.sanitize_sql_like(base)}-%").pluck(:key)
-      self.key = ([ base ] + (2..taken.size + 2).map { |n| "#{base}-#{n}" }).find { |candidate| taken.exclude?(candidate) }
-    end
 
     def recently_failed? = last_error.present? && checked_at.present? && checked_at > HEALTH_TTL.ago
   end

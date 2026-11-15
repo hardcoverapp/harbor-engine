@@ -33,6 +33,8 @@ module Harbor
     has_many :runs, class_name: Harbor.class_name_for(:run_class), foreign_key: :automation_id, dependent: :nullify,
                     inverse_of: :automation
 
+    include Harbor::KeyFromName
+
     validates :key, presence: true, uniqueness: true, format: { with: /\A[a-z0-9][a-z0-9-]*\z/ }
     validates :name, presence: true
     validates :kind, inclusion: { in: KINDS }

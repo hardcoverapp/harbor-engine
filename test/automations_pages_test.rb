@@ -508,4 +508,13 @@ class HarborAutomationsPagesTest < ActionDispatch::IntegrationTest
     get harbor.new_automation_path
     assert_select "[data-harbor-menu] a.current", text: "Automations"
   end
+
+  test "an automation saved with no key is given one made from its name" do
+    2.times do
+      post harbor.automations_path, params: { automation: { name: "Morning check", key: "", agent_key: Harbor::Agent.first.key, prompt: "Say hello.",
+                                                            trigger_kind: "manual", timeout_ms: 900_000 } }
+      assert_redirected_to harbor.automations_path
+    end
+    assert_equal %w[morning-check morning-check-2], Harbor::Automation.where(name: "Morning check").order(:id).pluck(:key)
+  end
 end

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.27.1
+
+Two things that stopped a new site, found by setting one up and making an agent, a
+runtime, a workspace, an automation, a scorer, a review rule and a workflow on its pages:
+
+- **A new site has the model providers Harbor knows.** Nothing made the Anthropic and
+  OpenAI rows, so the alias form offered no provider, no alias could be made, and so no
+  agent. The Models pages now make any that are missing, switched on
+  (`Harbor::ModelProvider.ensure_known!`). A provider that exists is left as it is.
+- **An automation saved with no key is given one made from its name**, with a number
+  when that is taken, as a runtime is (`Harbor::KeyFromName`). The form said "Key can't
+  be blank".
+
 ## 0.27.0
 
 - **Harbor's pages look finished in a site with no stylesheet of its own.** The colours

@@ -16,7 +16,7 @@
       <div>
         <%= form.label :key, "Key", class: "block text-sm mb-2" %>
         <%= form.text_field :key, readonly: @automation.persisted?, placeholder: "stale-pr-nudge", class: "field w-full font-mono" %>
-        <p class="meta mt-1">Lowercase, dashes. Names the Run's log folder; fixed once saved.</p>
+        <p class="meta mt-1">Lowercase, dashes. Names the Run's log folder; fixed once saved. Left empty, it is made from the name.</p>
       </div>
     <% else %>
       <div><span class="block text-sm mb-2">Key</span><code class="chip"><%= @automation.key %></code></div>

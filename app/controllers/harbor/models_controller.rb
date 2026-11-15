@@ -3,6 +3,7 @@ module Harbor
   # agents are given, as two tabs.
   class ModelsController < ApplicationController
     harbor_page :models
+    before_action(only: :index) { Harbor::ModelProvider.ensure_known! }
 
     def index
       @tab = params[:tab] == "aliases" ? :aliases : :models

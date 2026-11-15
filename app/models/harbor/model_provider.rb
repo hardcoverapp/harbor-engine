@@ -14,6 +14,13 @@ module Harbor
     validates :session_used_percent, :weekly_used_percent,
               numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 100 }, allow_nil: true
 
+    # Makes sure there is a row for each provider Harbor knows. A new site
+    # has none, and with none no model can be chosen, so the Models pages
+    # call this before they are drawn. A row that exists is left as it is.
+    def self.ensure_known!
+      (KEYS - where(key: KEYS).pluck(:key)).each { |key| create_or_find_by!(key:) }
+    end
+
     def display_name = NAMES.fetch(key, key.to_s)
 
     # Whether an API key for this provider is in the environment (a secret, so

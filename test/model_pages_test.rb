@@ -69,6 +69,27 @@ class HarborModelPagesTest < ActionDispatch::IntegrationTest
     assert_equal 1, asked.size
   end
 
+  test "a new site, with no providers yet, is given the ones Harbor knows, switched on, and can make its first alias" do
+    [ Harbor::ModelChoice, Harbor::ModelAlias, Harbor::ModelProvider ].each(&:delete_all)
+    get harbor.new_model_alias_path
+    assert_response :success
+    assert_equal %w[anthropic openai], Harbor::ModelProvider.order(:key).pluck(:key)
+    assert Harbor::ModelProvider.all.all?(&:enabled?)
+    anthropic = Harbor::ModelProvider.find_by!(key: "anthropic")
+    assert_select "select[name='model_alias[model_choices_attributes][0][model_provider_id]'] option[value='#{anthropic.id}']", text: "Anthropic"
+
+    assert_difference("Harbor::ModelAlias.count", 1) do
+      post harbor.model_aliases_path, params: { model_alias: { name: "First", model_choices_attributes: {
+        "0" => { model_provider_id: anthropic.id, model: "claude-new", cutoff_percent: 90, position: 0 } } } }
+    end
+
+    Harbor::ModelProvider.where(key: "openai").delete_all
+    anthropic.update!(enabled: false)
+    get harbor.models_path
+    assert_select "[data-provider=openai]", count: 1
+    assert_not anthropic.reload.enabled?, "a provider that exists is left as it is"
+  end
+
   test "the Aliases tab lists each alias's models in order, named as the host names them" do
     Harbor.config.model_name = ->(model) { model.upcase }
     get harbor.models_path(tab: "aliases")

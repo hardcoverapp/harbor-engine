@@ -4,6 +4,7 @@ module Harbor
   class ModelAliasesController < ApplicationController
     harbor_page :models
     before_action :set_alias, only: %i[edit update destroy]
+    before_action(only: %i[new edit create update]) { Harbor::ModelProvider.ensure_known! }
 
     def new
       @model_alias = Harbor.model_alias_class.new
