@@ -43,6 +43,15 @@ class HarborOrcaClientTest < ActiveSupport::TestCase
     assert_equal %w[orca status --json --environment build-box], orca.argv
   end
 
+  test "a pairing code goes with every command, in place of a saved server's name" do
+    orca = FakeOrca.new(ok("runtime" => { "appVersion" => "1.4.257", "state" => "ready" }), refused("invalid_argument"))
+    paired = client(orca, pairing_code: "orca://pair?code=abc", environment: "ignored")
+    paired.status
+    assert_equal [ "orca", "status", "--json", "--pairing-code", "orca://pair?code=abc" ], orca.argv
+    error = assert_raises(Harbor::Orca::Error) { paired.status }
+    assert_not_includes error.message, "abc", "the code is never in an error"
+  end
+
   test "creates a worktree from a base and returns where it is" do
     orca = FakeOrca.new(ok("worktree" => WORKTREE))
     worktree = client(orca).create_worktree(repo: "name:app", name: "run-7", base: "main")

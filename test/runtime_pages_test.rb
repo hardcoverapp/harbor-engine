@@ -189,6 +189,34 @@ class HarborRuntimePagesTest < ActionDispatch::IntegrationTest
     assert_equal({ "provider" => "digitalocean", "host" => "ssh:ssh-9", "project" => "app" }, Harbor::Runtime.find_by!(key: "typed").config)
   end
 
+  test "an Orca server is reached by a pairing code held in an environment variable, which the runtime only names" do
+    with_orca do
+      get harbor.new_runtime_path
+      assert_select "input[name='runtime[fields][orca][pairing_code_env]']"
+      post harbor.runtimes_path, params: { runtime: { name: "Typed code", type: "orca", max_concurrent: 1,
+                                                      fields: { "orca" => { repo: "id:r-1", pairing_code_env: "orca://pair?code=abc" } } } }
+      assert_response :unprocessable_entity
+      assert_select "[role=alert]", text: /named by an environment variable/
+      post harbor.runtimes_path, params: { runtime: { name: "Cloud Orca", type: "orca", max_concurrent: 1, enabled: "1",
+                                                      fields: { "orca" => { repo: "id:r-1", pairing_code_env: "HARBOR_TEST_ORCA_CODE" } } } }
+    end
+    runtime = Harbor::Runtime.find_by!(key: "cloud-orca")
+    assert_equal({ "repo" => "id:r-1", "pairing_code_env" => "HARBOR_TEST_ORCA_CODE" }, runtime.config)
+    assert_equal "the Orca server's pairing code isn't set (HARBOR_TEST_ORCA_CODE)", runtime.unavailable_reason
+    ENV["HARBOR_TEST_ORCA_CODE"] = "orca://pair?code=abc"
+    Harbor::Setting.set!(:runner_url, "https://harbor.example.com")
+    assert_nil runtime.unavailable_reason
+    assert_equal "Orca server (HARBOR_TEST_ORCA_CODE)", runtime.adapter.place
+    seen = []
+    Harbor::Orca.runner = ->(argv, timeout:) { seen << argv; [ JSON.generate("ok" => true, "result" => { "runtime" => { "state" => "ready" } }), "", 0 ] }
+    runtime.adapter.health_check
+    assert_equal [ "--pairing-code", "orca://pair?code=abc" ], seen.last.last(2)
+  ensure
+    ENV.delete("HARBOR_TEST_ORCA_CODE")
+    Harbor::Setting.where(key: "runner_url").delete_all
+    Harbor::Orca.runner = nil
+  end
+
   test "a second runtime of the same name gets a key of its own" do
     with_orca do
       2.times { post harbor.runtimes_path, params: { runtime: { name: "Cloud", type: "orca", max_concurrent: 1, fields: { "orca" => { repo: "id:r-1" } } } } }

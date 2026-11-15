@@ -21,6 +21,11 @@ module Harbor
       #                  worktree: "run", "skip" (default) or "inherit"
       #   "environment"  another Orca server to ask, paired with this machine
       #                  (`orca environment add`); blank for the Orca here
+      #   "pairing_code_env"  the name of the environment variable that holds
+      #                  an Orca server's pairing code (orca://pair?…), for an
+      #                  app that keeps no Orca pairing on disk (a container).
+      #                  The code is a secret, so the config names where it
+      #                  is, never the code. It wins over "environment".
       #
       # The remote kind was built against Orca 1.4.257's commands
       # (`worktree create --project … --host ssh:…`) and has not yet been run
@@ -73,7 +78,10 @@ module Harbor
           end
 
           def settings_from(fields, choice:, catalog: nil)
-            config = { "setup" => fields[:setup].presence_in(SETUPS.keys), "environment" => fields[:environment].to_s.strip.presence }
+            pairing = fields[:pairing_code_env].to_s.strip.presence
+            raise ArgumentError, "The pairing code is named by an environment variable, like ORCA_PAIRING_CODE, not typed here." if pairing && !pairing.match?(/\A[A-Z_][A-Z0-9_]*\z/)
+            config = { "setup" => fields[:setup].presence_in(SETUPS.keys), "environment" => fields[:environment].to_s.strip.presence,
+                       "pairing_code_env" => pairing }
             if remote_choice?(choice)
               host = fields[:host].to_s.strip
               raise ArgumentError, "Choose the external host the work runs on." if host.blank?
@@ -115,10 +123,12 @@ module Harbor
 
         def place
           return [ provider_name, host_name ].compact_blank.join(" · ") if remote?
+          return "Orca server (#{pairing_code_env})" if pairing_code_env
           environment || "This server"
         end
 
         def unready_reason
+          return "the Orca server's pairing code isn't set (#{pairing_code_env})" if pairing_code_env && pairing_code.blank?
           if remote?
             return "no project set" if project.blank?
           elsif repo.blank?
@@ -215,7 +225,7 @@ module Harbor
           client.remove_worktree("id:#{session.worktree_id}", force: true, delete_branch:)
         end
 
-        def client = options[:client] || (@client ||= Harbor::Orca::Client.new(environment:))
+        def client = options[:client] || (@client ||= Harbor::Orca::Client.new(environment:, pairing_code:))
 
         private
 
@@ -223,6 +233,8 @@ module Harbor
         def host = runtime.config["host"].to_s.strip.presence
         def project = runtime.config["project"].to_s.strip.presence
         def environment = runtime.config["environment"].to_s.strip.presence
+        def pairing_code_env = runtime.config["pairing_code_env"].to_s.strip.presence
+        def pairing_code = pairing_code_env && ENV[pairing_code_env].presence
       end
     end
   end

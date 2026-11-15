@@ -50,7 +50,11 @@ module Harbor
 
       # `runner` takes (argv, timeout:) and returns [stdout, stderr, exit
       # status]; tests pass their own, or set Harbor::Orca.runner.
-      def initialize(environment: nil, bin: Harbor.config.orca_bin, runner: nil)
+      # `pairing_code` (an orca://pair?… code) reaches a server this machine
+      # has not saved: it goes with every command, so nothing is kept on disk,
+      # which is what an app in a container needs. It wins over `environment`.
+      def initialize(environment: nil, pairing_code: nil, bin: Harbor.config.orca_bin, runner: nil)
+        @pairing_code = pairing_code.presence
         @environment = environment.presence
         @bin = bin
         @runner = runner || Harbor::Orca.runner || method(:run)
@@ -166,7 +170,9 @@ module Harbor
         # --json command with { ok:, result: | error: }.
         def call(*args, timeout: DEFAULT_TIMEOUT)
           argv = [ @bin, *args, "--json" ]
-          argv += [ "--environment", @environment ] if @environment
+          if @pairing_code then argv += [ "--pairing-code", @pairing_code ]
+          elsif @environment then argv += [ "--environment", @environment ]
+          end
           stdout, stderr, exit_status = @runner.call(argv, timeout: timeout)
 
           reply = parse(stdout)

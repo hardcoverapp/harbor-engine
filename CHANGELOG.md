@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.25.1
+
+- **An Orca runtime can reach its server by a pairing code**: the runtime's config names
+  the environment variable that holds the code (`"pairing_code_env": "ORCA_PAIRING_CODE"`;
+  under Advanced on the runtime form), and Harbor sends the code with every `orca` command
+  (`--pairing-code`). Nothing is saved on disk, which is what an app in a container needs:
+  it has the `orca` command in its image and the code in its environment. The code is
+  never stored in the runtime, shown on a page or put in an error. A runtime whose
+  variable is empty takes no work and says which variable. It wins over `"environment"`.
+  **Checked against Orca 1.4.257's command line only; not yet run against a real remote
+  server.**
+- `Harbor::Orca::Client.new(pairing_code:)`.
+
 ## 0.25.0
 
 - **Review policy is Harbor's**: the records (`Harbor::ReviewRule` and

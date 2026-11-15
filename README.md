@@ -559,6 +559,16 @@ runtime form offers both:
   built against Orca 1.4.257's commands and has not yet been run against a real remote
   host.**
 
+**Where the Orca server is.** With nothing else said, Harbor runs the `orca` command
+against the Orca on its own machine. For an Orca server elsewhere there are two ways:
+`"environment"` names a server this machine has saved with `orca environment add`, and
+`"pairing_code_env"` names the environment variable that holds a server's pairing code
+(`orca serve` prints one), which Harbor sends with every command. The second keeps
+nothing on disk, so it is the one for an app in a container: put the `orca` command in
+the image and the code in the container's environment (it is a secret; the runtime only
+names the variable). The second way was checked against Orca 1.4.257's command line and
+has not yet been run against a real remote server.
+
 Either kind also takes `"setup"` (whether the repository's own setup hooks run in a new
 worktree: `"skip"`, the default, `"run"` or `"inherit"`) and `"environment"` (another
 Orca server to ask instead, paired with this machine by `orca environment add`).
