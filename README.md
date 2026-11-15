@@ -22,7 +22,7 @@ RubyGems yet; add it from this repository, pinned to a release tag:
 
 ```ruby
 # Gemfile
-gem "harbor-engine", github: "hardcoverapp/harbor-engine", tag: "v0.5.0"
+gem "harbor-engine", github: "hardcoverapp/harbor-engine", tag: "v0.27.0"
 ```
 
 ```bash
@@ -38,8 +38,8 @@ Mount Harbor last in the host's routes, so the host's own routes win:
 mount Harbor::Engine => "/", as: :harbor
 ```
 
-Harbor's pages then live at the root (`/settings`). Mount it somewhere else
-(`=> "/harbor"`) if the host already uses those paths.
+Harbor's pages then live under `/factory` (`/factory/settings`); "Where the pages
+live" says how to change that.
 
 ### 3. Migrate
 
@@ -148,7 +148,8 @@ Harbor's styles ship as a Tailwind entry file. A host that builds its CSS with
 ```
 
 `tailwindcss-rails` writes that file during its build. It brings the shell,
-the side nav and the tabs, and makes Tailwind read Harbor's views.
+the side nav, the tabs and Harbor's default look, and makes Tailwind read
+Harbor's views.
 
 **Don't link that entry file as a stylesheet.** It sits under
 `app/assets/builds`, so `stylesheet_link_tag :app` links it, and all it holds
@@ -178,20 +179,40 @@ submits its form when changed) and the workflow builder. On `importmap-rails` wi
 `eagerLoadControllersFrom("controllers", application)` there is nothing to do:
 Harbor pins them under `controllers/harbor/`.
 
-Harbor's pages still expect a few class names to mean something in
-the host's stylesheet: `card`, `pill`, `meta`, `display`, `field`, `btn-quiet`,
-`chip` (a short piece of code in a sentence), `log-pre` (a block of log or JSON),
-and the colour utilities `bg-pale-green`, `text-ink-green`, `bg-pale-red`,
-`text-ink-red`, `text-soft`, `text-ink`, `border-hairline`. Without them they
-work and look plain. A bar chart's hover bubble (`spark`, `spark-col`, `spark-tip`) comes
-with Harbor's styles, in the base layer, so a host's own rules for those names win.
+**The default look.** Harbor's pages are drawn with a small set of colours and
+component classes, and Harbor's styles define all of them
+(`app/assets/tailwind/harbor/theme.css`), so a site with no stylesheet of its own
+gets finished pages: warm greys, with washed pastels kept for status. A site with
+its own look changes any part:
+
+- **A colour**, by setting the same token after the import. The tokens are
+  `canvas`, `bone`, `surface`, `ink`, `body`, `soft`, `faint`, `hairline`, and a
+  `pale-` and `ink-` pair for each of `red`, `blue`, `green`, `yellow`, `orange`,
+  `purple` and `teal`:
+
+  ```css
+  @theme { --color-ink: #0B1F3A; --color-hairline: #D9DEE5; }
+  ```
+
+- **A component**, by defining the class itself: `card`, `pill`, `meta`, `display`
+  (a page's heading), `field`, `btn-primary`, `btn-quiet`, `chip` (a short piece of
+  code in a sentence) and `log-pre` (a block of log or JSON). Harbor's are in the
+  base layer, so a host's rule for the same name wins, layered or not, and so does
+  a utility class beside it. A bar chart's hover bubble (`spark`, `spark-col`,
+  `spark-tip`) works the same way.
+
+- **The room around a page**, with utilities on the shell's `harbor-page` element
+  (`class="harbor-page px-10 pb-24"`); without any, Harbor gives it a margin.
+
+Harbor sets no font and nothing on `body`: those are the host's.
 
 ### 7. Check it
 
-Log in and open `/settings`. You should see the settings grouped under
-Workflows, Self-improvement and Runs, each marked "Default". Change one: it
+Log in and open `/factory`. You should see the Overview page beside the side
+nav. Then open `/factory/settings`: the settings are in groups, each marked
+"Default". Change one: it
 should say "Set here" and by whom. The side nav is beside the page, with
-Settings marked as the current page. Log out and open `/settings` again: you
+Settings marked as the current page. Log out and open `/factory/settings` again: you
 should be sent to your login page.
 
 ## Runs

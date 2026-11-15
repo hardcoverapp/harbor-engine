@@ -1,0 +1,86 @@
+/* Harbor's default look: the colours its pages name and the handful of
+   component classes they use (a card, a pill, a field, two buttons…). A site
+   with a stylesheet of its own changes any of it:
+
+   - a colour, by setting the same token after Harbor's import:
+       @theme { --color-ink: #0B1F3A; --color-hairline: #D9DEE5; }
+   - a component, by defining the class itself. These are in the base layer,
+     so a host's rule for the same name wins, layered or not, and so does any
+     utility class beside it.
+
+   The colours are warm greys with washed pastels kept for status. */
+@theme {
+  --color-canvas: #FBFBFA;
+  --color-bone: #F7F6F3;
+  --color-surface: #FFFFFF;
+  --color-ink: #111111;
+  --color-body: #2F3437;
+  --color-soft: #787774;
+  --color-faint: #A8A6A0;
+  --color-hairline: #EAEAEA;
+
+  --color-pale-red: #FDEBEC;
+  --color-ink-red: #9F2F2D;
+  --color-pale-blue: #E1F3FE;
+  --color-ink-blue: #1F6C9F;
+  --color-pale-green: #EDF3EC;
+  --color-ink-green: #346538;
+  --color-pale-yellow: #FBF3DB;
+  --color-ink-yellow: #956400;
+  --color-pale-orange: #FBEADB;
+  --color-ink-orange: #A2530A;
+  --color-pale-purple: #EFE9FB;
+  --color-ink-purple: #5B3FA6;
+  --color-pale-teal: #E3F2F0;
+  --color-ink-teal: #1F6F63;
+}
+
+@layer base {
+  /* The page beside the side nav: room around it, and the colours its text
+     is set in. A host that sizes the page itself (utilities on .harbor-page)
+     overrides these. */
+  .harbor-page { margin-top: 2.5rem; padding: 0 1.5rem 6rem; color: var(--color-body); line-height: 1.6; }
+  .harbor-page h1, .harbor-page h2, .harbor-page h3 { color: var(--color-ink); }
+
+  .card { background: var(--color-surface); border: 1px solid var(--color-hairline); border-radius: 0.75rem; }
+
+  .btn-primary, .btn-quiet {
+    display: inline-block; border-radius: 0.375rem; padding: 0.5rem 1rem; font-size: 0.875rem; line-height: 1.25rem; font-weight: 500;
+    cursor: pointer; transition: background-color 200ms, transform 200ms;
+  }
+  .btn-primary { background: var(--color-ink); color: #fff; }
+  .btn-primary:hover { background: #333333; }
+  .btn-quiet { background: var(--color-surface); border: 1px solid var(--color-hairline); color: var(--color-ink); }
+  .btn-quiet:hover { background: var(--color-bone); }
+  .btn-primary:active, .btn-quiet:active { transform: scale(0.98); }
+
+  .field {
+    background: var(--color-surface); border: 1px solid var(--color-hairline); border-radius: 6px;
+    padding: 10px 12px; color: var(--color-body); font-size: 14px;
+  }
+  .field:focus { outline: 2px solid var(--color-faint); outline-offset: 2px; }
+  .field[readonly] { background: var(--color-bone); color: var(--color-soft); }
+
+  .pill {
+    display: inline-block; border-radius: 9999px; padding: 0.125rem 0.625rem;
+    font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+
+  .meta { font-size: 0.75rem; line-height: 1rem; color: var(--color-soft); }
+
+  /* A page's heading. */
+  .display { font-family: var(--font-serif); letter-spacing: -0.02em; line-height: 1.15; font-weight: 500; }
+
+  /* A short piece of code in a sentence. */
+  .chip {
+    font-family: var(--font-mono); font-size: 0.85em; background: var(--color-bone); color: var(--color-ink);
+    border-radius: 4px; padding: 0.1em 0.35em;
+  }
+
+  /* A block of log or JSON. */
+  .log-pre {
+    border-radius: 0.75rem; border: 1px solid var(--color-hairline); background: var(--color-bone); padding: 1.25rem;
+    font-family: var(--font-mono); font-size: 0.75rem; line-height: 1rem; color: var(--color-body);
+    overflow-x: auto; white-space: pre-wrap;
+  }
+}

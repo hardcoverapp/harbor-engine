@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.27.0
+
+- **Harbor's pages look finished in a site with no stylesheet of its own.** The colours
+  and component classes its pages are drawn with (`card`, `pill`, `meta`, `display`,
+  `field`, `btn-primary`, `btn-quiet`, `chip`, `log-pre`, and the `ink`, `soft`,
+  `hairline`, `pale-…` colours) are now defined by Harbor
+  (`app/assets/tailwind/harbor/theme.css`, part of the entry file a host already
+  imports), and the page beside the side nav has room around it. Before, a new site
+  got working pages with no cards, buttons or spacing. Found by setting Harbor up in
+  a blank Rails app and opening every page.
+- A host changes a colour by setting its token after the import, and a component by
+  defining the class: Harbor's are in the base layer, so the host's win. Harbor sets
+  no font and nothing on `body`.
+- README "Setting up" is brought up to date: the pages are under `/factory`, and the
+  check at the end opens Overview and `/factory/settings`.
+
+Upgrading from 0.26:
+
+- A host that already defines these colours and classes sees no change: its own
+  definitions win. One that defined only some of them gets Harbor's for the rest.
+- A host that sizes `harbor-page` with utilities keeps its sizes. One that gave it
+  none gets a top margin of 2.5rem and padding of 1.5rem at the sides and 6rem below.
+
 ## 0.26.0
 
 - **Overview is Harbor's**: the section's front page, at the section's own address

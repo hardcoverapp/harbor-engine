@@ -7,7 +7,10 @@
    1. makes Tailwind read Harbor's views, so a utility class used only here is
       still generated;
    2. carries Harbor's own styles: the section's shell, the side nav, tabs,
-      and (from workflows.css, beside this file) the workflow builder. */
+      (from workflows.css, beside this file) the workflow builder, and (from
+      theme.css) the default look of its pages, every part of which a host's
+      own stylesheet can replace. */
+@import "./theme.css";
 @import "./workflows.css";
 @source "../../../views";
 
