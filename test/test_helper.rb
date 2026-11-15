@@ -165,6 +165,115 @@ class FakeOrcaServer
   end
 end
 
+# Stands in for Conductor's API for code that builds its own client
+# (Harbor::ConductorCloud.transport): it makes workspaces and sessions by
+# counting, holds a transcript a test adds to, remembers every request, and
+# can be told to be unavailable or to refuse one. Nothing here reaches the
+# real service.
+class FakeConductorCloud
+  Request = Struct.new(:verb, :path, :params, :headers, keyword_init: true) do
+    def to_s = "#{verb} #{path}"
+  end
+
+  attr_reader :requests
+  # What the workspace and the session say when asked how they are.
+  attr_accessor :workspace, :session, :session_error, :workspace_error, :lifecycle
+  # Answer every request with a 503 while true.
+  attr_accessor :down
+  # How many messages one page of the transcript holds.
+  attr_accessor :page_size
+  # What GET /v0/workspaces lists.
+  attr_accessor :listed
+
+  def initialize
+    @requests = []
+    @refusals = {}
+    @transcript = []
+    @made = 0
+    @workspace = "ready"
+    @session = "working"
+    @page_size = 100
+    @listed = []
+  end
+
+  # Refuse the next request that is `what` ("POST /v0/workspaces").
+  def refuse(what, code: 400, message: "refused") = @refusals[what] = [ code, message ]
+
+  # The agent wrote these events: each becomes a transcript message.
+  def say(*events) = events.each { |event| add("agent", { "rawPayload" => event }) }
+
+  # Conductor's echo of a prompt.
+  def prompted(text = "the prompt") = add("userMessage", { "text" => text })
+
+  def add(type, content) = @transcript << { "id" => "m-#{@transcript.size + 1}", "type" => type, "content" => content }
+
+  def sent = requests.map(&:to_s)
+
+  def last(what) = requests.reverse.find { |request| request.to_s == what }
+
+  def call(request)
+    params = request.body.present? ? JSON.parse(request.body) : URI.decode_www_form(request.uri.query.to_s).to_h
+    seen = Request.new(verb: request.method, path: request.uri.path, params:, headers: request.to_hash.transform_values(&:first))
+    @requests << seen
+    return [ 503, JSON.generate("userMessage" => "Service unavailable") ] if down
+    if (refusal = @refusals.delete(seen.to_s))
+      return [ refusal.first, JSON.generate("userMessage" => refusal.last) ]
+    end
+    answer = answer(seen)
+    answer == :missing ? [ 404, JSON.generate("userMessage" => "not found") ] : [ 200, JSON.generate(answer) ]
+  end
+
+  private
+
+  def answer(request)
+    case request.to_s
+    when "POST /v0/workspaces"
+      @made += 1
+      { "workspaceId" => "ws-#{@made}", "sessionId" => "sess-#{@made}", "deepLink" => "conductor://workspace/ws-#{@made}",
+        "initialMessage" => { "messageId" => "m-0", "state" => "queued" } }
+    when "GET /v0/workspaces" then { "data" => listed, "hasMore" => false }
+    when "GET /v0/sections" then { "data" => [], "hasMore" => false }
+    when %r{\AGET /v0/workspaces/[^/]+/status\z}
+      return :missing if workspace == "missing"
+      { "status" => workspace, "lifecycleStep" => lifecycle, "errorMessage" => workspace_error }.compact
+    when %r{\AGET /v0/sessions/[^/]+/status\z} then { "status" => session, "errorMessage" => session_error }.compact
+    when %r{\AGET /v0/sessions/[^/]+/messages\z}
+      from = request.params["after"] ? @transcript.index { |message| message["id"] == request.params["after"] }.to_i + 1 : 0
+      rest = @transcript[from..] || []
+      { "data" => rest.first(page_size), "hasMore" => rest.size > page_size }
+    when %r{\APOST /v0/sessions/[^/]+/cancel\z} then { "status" => "idle", "canceledQueuedMessages" => 0 }
+    when %r{\APOST /v0/workspaces/[^/]+/archive\z} then { "status" => "archived" }
+    else {}
+    end
+  end
+end
+
+# A Conductor Cloud runtime for the agent of HarborAgentSessions, the
+# stand-in for Conductor's API, and an API key in the environment.
+module HarborConductorCloud
+  KEY = "CONDUCTOR_API_KEY".freeze
+
+  def self.included(base)
+    base.setup do
+      @conductor_key = ENV[KEY]
+      ENV[KEY] = "test-conductor-key"
+      @conductor = FakeConductorCloud.new
+      Harbor::ConductorCloud.transport = @conductor
+      @conductor_config = [ Harbor.config.conductor_cloud_user_agent, Harbor.config.conductor_cloud_models ]
+    end
+    base.teardown do
+      @conductor_key ? ENV[KEY] = @conductor_key : ENV.delete(KEY)
+      Harbor::ConductorCloud.transport = nil
+      Harbor.config.conductor_cloud_user_agent, Harbor.config.conductor_cloud_models = @conductor_config
+    end
+  end
+
+  def cloud_runtime(**attributes)
+    Harbor::Runtime.create!({ key: "cloud", name: "Cloud", backend: "conductor_cloud", max_concurrent: 2,
+                              config: { "repository_url" => "https://github.com/acme/app" } }.merge(attributes))
+  end
+end
+
 # An agent with a model, a workspace and an Orca runtime to run on, a folder
 # for logs, and a stand-in for Orca. Everything is put back afterwards.
 module HarborAgentSessions

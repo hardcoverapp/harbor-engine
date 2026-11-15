@@ -1,0 +1,48 @@
+<%# A Conductor Cloud runtime's fields: the repository Conductor clones and the
+    branch a workspace starts from. The API key is a secret, so the form only
+    names the environment variable that holds it. %>
+<% backend = choice.backend_class %>
+<% client = Harbor::ConductorCloud::Client %>
+<% config = chosen ? runtime.config : {} %>
+<% value = ->(key) { sent.key?(key) ? sent[key].to_s : config[key.to_s].to_s } %>
+<% key_name = value.(:api_key_env).presence || client::DEFAULT_KEY_NAME %>
+
+<% if backend.form_note.present? %>
+  <p class="text-sm text-soft max-w-2xl" data-conductor-note><%= backend.form_note %></p>
+<% end %>
+
+<div>
+  <%= label_tag "#{prefix}[repository_url]", "Repository", class: "block text-sm mb-2" %>
+  <%= text_field_tag "#{prefix}[repository_url]", value.(:repository_url).presence || backend.default_repository_url, required: true,
+        class: "field w-full sm:w-96 font-mono", placeholder: "https://github.com/acme/app" %>
+  <p class="meta mt-1">The repository's address. Conductor clones it into a new workspace for each run, so the Conductor account has to be able to read it.</p>
+</div>
+<div>
+  <%= label_tag "#{prefix}[branch]", "Branch", class: "block text-sm mb-2" %>
+  <%= text_field_tag "#{prefix}[branch]", value.(:branch), class: "field w-full sm:w-96 font-mono", placeholder: "Leave empty for the repository's default branch" %>
+  <p class="meta mt-1">The branch a new workspace starts from, unless a run names its own.</p>
+</div>
+
+<p class="text-sm <%= ENV[key_name].present? ? 'text-soft' : 'text-ink-yellow' %>" data-conductor-key>
+  <% if ENV[key_name].present? %>
+    The Conductor API key is read from the environment variable <span class="font-mono"><%= key_name %></span>, which is set.
+  <% else %>
+    The Conductor API key is read from the environment variable <span class="font-mono"><%= key_name %></span>, which is not set here. Nothing can run here until it is.
+  <% end %>
+</p>
+
+<details class="text-sm">
+  <summary class="text-soft cursor-pointer">Advanced</summary>
+  <div class="mt-4 space-y-6">
+    <div>
+      <%= label_tag "#{prefix}[api_key_env]", "API key variable", class: "block text-sm mb-2" %>
+      <%= text_field_tag "#{prefix}[api_key_env]", value.(:api_key_env), class: "field w-full sm:w-96 font-mono", placeholder: client::DEFAULT_KEY_NAME %>
+      <p class="meta mt-1">The name of the environment variable that holds the Conductor API key (Conductor → Settings → API keys). The key itself is a secret and is never typed here.</p>
+    </div>
+    <div>
+      <%= label_tag "#{prefix}[api_url]", "API address", class: "block text-sm mb-2" %>
+      <%= text_field_tag "#{prefix}[api_url]", value.(:api_url), class: "field w-full sm:w-96 font-mono", placeholder: client::DEFAULT_URL %>
+      <p class="meta mt-1">Where Conductor's API is. Leave empty for the public one.</p>
+    </div>
+  </div>
+</details>

@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.28.0
+
+- **Conductor Cloud is a kind of runtime.** The "New runtime" page offers a third kind,
+  **Conductor Cloud**, beside Orca and Orca (Remote): work runs in a
+  [Conductor Cloud](https://www.conductor.build) workspace made for each run from a
+  repository. Its fields are the repository's address, the branch a workspace starts
+  from and, under Advanced, the name of the environment variable that holds the API key
+  (`CONDUCTOR_API_KEY` unless another is named) and the API's address. The key is never
+  typed, stored or shown; a runtime whose variable is empty takes no work and says which
+  variable. The backend is `Harbor::Runtimes::Backends::ConductorCloud`, registered by
+  Harbor as `conductor_cloud`. See README "Conductor Cloud".
+- **`Harbor::ConductorCloud::Client`**: a client for Conductor's REST API. A 5xx or a
+  network failure is `Unavailable`, a 404 is `NotFound`, both `Error`s. Its user agent
+  names Harbor unless a host sets `config.conductor_cloud_user_agent`.
+- **`Harbor::ConductorCloud::Models`**: Conductor's model ids and the rule that finds one
+  for a model (`claude-opus-5-5` is `opus-5-5-1m`). A model with none is passed over by
+  placement. A host adds ids with `config.conductor_cloud_models`.
+- **Agent sessions run on a Conductor Cloud runtime**, so a site with no code of its own
+  can run an agent automation or a workflow's agent step there. There is no terminal and
+  no runner script: making the workspace starts the session on its first message, and a
+  job (`Harbor::AgentSession::PollJob`) reads new transcript messages into the same
+  recorder an Orca session's output goes through, so the log, events, cost, tokens and
+  result are the same. Stop cancels the session, the finisher archives the workspace, the
+  run's timeout applies from when the workspace is ready, an outage of Conductor's API is
+  waited out, and a restart of the app picks the session up where reading stopped.
+  **This path is tested against a stand-in for Conductor's API and has not been run
+  against the real service.**
+- `Harbor::AgentSession` takes a backend that is not a terminal. Such a backend answers
+  the same calls as Orca's and may also answer `session_from(hash)` (what it holds for a
+  run), `poll_session(run)` (Harbor asks it, through `PollJob`, instead of waiting for a
+  runner), `continues_sessions?` (false drops `resume_session_id`) and `agent_sessions?`
+  (false refuses every session). Orca answers none of them and runs as before.
+- Two settings, under Runtimes: **Conductor Cloud: seconds between checks** (10) and
+  **Conductor Cloud: workspace setup (minutes)** (30).
+
+Upgrading from 0.27:
+
+- Nothing to migrate, and nothing changes for an Orca runtime.
+- The "New runtime" page has a third choice. A host that wants it left off registers a
+  subclass that answers `offered?` with false.
+- **A host that already registers a backend named `conductor_cloud`** keeps its own: a
+  host's registration replaces Harbor's. To share Harbor's client, form and model list,
+  make that backend a subclass of `Harbor::Runtimes::Backends::ConductorCloud`. Such a
+  subclass inherits the session calls too, so Harbor's agent sessions can then be placed
+  on its runtimes; a host that drives Conductor its own way there answers
+  `agent_sessions?` with false to keep them off. It should also look at what it
+  inherits: `unready_reason` now says when the key or the repository is missing, and
+  `place` is the repository's name.
+- A host whose own code calls `Harbor::AgentSession.session_of(run)` gets the backend's
+  own struct for a run on such a backend, not `Orca::Session`.
+
 ## 0.27.1
 
 Two things that stopped a new site, found by setting one up and making an agent, a

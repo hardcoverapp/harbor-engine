@@ -60,5 +60,6 @@ module Harbor
   end
 end
 
-# Harbor's own way of running work. A host registers any others.
+# Harbor's own ways of running work. A host registers any others.
 Harbor::Runtimes.register "orca", "Harbor::Runtimes::Backends::Orca"
+Harbor::Runtimes.register "conductor_cloud", "Harbor::Runtimes::Backends::ConductorCloud"

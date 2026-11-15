@@ -240,6 +240,16 @@ module Harbor
     # after Harbor has recorded it and cleaned up. nil: nothing happens.
     attr_accessor :agent_session_finished
 
+    # --- Conductor Cloud (see README "Conductor Cloud") ---
+
+    # The User-Agent Harbor's requests to Conductor's API carry. nil: one
+    # that names Harbor and its version, and not the site.
+    attr_accessor :conductor_cloud_user_agent
+
+    # Model ids Conductor takes that Harbor doesn't list yet
+    # (Harbor::ConductorCloud::Models), newest first: %w[opus-6-1m].
+    attr_accessor :conductor_cloud_models
+
     # The host's Harbor config file (Harbor::ConfigFile): which databases are
     # backed up and which environments they are restored to. A path or a
     # callable returning one; `config/harbor.yml` in the app by default.
@@ -396,6 +406,8 @@ module Harbor
       @agent_session_env = nil
       @agent_session_preamble = nil
       @agent_session_finished = nil
+      @conductor_cloud_user_agent = nil
+      @conductor_cloud_models = []
       @config_file = -> { Rails.root.join("config/harbor.yml") }
       @backup_root = -> { Rails.root.join("storage/harbor/backups").to_s }
       @backup_host_root = nil

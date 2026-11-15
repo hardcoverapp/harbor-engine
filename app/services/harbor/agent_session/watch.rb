@@ -68,6 +68,9 @@ module Harbor
           starting = [ limit, STARTING ].max
           return starting - quiet if quiet < starting
           Finisher.call(run, interrupted: true, error: "The session was cut off while it was being started.")
+        elsif AgentSession.polled?(run)
+          # No runner to have gone: the quiet is Harbor's own, so it asks again.
+          PollJob.follow(run)
         elsif AgentSession.backend_for(run).exited?(session)
           Finisher.call(run, interrupted: true,
                              error: "The runner stopped reporting: nothing arrived for #{duration(quiet)} and its terminal is gone.")

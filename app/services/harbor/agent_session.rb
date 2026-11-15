@@ -31,6 +31,8 @@ module Harbor
   #   "interrupted", "interruptions", "continuing", "started_over"
   #                           a session that was cut off (Interruption)
   #   "watch_round"           which set of checks is the current one (WatchJob)
+  #   "poll_chain"            which line of looks is the current one (PollJob),
+  #                           for a session Harbor has to ask about
   #   "timeout_at", "idle_timeout"
   #   "stop_reason", "stop_note"   why Harbor stopped it, when it did
   #   "slots"                 the capacity slots to give back at the end
@@ -41,6 +43,19 @@ module Harbor
   # system prompt and MCP config are kept in the run's input
   # (`input["agent_session"]`) for the runner to fetch. Secrets are in none of
   # these: they come from `config.agent_session_env` when the runner asks.
+  #
+  # A backend need not be a terminal. One that runs the agent some other way
+  # (Conductor Cloud: a cloud workspace, with no runner script) takes the same
+  # calls and says what differs, each of which Orca leaves unsaid:
+  #
+  #   session_from(hash)    what it holds for a run, when not a worktree and
+  #                         a terminal
+  #   poll_session(run)     nothing there reports, so Harbor asks: PollJob
+  #                         calls this until the run is over, and what it
+  #                         reads goes through the same Recorder and Finisher
+  #   continues_sessions?   false when it can't continue an earlier session,
+  #                         so `resume_session_id` is dropped
+  #   agent_sessions?       false to take no session at all
   module AgentSession
     class Error < StandardError; end
     # start! was called for a run that is already a session, or is over.
@@ -209,6 +224,7 @@ module Harbor
           checks = [ ("timeout" if state["timeout_at"].present?), ("idle" if state["idle_timeout"].present?), "silent" ].compact
           checks.each { |check| WatchJob.set(wait: grace).perform_later(run.id, check, round) }
           WatchJob.perform_later(run.id, "resume", round) if state["interrupted"].present?
+          PollJob.follow(run) if polled?(run)
           run
         rescue StandardError => e
           log_failure(run, "picking the session up after a restart", e)
@@ -219,11 +235,22 @@ module Harbor
       # Whether a run is an agent session (started by start!).
       def session?(run) = run.runner_state.to_h["cli"].present?
 
-      # The backend that drives a runtime's sessions.
+      # The backend that drives a runtime's sessions. One that can start
+      # commands and still wants no session of Harbor's (it answers
+      # `agent_sessions?` with false) is refused like one that can't.
       def backend(runtime)
         adapter = runtime.adapter
-        return adapter if %i[start restart stop clear discard cleanup exited?].all? { |action| adapter.respond_to?(action) }
+        takes = %i[start restart stop clear discard cleanup exited?].all? { |action| adapter.respond_to?(action) }
+        return adapter if takes && !(adapter.respond_to?(:agent_sessions?) && !adapter.agent_sessions?)
         raise Error, "#{runtime.name} can't run agent sessions: its backend (#{runtime.backend}) doesn't start commands."
+      end
+
+      # Whether the run's session is one Harbor has to ask about (PollJob):
+      # its backend has no terminal and no runner to report, and answers
+      # `poll_session`.
+      def polled?(run)
+        runtime = run.runtime_id && Harbor.runtime_class.find_by(id: run.runtime_id)
+        runtime.present? && runtime.adapter.respond_to?(:poll_session)
       end
 
       # The backend of the runtime a run was placed on, or nil.
@@ -232,10 +259,14 @@ module Harbor
         runtime && backend(runtime)
       end
 
-      # What the run holds on its runtime (worktree, terminal), or nil.
+      # What the run holds on its runtime (worktree, terminal), or nil. A
+      # backend that holds something else says what (`session_from`).
       def session_of(run)
         held = run.runner_state.to_h["session"]
-        Harbor::Runtimes::Backends::Orca::Session.from(held) if held.present?
+        return nil if held.blank?
+        runtime = run.runtime_id && Harbor.runtime_class.find_by(id: run.runtime_id)
+        adapter = runtime&.adapter
+        adapter.respond_to?(:session_from) ? adapter.session_from(held) : Harbor::Runtimes::Backends::Orca::Session.from(held)
       end
 
       # One of the files a session's runner fetches, by name; nil for a name

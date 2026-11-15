@@ -19,6 +19,7 @@ require "harbor/databases"
 require "harbor/runner"
 require "harbor/configuration"
 require "harbor/orca"
+require "harbor/conductor_cloud"
 require "harbor/engine"
 
 # Harbor runs agent work: workflows whose steps are runs, placed on runtimes

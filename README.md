@@ -563,7 +563,10 @@ end
 
 ### Orca
 
-Harbor's own backend is `orca`: work runs in [Orca](https://github.com/stablyai/orca),
+Harbor has two backends of its own, `orca` and `conductor_cloud` (below), and the runtime
+form offers three kinds of runtime between them: Orca, Orca (Remote) and Conductor Cloud.
+
+With `orca`, work runs in [Orca](https://github.com/stablyai/orca),
 in a worktree Orca makes for each run. There are two kinds of Orca runtime, and the
 runtime form offers both:
 
@@ -640,11 +643,146 @@ never give one a public address.
 workspace, and `c.runtime_class` / `c.workspace_profile_class` name a host's
 subclasses.
 
+### Conductor Cloud
+
+The backend `conductor_cloud` runs work in [Conductor Cloud](https://www.conductor.build):
+each run gets a cloud workspace Conductor makes from a repository, and the agent runs
+there. The runtime form offers it as one kind, **Conductor Cloud**. Harbor needs no
+`orca` command for it and no runner address: it talks to Conductor's REST API
+(`Harbor::ConductorCloud::Client`), and nothing in the workspace talks back.
+
+**The session side has not been run against the real service.** The client makes the
+calls a host already uses against Conductor's API; the way Harbor follows a
+session with them (below) was built from that host's experience and Conductor's
+documentation, and is tested against a stand-in for the API. Expect to find something
+the first time a real session runs.
+
+**What the runtime needs.** A Conductor account with an API key, and a repository that
+account can read. The fields on the form, which are the runtime's config:
+
+- **Repository** (`"repository_url"`): the repository's address
+  (`https://github.com/acme/app`). Conductor clones it into a new workspace for each run.
+- **Branch** (`"branch"`): the branch a workspace starts from. Empty: the repository's
+  default. A session's own `base:` wins.
+- Under Advanced, **API key variable** (`"api_key_env"`): the name of the environment
+  variable that holds the Conductor API key, `CONDUCTOR_API_KEY` unless another is
+  named. The key is a secret: it is read from the environment each time it is used, is
+  never typed into the form, never stored and never shown. The form says only whether
+  the variable is set. A runtime whose variable is empty takes no work and says which
+  variable.
+- Under Advanced, **API address** (`"api_url"`): where Conductor's API is, for one
+  that isn't the public `https://api.conductor.build`.
+
+The list shows such a runtime as "Conductor Cloud · acme/app". Its health check is one
+read-only call to the API.
+
+**Models.** Conductor takes its own model ids (`opus-5-5-1m`), not the ids a model alias
+holds (`claude-opus-5-5`). `Harbor::ConductorCloud::Models` has the ids Conductor is
+known to take and finds one for a model: an id of Conductor's own is itself;
+`claude-opus-5-5`, `claude-opus-5.5` or a dated id is the same family and version, with
+its 1M-context variant when Conductor has one; a bare family (`opus`) is the first id
+of that family in the list. A model with no id there is one this backend can't run, so
+placement passes over it (`supports?`), and on to the alias's next choice or the
+workspace's next runtime.
+
+**How a session runs there.** `Harbor::AgentSession` is used the same way, and
+`Harbor::Automations::AgentRunJob` and a workflow's agent step need nothing different:
+the runtime the run is placed on decides. What is different from an Orca session:
+
+- **No terminal and no runner script.** Starting the session is one API call that
+  makes the workspace (named `harbor-run-<run id>`) and its first session, which starts
+  on the first message. `runs.command` reads
+  `claude <prompt…> --model sonnet-5-5-1m --effort medium (Conductor Cloud)`.
+- **The first message is everything the agent is told.** Conductor has no separate
+  system prompt, so the agent's own instructions, Harbor's unattended-run paragraph,
+  the host's line and `system_prompt_extra` go first, then a rule, then the prompt.
+- **A slash command is an instruction, not an expansion.** The runner step that expands
+  a command's file doesn't exist here, and sending `/name args` as the whole message
+  (which Claude Code would expand itself) would leave the agent without its
+  instructions. So the task is "read `.claude/commands/<name>.md` (at `command_ref`
+  when one was given, with `git show`) and carry out its instructions", with the
+  arguments listed. The agent does the substitution, not `awk`.
+- **The environment is sent to Conductor.** What `config.agent_session_env` returns for
+  the run becomes the workspace's environment, in the API call that makes it. Harbor
+  still stores and logs none of it, but it does leave the app: Conductor holds it for
+  the workspace. Conductor's own `gh` wrapper acts as the account that owns the
+  workspace whatever `GH_TOKEN` says; a host whose agents must act as someone else
+  tells them to call `"${CONDUCTOR_REAL_GH_PATH:-gh}"` (in `agent_session_preamble`).
+- **Tool rules, MCP servers and added folders are not applied.** Conductor starts the
+  agent with its own settings. The run's log says which of them were set and passed
+  over, the backend answers `enforces_tool_policy?` with false, and work that requires
+  its tool rules is never placed here.
+- **An earlier session can't be continued.** `resume_session_id:` is dropped, with a
+  line in the log: the conversation it names lived in a workspace that is gone.
+- **Harbor asks; nothing reports.** A job (`Harbor::AgentSession::PollJob`) looks at
+  the session every **Conductor Cloud: seconds between checks** (a setting, 10). While
+  the workspace is setting up it asks only for the workspace's status. Once it is
+  ready it reads the transcript messages after the last one it read and asks for the
+  session's status. Each message's `rawPayload` is the agent's own event, so the
+  messages go, one to a line, through the same recorder an Orca session's output does:
+  the live log, the run's events, the raw stream, and at the end the cost, tokens,
+  session id and final text are the same.
+- **Setup is not the run's time.** A new workspace runs the repository's setup first.
+  That may take up to **Conductor Cloud: workspace setup** (a setting, 30 minutes)
+  before the run is finished as an error; the run's `timeout:` and `idle_timeout:`
+  count from the moment the workspace is ready. The run's capacity slots are leases
+  sized for the timeout as first given, so after a long setup they can lapse before
+  the session ends, as after an interruption.
+- **How it ends.** The run is finished when the transcript holds the agent's result (a
+  successful one is `ok`; any other is an `error` with what the agent said), when the
+  session goes idle after working with no result (`error`), when Conductor reports the
+  session as errored, when the workspace fails its setup or is archived, or when the
+  session has sat idle for 15 minutes without ever working (its message was never
+  delivered).
+- **Stop and timeouts** cancel the session through the API, and the finisher archives
+  the workspace (unless `keep_worktree: true`).
+- **Conductor's API being away is not a failure.** A 5xx, a timeout or a refused
+  connection says nothing about the session, which keeps working in the cloud: that
+  look is skipped, the log says so once and says when the API answers again, and the
+  next look reads on from the same place. The run's timeout still bounds the wait.
+  Anything else Conductor refuses (an unknown session, a key it won't take) ends the
+  run as an `error`. The call that makes the workspace is never retried on an outage:
+  that could start the work twice.
+- **Restarts.** The session runs in Conductor, not in the app, and what Harbor needs to
+  follow it is on the run (`runner_state["conductor"]`: the phase, when it began, the
+  last message read; `runner_state["session"]`: the workspace and session ids). When
+  the job workers start again `Harbor::AgentSession.recover!` begins following every
+  such session again, and a look left over from before stops. Nothing is started again:
+  there is no terminal to lose, so the silent-runner check only begins the following
+  again. The one interruption that exists is the app going down while the session was
+  being started: a workspace made for the run and never recorded is archived (found by
+  its name), and the run starts over in a new one.
+
+**What a host can change.**
+
+```ruby
+Harbor.configure do |c|
+  # The User-Agent of Harbor's requests to Conductor. By default it names
+  # Harbor and its version, and not the site.
+  c.conductor_cloud_user_agent = "acme-factory (factory.example.com)"
+  # Model ids Conductor takes that Harbor doesn't list yet, newest first.
+  c.conductor_cloud_models = %w[opus-6-1m]
+end
+```
+
+A subclass of `Harbor::Runtimes::Backends::ConductorCloud`, registered in its place
+(`Harbor::Runtimes.register "conductor_cloud", "Backends::MyConductor"`), can override
+`model_id_for(model)` (its own naming of models), `default_repository_url` (what the
+form's Repository field starts from), `form_note` (a line above the fields),
+`workspace_name(run, attempt)`, `first_message(run)`, and `agent_sessions?`: a host
+that drives Conductor its own way on these runtimes and wants none of Harbor's sessions
+placed there answers false, and a session sent to one fails with "can't run agent
+sessions", as on any backend that can't start one.
+
 ## Agent sessions
 
 An agent session is one run of an AI coding agent's command line, `claude -p`
 for an Anthropic model or `codex exec` for an OpenAI one, as the command in an
 Orca terminal. Only HTTP passes between the machine it runs on and the app.
+(On a Conductor Cloud runtime the agent runs in a cloud workspace instead and
+Harbor asks how it is doing; everything in this section that speaks of a
+terminal, a runner or a worktree is different there, as Conductor Cloud above
+says.)
 Harbor builds the command, and turns what comes back into the run's log, its
 events, its cost and tokens, its final text and its status.
 
@@ -2344,6 +2482,8 @@ end
 
 The hooks for agent sessions (`agent_session_env`, `agent_session_preamble`,
 `agent_session_finished`, `claude_bin`, `codex_bin`) are under Agent sessions.
+What Conductor Cloud takes (`conductor_cloud_user_agent`, `conductor_cloud_models`) is
+under Conductor Cloud.
 What the Agents pages take (`agent_params`, `agent_edited`, `task_assignment_class`) is
 under Agents pages.
 What automations take (`automation_class`, `automation_params`, `automation_edited`,

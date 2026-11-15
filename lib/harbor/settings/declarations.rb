@@ -51,6 +51,16 @@ Harbor::Settings.declare :runner_url,
   description: "Where work running on another machine reaches this app to send its log and result: the app's public address " \
                "(https://…), with the path Harbor is mounted at when that isn't the root. Runs can't be placed on Orca until this is set."
 
+Harbor::Settings.declare :conductor_cloud_poll_seconds,
+  type: :integer, default: 10, min: 2, max: 300, group: "Runtimes", label: "Conductor Cloud: seconds between checks",
+  description: "How often Harbor asks Conductor about an agent session running in a Conductor Cloud workspace: " \
+               "whether it is still working, and what it has written since."
+
+Harbor::Settings.declare :conductor_cloud_setup_minutes,
+  type: :integer, default: 30, min: 1, max: 240, group: "Runtimes", label: "Conductor Cloud: workspace setup (minutes)",
+  description: "How long a new Conductor Cloud workspace may take to get ready (its setup script runs first) before the run " \
+               "is finished as an error. This time is not counted against the run's own timeout."
+
 # Databases: backups and restores (Harbor::DbOps). Where dumps go and what is
 # run are `Harbor.config` values, set on the machine. What may be restored
 # where, and whether it is switched on, is the config file's and is never a

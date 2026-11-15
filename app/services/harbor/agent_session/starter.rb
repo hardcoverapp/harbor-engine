@@ -31,11 +31,16 @@ module Harbor
       def call
         session = nil
         backend = AgentSession.backend(@runtime)
+        cannot_continue = @resume_session_id.present? && backend.respond_to?(:continues_sessions?) && !backend.continues_sessions?
+        @resume_session_id = nil if cannot_continue
         command = build_command
         claim(backend, command)
+        AgentSession.note(@run, "[harbor] an earlier session can't be continued on #{backend.runner_name}: this one starts from its prompt") if cannot_continue
         session = backend.start(run: @run, command: command.shell, base: @base, title: title, bundle: command.bundle, attempt: 1)
         keep(session)
         schedule
+        # Nothing reports for a session like this one: Harbor asks.
+        PollJob.follow(@run) if backend.respond_to?(:poll_session)
         @run
       rescue AlreadyStarted
         raise

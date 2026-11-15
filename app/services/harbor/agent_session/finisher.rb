@@ -180,7 +180,7 @@ module Harbor
       # worktree. The run stays running throughout.
       def start_again
         backend = AgentSession.backend_for(@run)
-        held = Harbor::Runtimes::Backends::Orca::Session.from(@state["session"])
+        held = AgentSession.session_of(@run)
         kept = @run.input.to_h["agent_session"].to_h
         AgentSession.note(@run, "[harbor] --resume #{@state['resume_session_id']} did not continue " \
                                 "(exit #{@exit_status}); starting again without it")
