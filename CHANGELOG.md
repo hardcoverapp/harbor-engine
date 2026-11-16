@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.30.0
+
+- **Identities: which account each agent acts as.** A `Harbor::Identity` (table
+  `harbor_identities`) is a name, the service it is an account of (GitHub is the only
+  kind so far), the account's login and **the name of the environment variable that
+  holds its token** (`token_env`). The token is never stored: it is read from the
+  variable when a session asks (`identity.token`, `identity.token_set?`), and is in no
+  column, log, page, error, run event or job argument. `token_env` follows the rule of
+  an Orca runtime's pairing code and a Conductor Cloud runtime's API key: a variable's
+  name, and a token typed there is refused ("The token is named by an environment
+  variable, like GITHUB_PAT_RELEASE_BOT, not typed here."), dropped before it reaches
+  the record or the form shown again, and logged as `[FILTERED]`. See README
+  "Identities".
+- **Agents pick one.** An agent `belongs_to :identity` (`agents.identity_id`, optional).
+  The agent form has **Acts on GitHub as** ("Nobody" is none); an agent's page and the
+  agents list say who it acts as, for an agent that has one. An agent with none acts as
+  nobody, as every agent did before.
+- **An Identities tab on the Agents page** (`?tab=identities`), beside Agents, Task
+  routing and Shared context: each identity's name, account, variable, whether that
+  variable is set where the app runs, and the agents that use it, with New identity,
+  Edit and Delete (`Harbor::IdentitiesController`, under the Agents page's switch).
+  Deleting one that an agent or an automation uses is refused, saying which.
+- **Agent sessions act as the identity.** A session for a run that acts as a GitHub
+  identity is given `GH_TOKEN` and `GITHUB_TOKEN` with the token, and
+  `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL`
+  for its login (`<login>@users.noreply.github.com`), on every kind of runtime. A run
+  acts as the identity whose login is its `acting_as`, else as its agent's
+  (`Harbor::Identity.for_run`). `config.agent_session_env` still has the last word: what
+  it returns is laid over the identity's, and a name it gives as `nil` is now taken out
+  (before, a `nil` was only skipped, which is the same thing where there is no identity).
+- **An identity whose variable isn't set stops the session**, before anything is made:
+  the run ends as an error naming the identity and the variable. It never starts as
+  nobody, or as whoever the runner machine is logged in as.
+- **Automations' "run as"**: a site that declares no identities of its own
+  (`Harbor::Automations.identity`) is offered Harbor's on the automation form, by login,
+  under "The agent's own identity". An automation that names one runs as it; one that
+  names none runs as its agent's. A declared list is used as before
+  (`Harbor::Automations.identities` is still only what the host declared;
+  `run_as_choices` and `own_identities?` are new).
+
+### Upgrading from 0.29
+
+- **Run the migration** (`bin/rails db:migrate`): it adds the table `harbor_identities`
+  and the column `agents.identity_id` with its index. Each step is skipped where it
+  already exists.
+- **Nothing changes until an identity is made.** With none, no agent has one, sessions
+  are given what the host's hook returns and no more, and the automation form is as it
+  was. The Agents page gains the Identities tab and the agent form the "Acts on GitHub
+  as" select, with "Nobody" chosen.
+- **A host whose hook already hands out a GitHub token by the run's `acting_as`** can
+  make an identity for each of those logins and drop that part of the hook: the
+  session is given the same six variables. Two things to check first. Each identity's
+  variable must be set where the app runs, because a run whose identity has no token
+  now fails to start where the hook may have let it start without one. And an
+  identity is matched to `acting_as` by login, so a run acting as a login with no
+  identity is still only the hook's.
+- **A host that declares `Harbor::Automations.identity`** keeps its list and its rule
+  that an agent automation names one.
+- **A test that counts the Agents page's tabs** finds four.
+
 ## 0.29.0
 
 - **A machine for each run: the runtime kind "Orca (per workspace)".** A fourth kind on

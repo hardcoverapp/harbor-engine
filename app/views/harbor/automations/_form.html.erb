@@ -47,6 +47,13 @@
             <%= form.label :run_as, Harbor::Automations.label(:run_as), class: "block text-sm mb-2" %>
             <%= form.select :run_as, identities.map { |i| [ i.label, i.key ] }, {}, class: "field w-full" %>
           </div>
+        <% elsif Harbor::Automations.own_identities? %>
+          <%# None declared by the host: Harbor's identities, or the agent's own. %>
+          <div>
+            <%= form.label :run_as, Harbor::Automations.label(:run_as), class: "block text-sm mb-2" %>
+            <%= form.select :run_as, Harbor::Automations.run_as_choices.map { |i| [ i.label, i.key ] }, { include_blank: "The agent's own identity" }, class: "field w-full" %>
+            <p class="meta mt-1">An account chosen here is used instead of the agent's. <%= link_to "Manage identities", agents_path(tab: "identities"), class: "underline" %>.</p>
+          </div>
         <% end %>
         <div>
           <%= form.label :timeout_ms, "Timeout (ms)", class: "block text-sm mb-2" %>

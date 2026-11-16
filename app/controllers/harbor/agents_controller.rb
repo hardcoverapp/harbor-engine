@@ -1,5 +1,5 @@
 module Harbor
-  # The agents: the list with its task routing and shared context tabs, an
+  # The agents: the list with its task routing, shared context and identities tabs, an
   # agent's own page, and the form that creates and edits one.
   class AgentsController < ApplicationController
     # Pages outside this one show agents' avatars, so they stay reachable
@@ -8,22 +8,24 @@ module Harbor
     helper Harbor::AgentsHelper
     before_action :set_agent, only: %i[show edit update avatar]
 
-    TABS = %w[agents routing context].freeze
+    TABS = %w[agents routing context identities].freeze
     # The form's JSON fields, with what each is when left empty.
     JSON_FIELDS = { "configuration" => {}, "tools" => {}, "default_tasks" => [] }.freeze
 
-    # Three tabs: the agents, which agent takes which task, and what every
-    # agent is told. Each loads only what it shows.
+    # Four tabs: the agents, which agent takes which task, what every agent
+    # is told, and the accounts agents act as. Each loads only what it shows.
     def index
       @tab = (params[:tab].presence_in(TABS) || "agents").to_sym
       case @tab
       when :agents
-        @agents = Harbor.agent_class.includes(:model_alias, :workspace_profile).order(enabled: :desc, key: :asc)
+        @agents = Harbor.agent_class.includes(:model_alias, :workspace_profile, :identity).order(enabled: :desc, key: :asc)
       when :routing
         @assignments = Harbor::TaskTypes.keys.index_with { |type| Harbor.task_assignment_class.find_by(task_type: type) }
       when :context
         @house_context = Harbor::AgentSetting.find_by(key: Harbor::AgentSetting::HOUSE_CONTEXT)&.body
         @shared_documents = Harbor::AgentSetting.shared_documents
+      when :identities
+        @identities = Harbor::Identity.by_name.includes(:agents)
       end
     end
 
@@ -92,7 +94,7 @@ module Harbor
     # sets something a field of Harbor's also sets, the field wins.
     def agent_params
       params.require(:agent).permit(:key, :name, :description, *Harbor.config.agent_params,
-        :workspace_profile_id, :max_workspaces, :max_agents, :enabled, :model_alias_id, :system_prompt,
+        :workspace_profile_id, :identity_id, :max_workspaces, :max_agents, :enabled, :model_alias_id, :system_prompt,
         :avatar, :remove_avatar, agent_documents_attributes: %i[id path body _destroy]).to_h
     end
   end

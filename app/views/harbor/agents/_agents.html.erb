@@ -32,6 +32,9 @@
                   <% unless agent.enabled? %>
                     <span class="pill bg-bone text-faint border border-hairline ml-1">disabled</span>
                   <% end %>
+                  <% if agent.identity %>
+                    <div class="meta [overflow-wrap:anywhere]" data-agent-identity title="<%= agent.identity.name %>">as <%= agent.identity.handle %></div>
+                  <% end %>
                 </div>
               </div>
             </td>

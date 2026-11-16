@@ -20,6 +20,9 @@ module Harbor
     belongs_to :model_alias, class_name: Harbor.class_name_for(:model_alias_class), optional: true
     # Where the agent's runs execute.
     belongs_to :workspace_profile, class_name: Harbor.class_name_for(:workspace_profile_class), optional: true
+    # The account its sessions act as (Harbor::Identity). With none it acts
+    # as nobody: its runs are given no token.
+    belongs_to :identity, class_name: "Harbor::Identity", optional: true, inverse_of: :agents
     has_many :agent_documents, class_name: "Harbor::AgentDocument", foreign_key: :agent_id,
              dependent: :destroy, inverse_of: :agent
     accepts_nested_attributes_for :agent_documents, allow_destroy: true, reject_if: :all_blank

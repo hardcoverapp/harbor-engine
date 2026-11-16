@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_15_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_15_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -49,6 +49,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_15_100000) do
     t.bigint "workspace_profile_id"
     t.integer "max_agents", default: 5, null: false
     t.integer "max_workspaces", default: 1, null: false
+    t.bigint "identity_id"
+    t.index ["identity_id"], name: "index_agents_on_identity_id"
     t.index ["key"], name: "index_agents_on_key", unique: true
     t.index ["model_alias_id"], name: "index_agents_on_model_alias_id"
     t.index ["workspace_profile_id"], name: "index_agents_on_workspace_profile_id"
@@ -104,6 +106,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_15_100000) do
     t.datetime "updated_at", null: false
     t.index ["stage_key"], name: "index_factory_notes_on_stage_key", unique: true
     t.index ["updated_by_user_id"], name: "index_factory_notes_on_updated_by_user_id"
+  end
+
+  create_table "harbor_identities", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "kind", default: "github", null: false
+    t.string "login", null: false
+    t.string "token_env", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index "kind, lower((login)::text)", name: "index_harbor_identities_on_kind_and_login", unique: true
+    t.index ["name"], name: "index_harbor_identities_on_name", unique: true
   end
 
   create_table "harbor_machines", force: :cascade do |t|

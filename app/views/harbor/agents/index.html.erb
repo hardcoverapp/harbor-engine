@@ -14,6 +14,7 @@
 <%= render "harbor/shared/page_tabs", label: "Agents", tabs: [
       [ "Agents", agents_path, @tab == :agents ],
       [ "Task routing", agents_path(tab: "routing"), @tab == :routing ],
-      [ "Shared context", agents_path(tab: "context"), @tab == :context ] ] %>
+      [ "Shared context", agents_path(tab: "context"), @tab == :context ],
+      [ "Identities", agents_path(tab: "identities"), @tab == :identities ] ] %>
 
 <%= render "harbor/agents/#{@tab}" %>

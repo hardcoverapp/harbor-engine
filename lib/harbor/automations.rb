@@ -20,6 +20,9 @@ module Harbor
   # identity        who an agent automation may run as (`automation.run_as`,
   #                 and the run's `acting_as`, which `config.agent_session_env`
   #                 reads to hand a session that identity's credentials).
+  #                 A site that declares none is offered Harbor's own
+  #                 identities (Harbor::Identity, by login) instead, with
+  #                 "the agent's own" as the choice that names none.
   # label           what the form calls the working folder (`:cwd_key`) or the
   #                 identity (`:run_as`) field.
   # trigger         a way of starting an automation beyond Harbor's two (a
@@ -75,6 +78,17 @@ module Harbor
       def find_category(key) = categories_by_key[key.to_s]
       def find_working_folder(key) = folders_by_key[key.to_s]
       def find_identity(key) = identities_by_key[key.to_s]
+
+      # Whether the "run as" list is Harbor's identities: the host declared
+      # none of its own, and there is at least one identity to pick.
+      def own_identities? = identities_by_key.empty? && Harbor::Identity.exists?
+
+      # What the form offers for "run as", each a key and a label: the host's
+      # declared identities, or with none declared, Harbor's by login.
+      def run_as_choices
+        return identities unless identities_by_key.empty?
+        Harbor::Identity.by_name.map { |identity| Identity.new(key: identity.login, label: identity.label) }
+      end
       def find_trigger(key) = triggers_by_key[key.to_s]
 
       # Every trigger kind an automation may have: Harbor's and the host's.

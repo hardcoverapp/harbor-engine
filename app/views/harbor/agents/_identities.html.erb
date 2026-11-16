@@ -1,0 +1,61 @@
+<%# The Identities tab: the accounts agents act as. Each names the
+    environment variable that holds its token; the token is never stored or
+    shown, only whether that variable is set where this app runs. %>
+<div class="flex flex-wrap items-start justify-between gap-4 mb-6">
+  <p class="text-sm text-soft max-w-2xl">
+    The accounts agents act as. An agent is given one on its form, and its runs then use that account's token and write
+    commits under its login. A token is read from the environment variable named here and is never stored.
+    An agent with no identity acts as nobody.
+  </p>
+  <%= link_to "New identity", new_identity_path, class: "btn-quiet shrink-0" %>
+</div>
+<% if @identities.empty? %>
+  <p class="text-soft text-sm">No identities yet.</p>
+<% else %>
+  <div class="lg:overflow-x-auto" data-reveal>
+    <table role="table" class="block lg:table w-full text-sm lg:min-w-[44rem] lg:bg-surface lg:border border-hairline lg:rounded-xl">
+      <thead class="hidden lg:table-header-group text-left">
+        <tr class="border-b border-hairline">
+          <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Identity</th>
+          <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Account</th>
+          <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Token variable</th>
+          <th class="px-5 py-3 meta uppercase tracking-[0.05em] font-medium">Used by</th>
+          <th class="px-5 py-3"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody class="grid gap-4 lg:table-row-group lg:divide-y lg:divide-hairline">
+        <% @identities.each do |identity| %>
+          <% users = identity.agents.sort_by(&:key) %>
+          <tr class="grid gap-4 p-5 border border-hairline rounded-xl bg-surface lg:table-row lg:p-0 lg:border-0 lg:rounded-none" data-identity="<%= identity.login %>">
+            <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 font-medium text-ink [overflow-wrap:anywhere] lg:[overflow-wrap:normal]"><span class="block lg:hidden meta mb-1 font-normal">Identity</span><%= identity.name %></td>
+            <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 text-body [overflow-wrap:anywhere] lg:[overflow-wrap:normal]"><span class="block lg:hidden meta mb-1">Account</span><%= identity.handle %> <span class="meta"><%= identity.kind_label %></span></td>
+            <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3">
+              <span class="block lg:hidden meta mb-1">Token variable</span>
+              <code class="chip [overflow-wrap:anywhere]"><%= identity.token_env %></code>
+              <% if identity.token_set? %>
+                <span class="pill bg-pale-green text-ink-green ml-1" data-token-state="set">set here</span>
+              <% else %>
+                <span class="pill bg-pale-red text-ink-red ml-1" data-token-state="unset" title="Runs as this account won't start until the variable is set where this app runs.">not set here</span>
+              <% end %>
+            </td>
+            <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 text-body">
+              <span class="block lg:hidden meta mb-1">Used by</span>
+              <% if users.empty? %>
+                <span class="meta">No agent</span>
+              <% else %>
+                <% users.each_with_index do |agent, index| %><%= ", " unless index.zero? %><%= link_to agent.display_name, agent_path(agent), class: "underline" %><% end %>
+              <% end %>
+            </td>
+            <td class="block min-w-0 lg:table-cell lg:px-5 lg:py-3 lg:text-right lg:whitespace-nowrap">
+              <div class="flex items-center gap-2 lg:justify-end">
+                <%= link_to "Edit", edit_identity_path(identity), class: "btn-quiet !py-1.5 !px-3 text-xs" %>
+                <%= button_to "Delete", identity_path(identity), method: :delete, class: "btn-quiet !py-1.5 !px-3 text-xs",
+                              form: { data: { turbo_confirm: "Delete #{identity.name}?" } } %>
+              </div>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>

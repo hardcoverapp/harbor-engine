@@ -1,0 +1,4 @@
+<% content_for :title, "Edit #{@identity.name}" %>
+<%= render "harbor/shared/section_nav" %>
+<h1 class="display text-3xl mb-8 [overflow-wrap:anywhere]">Edit <%= @identity.name %></h1>
+<%= render "harbor/identities/form" %>

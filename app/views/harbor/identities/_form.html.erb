@@ -1,0 +1,34 @@
+<%# The form for one identity. The token is never typed here: only the name
+    of the environment variable that holds it. %>
+<% kinds = Harbor::Identity::KINDS %>
+<%= form_with model: @identity, scope: :identity, url: (@identity.persisted? ? identity_path(@identity) : identities_path), class: "max-w-2xl space-y-6" do |form| %>
+  <% if @identity.errors.any? %><div role="alert" class="bg-pale-red text-ink-red rounded-lg p-4 text-sm"><%= @identity.errors.full_messages.map { |message| message.end_with?(".") ? message : "#{message}." }.join(" ") %></div><% end %>
+  <div>
+    <%= form.label :name, class: "block text-sm mb-2" %>
+    <%= form.text_field :name, required: true, placeholder: "Release bot", class: "field w-full" %>
+    <p class="meta mt-1">What people call this account here.</p>
+  </div>
+  <% if kinds.size > 1 %>
+    <div>
+      <%= form.label :kind, "Account of", class: "block text-sm mb-2" %>
+      <%= form.select :kind, kinds.map { |key, kind| [ kind.label, key ] }, {}, class: "field w-full" %>
+    </div>
+  <% end %>
+  <div>
+    <%= form.label :login, "#{@identity.kind_label} login", class: "block text-sm mb-2" %>
+    <%= form.text_field :login, required: true, placeholder: "release-bot", autocapitalize: "none", spellcheck: false, class: "field w-full font-mono" %>
+    <p class="meta mt-1">The account's username, without the @. Commits are written under it.</p>
+  </div>
+  <div>
+    <%= form.label :token_env, "Token variable", class: "block text-sm mb-2" %>
+    <%= form.text_field :token_env, required: true, placeholder: "GITHUB_PAT_RELEASE_BOT", autocomplete: "off", autocapitalize: "characters", spellcheck: false, class: "field w-full font-mono" %>
+    <p class="meta mt-1">
+      The name of the environment variable that holds this account's token, where this app runs. The token itself is
+      never typed here and never stored: it is read from the variable when a run starts.
+      <% if @identity.persisted? && @identity.token_env.present? %>
+        <span data-token-state><%= @identity.token_set? ? "#{@identity.token_env} is set here." : "#{@identity.token_env} isn't set here: runs as this account won't start." %></span>
+      <% end %>
+    </p>
+  </div>
+  <div class="flex gap-4 items-center"><%= form.submit "Save identity", class: "btn-primary cursor-pointer" %><%= link_to "Cancel", agents_path(tab: "identities"), class: "text-sm text-soft" %></div>
+<% end %>

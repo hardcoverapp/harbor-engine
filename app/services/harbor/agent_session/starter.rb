@@ -34,7 +34,12 @@ module Harbor
         cannot_continue = @resume_session_id.present? && backend.respond_to?(:continues_sessions?) && !backend.continues_sessions?
         @resume_session_id = nil if cannot_continue
         command = build_command
+        # An account with no token here stops the session before anything is
+        # made: it never starts as nobody.
+        identity = Harbor::Identity.for_run(@run, agent: @agent)
+        Environment.identity(@run, agent: @agent)
         claim(backend, command)
+        AgentSession.note(@run, "[harbor] acting as #{identity.label}, with the token in #{identity.token_env}") if identity
         AgentSession.note(@run, "[harbor] an earlier session can't be continued on #{backend.runner_name}: this one starts from its prompt") if cannot_continue
         session = backend.start(run: @run, command: command.shell, base: @base, title: title, bundle: command.bundle, attempt: 1)
         keep(session)

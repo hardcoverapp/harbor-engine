@@ -92,6 +92,10 @@ module Harbor
     # How the identity it runs as reads on a page.
     def run_as_label = run_as.presence && (Harbor::Automations.find_identity(run_as)&.label || run_as)
 
+    # The account its runs act as: the one it names, else its agent's
+    # (Harbor::Identity; nil when neither names one of Harbor's).
+    def identity = run_as.present? ? Harbor::Identity.with_login(run_as) : agent&.identity
+
     def parsed_cron = cron.present? ? Fugit.parse_cron(cron) : nil
 
     # Fugit works a cron out in the process's time zone, the clock the tick
@@ -160,6 +164,11 @@ module Harbor
         end
         identities = Harbor::Automations.identities.map(&:key)
         errors.add(:run_as, self.class.identity_refusal) if identities.any? && !identities.include?(run_as)
+        # With none declared the choice is among Harbor's identities, or
+        # none at all: the agent's own.
+        if run_as.present? && run_as_changed? && Harbor::Automations.own_identities? && Harbor::Identity.with_login(run_as).nil?
+          errors.add(:run_as, "is not an identity (Agents, Identities)")
+        end
       end
     end
 

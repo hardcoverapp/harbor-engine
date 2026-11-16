@@ -17,6 +17,18 @@ module Harbor
       end
     end
 
+    # An identity's form takes the name of an environment variable. A token
+    # pasted there instead is refused, and must not be written to the log
+    # with the request's parameters either: anything in that field that is
+    # not a variable's name is logged as [FILTERED], whatever the host
+    # filters itself.
+    initializer "harbor.filter_typed_tokens" do |app|
+      app.config.filter_parameters << lambda do |key, value|
+        next unless key.to_s == "token_env" && value.is_a?(String)
+        value.replace("[FILTERED]") unless value.strip.match?(/\A[A-Z_][A-Z0-9_]*\z/)
+      end
+    end
+
     # Harbor's Stimulus controllers, for a host on importmap-rails (the Rails
     # default). They are pinned under controllers/harbor/, so a host that
     # eager-loads its controllers registers them as harbor--side-nav and so on

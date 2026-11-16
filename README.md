@@ -404,9 +404,81 @@ agent = Harbor::TaskAssignment.agent_for("pr_review")   # nil when unassigned or
 A host with more on its agents subclasses the record and names it:
 `c.agent_class = "Agent"`.
 
+## Identities
+
+A `Harbor::Identity` says which account an agent acts as: a name people recognise, the
+service it is an account of (`kind`; GitHub is the only one so far), the account's login,
+and **the name of the environment variable that holds its token** (`token_env`).
+
+```ruby
+bot = Harbor::Identity.create!(name: "Release bot", login: "release-bot", token_env: "GITHUB_PAT_RELEASE_BOT")
+agent.update!(identity: bot)   # agents.identity_id; nil is "nobody"
+
+bot.token_set?   # is GITHUB_PAT_RELEASE_BOT set where the app runs?
+bot.token        # the token, read now from the variable; nil when it isn't set
+```
+
+**The token is never stored.** A token in a database is in every backup, every copy
+made for staging and every dump somebody opens; a variable is only where the app runs.
+So the record keeps the variable's name, and the token is read from it when a session
+asks. It is in no column, log line, page, error message, run event or job argument, and
+`inspect` and `as_json` hold only the name. `token_env` must be a variable's name
+(`/\A[A-Z_][A-Z0-9_]*\z/`), the same rule as an Orca runtime's pairing code and a
+Conductor Cloud runtime's API key. A token pasted into that field is refused with "The
+token is named by an environment variable, like GITHUB_PAT_RELEASE_BOT, not typed
+here.", and is dropped before it reaches the record, so it is not saved, not shown again
+in the form and not in a query; the request's parameters are logged with that field as
+`[FILTERED]` unless it holds a variable's name.
+
+A login is unique within its kind, whatever its case, and is written without its `@`.
+Deleting an identity that an agent or an automation still uses is refused, saying which.
+
+**The page** is the Identities tab of the Agents page (`/factory/agents?tab=identities`):
+each identity's name, account, the variable it names with whether that variable is set
+where the app runs ("set here" or "not set here"), and the agents that use it, with
+**New identity**, Edit and Delete. An agent is given one on its own form (**Acts on
+GitHub as**; "Nobody" is none), and its page and the agents list say who it acts as. The
+tab is part of the Agents page and follows its switch.
+
+**What a session is given.** When an agent session starts for a run that acts as a
+GitHub identity, its command gets, before anything the host's hook adds:
+
+| Variable | Value |
+|---|---|
+| `GH_TOKEN`, `GITHUB_TOKEN` | the token |
+| `GIT_AUTHOR_NAME`, `GIT_COMMITTER_NAME` | the login |
+| `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_EMAIL` | `<login>@users.noreply.github.com` |
+
+They travel the way everything in a session's environment does (Agent sessions, "Where
+secrets travel"): worked out when the runner asks, fetched over HTTPS, never on a command
+line and never stored. The run's log gets one line naming the account and the variable.
+
+**Who a run acts as** (`Harbor::Identity.for_run(run)`): the identity whose login is the
+run's `acting_as`, when the run has one (an automation's "run as", or what a host wrote
+there), else its agent's identity, else nobody. A run whose `acting_as` is no identity's
+login gets nothing of Harbor's, not even its agent's: that name is the host's to answer
+for, in its hook.
+
+**A variable that isn't set stops the session.** An identity whose variable is unset or
+empty where the app runs does not start as nobody, or as whoever the runner machine
+happens to be logged in as, which is what an identity exists to prevent. The run ends at
+once as an `error`, before a worktree or a terminal is made, with
+`The agent session could not be started: the identity Release bot (@release-bot) has no
+token here: GITHUB_PAT_RELEASE_BOT isn't set`. If the variable goes away while a session
+is running, the next time its runner asks for the environment (a start after an
+interruption) it is refused the same way. The Identities tab shows which variables are
+missing before a run finds out. An agent with no identity is not affected: it starts,
+and is given nothing.
+
+**What a host can override.** `config.agent_session_env` still has the last word: what
+it returns is laid over the identity's, name by name, and a name it gives as `nil` is
+taken out (`{ "GITHUB_TOKEN" => nil }`). It cannot make a session start whose identity
+has no token. A host with accounts of its own kind keeps handing them out in that hook
+and gives its agents no identity.
+
 ## Agents pages
 
-Under `Harbor.path` like the rest: **the list** (`/factory/agents`) with two more tabs,
+Under `Harbor.path` like the rest: **the list** (`/factory/agents`) with three more tabs,
 **an agent's own page** (`/factory/agents/7`) and **its form** (`/factory/agents/new`,
 `/factory/agents/7/edit`). Link to them with `harbor.agents_path` and
 `harbor.agent_path(agent)`.
@@ -423,13 +495,17 @@ table from `lg` up and a card per agent below that.
   shared document (`Harbor::AgentSetting`), each with its own form. Saving one is
   `PATCH /factory/agents/context` with `body` and, for a shared document, its `key`
   (`shared/<path>.md`); any other key is refused.
+- **Identities** (`?tab=identities`): the accounts agents act as, each with the variable
+  that holds its token and whether it is set (Identities, above). Making, editing and
+  deleting one are `/factory/identities/new`, `/factory/identities/7/edit` and
+  `DELETE /factory/identities/7`.
 
-An agent's page shows its key, model alias, workspace, limits and whether it is enabled,
+An agent's page shows its key, model alias, the account it acts as when it has one, workspace, limits and whether it is enabled,
 then its system prompt, each of its documents, its tools, default tasks and configuration.
 
 The form sets all of that: key (once; it can't be changed after), name, description,
 avatar (PNG, JPEG, GIF or WebP up to 2 MB, judged by its bytes; a tick box removes it),
-model alias, workspace, the two limits, enabled, the system prompt, documents as rows
+model alias, workspace, the account it acts as (**Acts on GitHub as**), the two limits, enabled, the system prompt, documents as rows
 that are added and removed in place (the `harbor--nested-fields` controller), and the
 tools, default task types and configuration as JSON. JSON that doesn't parse, or is the
 wrong shape, is refused with what was typed left in the form. **An agent saved from the
@@ -1270,8 +1346,11 @@ Harbor.configure do |c|
 end
 ```
 
-Harbor adds no secret of its own. It applies one rule to what the hook
-returns: `claude` takes a single credential, so when the hash has
+The environment starts from what the run's identity gives (Identities: the
+account's token and git author, for an agent that has one), and what the hook
+returns is laid over that, so the hook has the last word; a name it gives as
+`nil` is left out. Harbor stores none of it. It applies one rule to the
+result: `claude` takes a single credential, so when the hash has
 `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` is unset for the command, and
 the other way round. With neither, the machine's own login is used.
 
@@ -1293,7 +1372,7 @@ private folder (`$HARBOR_RUN_DIR`, mode 700, removed at the end): `prompt`
 `env`. `env` is `export NAME='value'` lines the script
 sources before the command starts, so a secret is never an argument of any
 process and never in the terminal's command line. Harbor works `env` out from
-`agent_session_env` each time it is asked, only while the session is running,
+the run's identity and `agent_session_env` each time it is asked, only while the session is running,
 and stores none of it. The agent command is not given the run's token.
 
 The prompt (or the slash command), system prompt and MCP config are kept with the run
@@ -1569,6 +1648,11 @@ Harbor::Automations.trigger "github", label: "On a GitHub event", kinds: %w[agen
 - **`identity`**: who an agent automation may run as (`run_as`). The form gets a select,
   an agent automation must name one, and the run's `acting_as` carries it, which is what
   `config.agent_session_env` reads to give the session that identity's credentials.
+  **A site that declares none is offered Harbor's own identities instead** (Identities):
+  the select lists them by login under "The agent's own identity", which names none.
+  An automation that names one runs as it instead of as its agent's; one that names
+  none runs as its agent's. A declared list is used exactly as before, and where a
+  declared key is also an identity's login the session is given that identity's token.
 - **`working_folder`**: a folder an agent automation may be told to work in (`cwd_key`;
   `automation.cwd` is its path). Harbor's own sessions work in a worktree on their
   runtime and don't read it: it is for a host that runs agent automations its own way.

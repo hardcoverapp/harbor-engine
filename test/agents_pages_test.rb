@@ -76,7 +76,7 @@ class HarborAgentsPagesTest < ActionDispatch::IntegrationTest
     assert_select "title", text: "Agents"
     assert_select "a[href=?]", harbor.new_agent_path, text: "New agent"
     assert_equal [ "Agents" ], current_tab
-    assert_select "nav[data-tabs='agents'] a", count: 3
+    assert_select "nav[data-tabs='agents'] a", count: 4
     assert_equal %w[writer archivist], css_select("tr[data-agent]").map { |row| row["data-agent"] }, "enabled agents come first"
     assert_equal %w[Agent Model Runs\ on Does Updated], css_select("thead th").map { |th| th.text.strip }
     assert_select "tr[data-agent=writer]" do

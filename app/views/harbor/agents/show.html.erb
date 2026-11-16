@@ -15,6 +15,9 @@
   <div><dt class="meta mb-1">Model alias</dt><dd><%= @agent.model_label %></dd></div>
   <%# A host's own facts about an agent, each a <div> holding a <dt> and a <dd>. %>
   <% if harbor_agents_partial?("show_facts") %><%= render "harbor/agents/show_facts", agent: @agent %><% end %>
+  <% if @agent.identity %>
+    <div data-agent-identity><dt class="meta mb-1">Acts on <%= @agent.identity.kind_label %> as</dt><dd><%= link_to @agent.identity.label, agents_path(tab: "identities"), class: "underline" %></dd></div>
+  <% end %>
   <div><dt class="meta mb-1">Workspace</dt><dd><%= @agent.effective_workspace_profile&.name %></dd></div>
   <div><dt class="meta mb-1">Max workspaces</dt><dd><%= @agent.max_workspaces %></dd></div>
   <div><dt class="meta mb-1">Max agents</dt><dd><%= @agent.max_agents %></dd></div>

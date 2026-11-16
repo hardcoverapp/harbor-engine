@@ -67,7 +67,7 @@ Harbor::Engine.routes.draw do
       end
     end
 
-    # Agents: the list with its task routing and shared context tabs, an
+    # Agents: the list with its task routing, shared context and identities tabs, an
     # agent's page and form, and its avatar. A task type is given to an agent
     # with a PATCH to task_assignments/<task type>.
     resources :agents, only: %i[index show new create edit update] do
@@ -75,6 +75,9 @@ Harbor::Engine.routes.draw do
       collection { patch :context }
     end
     resources :task_assignments, only: :update
+    # Identities: the accounts agents act as. The list is a tab of the
+    # Agents page (agents?tab=identities).
+    resources :identities, only: %i[new create edit update destroy]
 
     # Workflows: the list, a workflow's page and builder, the reference, and
     # each run's page. A host adds actions of its own under the same
