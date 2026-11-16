@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_14_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_15_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -104,6 +104,36 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_14_180000) do
     t.datetime "updated_at", null: false
     t.index ["stage_key"], name: "index_factory_notes_on_stage_key", unique: true
     t.index ["updated_by_user_id"], name: "index_factory_notes_on_updated_by_user_id"
+  end
+
+  create_table "harbor_machines", force: :cascade do |t|
+    t.bigint "run_id", null: false
+    t.bigint "runtime_id"
+    t.string "recipe", null: false
+    t.string "instance_id", null: false
+    t.string "status", default: "creating", null: false
+    t.text "sealed_result"
+    t.jsonb "recipe_snapshot", default: {}, null: false
+    t.string "claim"
+    t.datetime "create_started_at"
+    t.datetime "beat_at"
+    t.integer "create_pid"
+    t.string "create_pid_mark"
+    t.string "create_host"
+    t.datetime "ready_at"
+    t.datetime "released_at"
+    t.datetime "destroying_at"
+    t.datetime "destroy_tried_at"
+    t.integer "destroy_attempts", default: 0, null: false
+    t.text "destroy_error"
+    t.datetime "destroyed_at"
+    t.string "note"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["instance_id"], name: "index_harbor_machines_on_instance_id", unique: true
+    t.index ["run_id"], name: "index_harbor_machines_on_run_id", unique: true
+    t.index ["runtime_id"], name: "index_harbor_machines_on_runtime_id"
+    t.index ["status"], name: "index_harbor_machines_on_status"
   end
 
   create_table "harbor_settings", force: :cascade do |t|

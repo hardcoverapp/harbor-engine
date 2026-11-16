@@ -95,7 +95,11 @@ module Harbor
           "resume_session_id" => command.resume_session_id }.compact
       end
 
+      # A backend that starts the command later (it has a machine to make
+      # first) hands back nothing to write down, and records the session
+      # itself.
       def keep(session)
+        return if session.to_h.blank?
         @run.with_lock { @run.update_columns(runner_state: @run.runner_state.to_h.merge("session" => session.to_h)) }
       end
 

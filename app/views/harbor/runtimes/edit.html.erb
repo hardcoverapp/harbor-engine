@@ -19,6 +19,10 @@
 
 <%= render "form" %>
 
+<% if (partial = @runtime.backend_class.page_partial) %>
+  <%= render partial, runtime: @runtime %>
+<% end %>
+
 <% if @runtime.workspace_profiles.empty? %>
   <div class="max-w-3xl mt-10 pt-6 border-t border-hairline">
     <%= button_to "Remove #{@runtime.name_was.presence || @runtime.name}", runtime_path(@runtime), method: :delete, class: "text-sm text-ink-red underline",

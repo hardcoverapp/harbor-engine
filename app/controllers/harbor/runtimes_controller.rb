@@ -74,6 +74,24 @@ module Harbor
       end
     end
 
+    # Removes the machines finished runs left on this runtime, now. The work
+    # is a job: removing a machine can take minutes.
+    def sweep
+      runtime = Harbor.runtime_class.find(params[:id])
+      Harbor::Machines::SweepJob.perform_later(runtime.id, true)
+      redirect_to edit_runtime_path(runtime), notice: "Removing the machines finished runs left on #{runtime.name}. Any that can't be removed stay listed here."
+    end
+
+    # A person has checked that a machine is gone: Harbor stops trying.
+    def forget_machine
+      runtime = Harbor.runtime_class.find(params[:id])
+      machine = Harbor::Machine.where(runtime_id: runtime.id).find(params[:machine_id])
+      Harbor::Machines.forget!(machine, by: harbor_user_label)
+      redirect_to edit_runtime_path(runtime), notice: "#{machine.instance_id} forgotten."
+    rescue Harbor::Machines::Error => e
+      redirect_to edit_runtime_path(runtime), alert: e.message
+    end
+
     private
 
     def next_position = Harbor.runtime_class.maximum(:position).to_i + 1

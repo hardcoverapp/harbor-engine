@@ -38,7 +38,7 @@ module Harbor
     # stays up.
     initializer "harbor.config_file" do |app|
       app.config.after_initialize do
-        Harbor::Databases.problems.each { |problem| Rails.logger&.error("[harbor] #{problem}") }
+        (Harbor::Databases.problems + Harbor::EnvironmentRecipes.problems).uniq.each { |problem| Rails.logger&.error("[harbor] #{problem}") }
       end
     end
 

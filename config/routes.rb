@@ -105,7 +105,13 @@ Harbor::Engine.routes.draw do
     # Where work runs: runtimes (places with limits) and workspaces (ordered
     # fallback lists of runtimes that agents pick).
     resources :runtimes, except: :show do
-      member { post :check }
+      member do
+        post :check
+        # A runtime that makes a machine for each run: remove the ones
+        # finished runs left behind, and forget one a person has checked.
+        post :sweep
+        delete "machines/:machine_id", action: :forget_machine, as: :forget_machine
+      end
     end
     resources :workspace_profiles, path: "workspaces", except: %i[show]
 

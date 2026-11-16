@@ -26,6 +26,9 @@ module Harbor
   #   "raw_base"              where this attempt starts in the raw stream file
   #   "seq"                   the last event number used
   #   "session"               the worktree and terminal, as the backend gave them
+  #   "machine"               the machine made for the run, on a runtime that
+  #                           makes one: its instance id, "phase" ("creating",
+  #                           then "ready") and when that began
   #   "last_seen_at"          when the command last printed anything
   #   "alive_at"              when the runner last said it was there
   #   "interrupted", "interruptions", "continuing", "started_over"
@@ -56,6 +59,17 @@ module Harbor
   #   continues_sessions?   false when it can't continue an earlier session,
   #                         so `resume_session_id` is dropped
   #   agent_sessions?       false to take no session at all
+  #
+  # And one that has something to make before the command can start (Orca
+  # (per workspace): a machine for the run):
+  #
+  #   start                 may return a session with nothing in it (`to_h`
+  #                         empty); the backend writes the session on the run
+  #                         itself once the command has started
+  #   setting_up?(run)      true while that is under way: the run's time
+  #                         limits and the silent check wait
+  #   run_over(run)         called once when the run has ended, whether or
+  #                         not it ever had a session, after stop and cleanup
   module AgentSession
     class Error < StandardError; end
     # start! was called for a run that is already a session, or is over.
@@ -251,6 +265,22 @@ module Harbor
       def polled?(run)
         runtime = run.runtime_id && Harbor.runtime_class.find_by(id: run.runtime_id)
         runtime.present? && runtime.adapter.respond_to?(:poll_session)
+      end
+
+      # Whether the run's runtime is still getting ready for it, before its
+      # command has started: only a backend that says so (`setting_up?`).
+      def setting_up?(run)
+        adapter = adapter_for(run)
+        adapter.respond_to?(:setting_up?) && adapter.setting_up?(run) ? true : false
+      end
+
+      # The adapter of the runtime a run was placed on, whatever it can do,
+      # or nil when there is none to be had.
+      def adapter_for(run)
+        runtime = run.runtime_id && Harbor.runtime_class.find_by(id: run.runtime_id)
+        runtime&.adapter
+      rescue StandardError
+        nil
       end
 
       # The backend of the runtime a run was placed on, or nil.

@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.29.0
+
+- **A machine for each run: the runtime kind "Orca (per workspace)".** A fourth kind on
+  the "New runtime" page, beside Orca, Orca (Remote) and Conductor Cloud: Harbor starts
+  a machine when a run is placed, runs the work in the Orca on it, and removes it when
+  the run ends. It is for a site with no machine of its own to run agents on. The
+  machine is made by one of Orca's per-workspace environment recipes (`create` and
+  `destroy` scripts). Orca's command line can't choose a recipe when it makes a
+  worktree, so Harbor runs the recipe's scripts itself, to exactly Orca's contract (the
+  same variables, the same result on stdout, the same lifecycle JSON on stdin), and a
+  recipe works from Orca's own picker too. The backend is
+  `Harbor::Runtimes::Backends::OrcaPerWorkspace`, registered by Harbor as
+  `orca_per_workspace`. See README "A machine for each run".
+  **It has been run end to end against a real headless Orca server started by the
+  example recipe, and not yet against a machine at a provider.**
+- **Recipes are declared in `config/harbor.yml`**, under `environment_recipes`, with
+  `orca.yaml`'s keys (`name`, `create`, `destroy` or `destroy: none`, `suspend`,
+  `resume`, `timeout_seconds`). Commands are read from the file only; the runtime form
+  chooses a recipe and has no JSON. A mistake is said where the kind would be offered
+  and on the runtime's row. The kind is offered only when a recipe is declared; without
+  one the form says how to declare one. `Harbor::EnvironmentRecipes`.
+- **`create` runs in a job**, never where the session was started, holds no lock or
+  database connection, and is stopped with everything it started when it runs past its
+  limit or the run ends meanwhile. Its time is not the run's: `timeout:` counts from
+  when the run's command has started. Only Orca-server mode is run: a recipe that
+  returns an SSH `connection` block is refused, saying so. `suspend` and `resume` are
+  read and not run yet.
+- **Machines are tracked so none is left running.** Each is a row (`Harbor::Machine`,
+  table `harbor_machines`) written before `create` starts. `destroy` runs when the run
+  ends for any reason, including after a `create` that never returned a result (then
+  with the instance id and no `recipeResult`, as Orca does). A sweep
+  (`Harbor::Machines::SweepJob`, to schedule every few minutes, and a button on the
+  runtime's page) removes what finished runs left, tries failures again, stops a run
+  whose machine has outlived **A machine for each run: longest life**, and the runtime's
+  page lists what could not be removed, with **Forget it** for one a person has checked.
+- **Across a restart** a running session carries on, on its machine. If the app went
+  down during `create`, what it may have made is destroyed by its instance id before
+  `create` runs again under the same id; if that can't be confirmed the run fails and no
+  second machine is made.
+- **The pairing code** a recipe returns is kept only on the machine's row, encrypted
+  with a key derived from `secret_key_base`, and emptied when the machine is done with.
+  It is taken out of anything logged, and is in no page, event, error or job.
+- **Three settings** (Runtimes): **A machine for each run: minutes to start one** (30),
+  **minutes to remove one** (10), for a step whose recipe gives no limit, and **longest
+  life (hours)** (24; 0 for none).
+- **For a backend** (`Harbor::Runtimes::Backend`): `unoffered_note` (a line the "New
+  runtime" page shows while the backend isn't offered) and `page_partial` (something of
+  its own on a runtime's page). And for one with something to make before a session's
+  command can start: `start` may return a session with nothing in it and write the
+  session on the run later, `setting_up?(run)` holds the run's limits and silent check
+  meanwhile, and `run_over(run)` is called once when the run has ended, whether or not
+  it ever had a session. Orca's two kinds and Conductor Cloud define none of these and
+  behave as before.
+- `examples/environment-recipes/` has a complete small recipe whose "machine" is a
+  second headless Orca server on the same machine, to try this without a cloud account.
+
+### Upgrading from 0.28
+
+- **Run the migration** (`bin/rails db:migrate`): it adds the table `harbor_machines`.
+  Nothing else changes for a site that declares no recipe: the kind isn't offered, the
+  "New runtime" page gains one line saying how to declare one, and no job is needed.
+- **`config/harbor.yml` has a third section**, `environment_recipes`. A host that
+  matched the file's "unknown section … (expected …)" message will find the section
+  named in it.
+- **To use it:** declare a recipe, add the runtime, set the runner address to one a
+  machine can reach, and schedule `Harbor::Machines::SweepJob` every few minutes beside
+  the automations tick. A site with such a runtime must schedule the sweep.
+- **A host with its own runtime backend** has nothing to change.
+
 ## 0.28.1
 
 The pairing-code way of reaching an Orca server (0.25.1) has now been run against a

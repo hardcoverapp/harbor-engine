@@ -43,6 +43,15 @@ module Harbor
         # runtimes are still shown and edited.
         def offered? = true
 
+        # A line the "New runtime" page shows when this backend isn't
+        # offered now and a site could make it so (what to declare first).
+        # nil: nothing.
+        def unoffered_note = nil
+
+        # A partial drawn on a runtime's own page, below its form, with
+        # `runtime`: what this backend holds for it. nil: nothing.
+        def page_partial = nil
+
         # What the runtime form offers for this backend, registered as
         # `name`: usually one kind of runtime, sometimes more (Orca: on this
         # server, or on a host it reaches).

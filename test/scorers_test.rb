@@ -72,6 +72,9 @@ class HarborScorersTest < ActiveSupport::TestCase
   end
 
   test "pass rate and the weekly series count judged runs only" do
+    # A fixed midweek moment: in the first hours of a Monday the results
+    # below would be dated later than now, and the test failed then.
+    travel_to Time.utc(2026, 11, 11, 12)
     scorer = new_scorer
     week = Time.current.beginning_of_week
     Harbor::ScorerResult.create!(scorer:, run: agent_run, status: "ok", passed: true, classification: "pass", score: 1, scored_at: week + 1.hour)

@@ -526,8 +526,11 @@ A backend says what the runtime pages need to know about it, each with a default
 for the runtimes it already has), `choices(name)` (the kinds of runtime the form
 offers for it: usually one), `fields_partial` (its own fields on the form; without
 one the form has a host label and the config as JSON) and `settings_from(fields,
-choice:)` (the runtime's config from what the form sent). An instance gives `label`
-and `place`, which is how the list names the runtime's kind and where it is.
+choice:)` (the runtime's config from what the form sent), `unoffered_note` (a line
+the "New runtime" page shows while the backend isn't offered: what to declare first)
+and `page_partial` (something of its own on a runtime's page, below the form). An
+instance gives `label` and `place`, which is how the list names the runtime's kind and
+where it is.
 
 ### The Runtimes pages
 
@@ -563,8 +566,10 @@ end
 
 ### Orca
 
-Harbor has two backends of its own, `orca` and `conductor_cloud` (below), and the runtime
-form offers three kinds of runtime between them: Orca, Orca (Remote) and Conductor Cloud.
+Harbor has three backends of its own, `orca`, `conductor_cloud` and `orca_per_workspace`
+(both below), and the runtime form offers four kinds of runtime between them: Orca,
+Orca (Remote), Conductor Cloud and, for a site that has declared a recipe, Orca (per
+workspace), which starts a machine for each run.
 
 With `orca`, work runs in [Orca](https://github.com/stablyai/orca),
 in a worktree Orca makes for each run. There are two kinds of Orca runtime, and the
@@ -777,12 +782,365 @@ that drives Conductor its own way on these runtimes and wants none of Harbor's s
 placed there answers false, and a session sent to one fails with "can't run agent
 sessions", as on any backend that can't start one.
 
+### A machine for each run
+
+The backend `orca_per_workspace` gives each run a machine of its own: Harbor starts one
+when the run is placed, runs the work in the Orca on it, and removes it when the run
+ends. The runtime form offers it as **Orca (per workspace)**, once the site has declared
+a recipe. It is for a site with no machine of its own to run agents on: the app can be
+a container, and each run's machine comes and goes.
+
+**It has been run end to end against a real Orca server, not yet against a machine at a
+provider.** With the example recipe (`examples/environment-recipes/`, whose "machine" is
+a second headless Orca server on the same computer, Orca 1.4.257), Harbor ran `create`,
+reached the new server with its pairing code, added the repository, made a worktree, ran
+a command in a terminal there, and ran `destroy`, which stopped the server; the pairing
+code was in no log or column and was gone afterwards. What has not happened yet is a
+recipe that starts a machine at a provider, with the runner posting back from it and an
+agent running there. Expect to find something the first time. The recipe contract was
+read from Orca's guide (`orca skills get orca-per-workspace-env --full`) and from what
+that version does when it runs a recipe.
+
+**Why Harbor runs the scripts.** Orca has per-workspace environment recipes of its own:
+a repository's `orca.yaml` lists recipes whose `create` script starts a machine and
+whose `destroy` script removes it. But a recipe is only chosen in Orca's desktop app:
+`orca worktree create` has no way to name one, so Harbor can't ask Orca to do this. It
+runs the recipe's scripts itself, to exactly Orca's contract, so the same scripts work
+from Orca's picker and nothing in them is Harbor's.
+
+#### Declaring a recipe
+
+Recipes are declared in `config/harbor.yml`, the same file as Databases (ERB, then
+YAML). A recipe's commands are only ever read from that file: the runtime form chooses
+a recipe by name and nothing typed into a page is ever run.
+
+```yaml
+# config/harbor.yml
+environment_recipes:
+  aws-sandbox:
+    name: AWS sandbox
+    create: ./scripts/orca-vm/aws-create.sh
+    destroy: ./scripts/orca-vm/aws-destroy.sh
+    timeout_seconds: { create: 1800, destroy: 120 }
+```
+
+| Key | Meaning |
+| --- | --- |
+| `name` | What the pages call it. The id when left out. |
+| `create` | The command that starts a machine and prints its result. Required. |
+| `destroy` | The command that removes the machine, or `none` when there is nothing to remove. Required. |
+| `suspend`, `resume` | Read and checked (both or neither), **not run yet**. |
+| `timeout_seconds` | One number for every step, or a map of `create`, `suspend`, `resume`, `destroy`. Whole seconds, 1 to 86400. |
+
+The keys and their meanings are `orca.yaml`'s `environmentRecipes`, so a recipe can be
+copied between the two. Where Harbor's differs:
+
+- **A mapping keyed by id**, where `orca.yaml` has a list with `id:`. The config file
+  refuses a key that appears twice, so two recipes can't share an id.
+- **`timeout_seconds`**, as the rest of the file is written. `timeoutSeconds` is read too,
+  and so are Orca's legacy `command` and `cleanup` for `create` and `destroy`.
+- **A mistake is an error.** Orca reports a bad timeout and runs the step with none.
+  Harbor refuses the file, says what is wrong (`config/harbor.yml:
+  environment_recipes.aws-sandbox: needs destroy: …`) on the runtime form and the
+  runtime's row, and places nothing there until it is fixed. `destroy` must be said,
+  if only as `none`.
+- **A step always has a time limit.** Orca lets a step with no `timeoutSeconds` run for
+  ever. Harbor gives it the setting **A machine for each run: minutes to start one**
+  (30) or **minutes to remove one** (10).
+- **`checkoutMode: provisioned-root` is refused**: it needs a recipe that connects over
+  SSH.
+
+Commands are run by `sh -c` from the host app's root (`Rails.root`), as Orca runs them
+from the repository's, so a path is relative to the app.
+
+#### The contract, which is Orca's
+
+Each step runs in a process group of its own with Harbor's own environment (that is
+where a script finds its provider credentials: Harbor stores none) and Orca's variables
+added:
+
+| Variable | Value |
+| --- | --- |
+| `ORCA_VM_MODE` | `create` or `destroy` |
+| `ORCA_VM_INSTANCE_ID` | The machine's id: `harbor-<run id>-<8 hex>`. One per run, the same every time a step runs for that run. Name the machine after it. |
+| `ORCA_RECIPE_ID` | The recipe's id |
+| `ORCA_WORKSPACE_NAME`, `ORCA_REPO_BRANCH` | The worktree and branch the run will get: `harbor-run-<run id>` |
+| `ORCA_REPO_REF` | The branch the run starts from (`base:`), or empty |
+| `ORCA_REPO_PATH` | The folder the recipe is declared in: the host app's root |
+| `ORCA_RECIPE_RESULT_SCHEMA_VERSION` | `1` |
+| `ORCA_PROJECT_ID`, `ORCA_WORKSPACE_ID`, `ORCA_REPO_URL`, `ORCA_REPO_REF_HEAD`, `ORCA_VERSION` | Set and empty: Orca fills them from its own project, and here there is none |
+
+**`create`** starts a machine, makes sure the repository is on it, runs
+`orca serve --port … --project-root … --pairing-address … --recipe-json` there, and
+prints exactly one JSON object on stdout:
+
+```json
+{ "schemaVersion": 1, "pairingCode": "orca://pair?…", "projectRoot": "/srv/app",
+  "userData": { "provider": "aws", "resourceId": "i-0abc…" } }
+```
+
+`pairingCode` and `projectRoot` (an absolute path on the machine) are required.
+Progress and errors go to stderr, and each line of stderr goes to the run's log as it
+arrives. Anything else on stdout spoils the result, and Harbor refuses it without
+repeating what was printed. The pairing address must be one the app can reach.
+
+**`destroy`** reads one line of lifecycle JSON on stdin and removes the machine:
+
+```json
+{ "schemaVersion": 1, "mode": "destroy", "recipeId": "aws-sandbox", "instanceId": "harbor-42-9f3a1c0e",
+  "workspaceName": "harbor-run-42", "recipeResult": { "…what create printed…" } }
+```
+
+When `create` never returned a result (it failed, overran, was stopped, or the app went
+down under it) there is **no `recipeResult`**, exactly as in Orca: the script finds the
+machine from `instanceId`. So name the machine after `ORCA_VM_INSTANCE_ID` in `create`,
+before any slow work. Exit 0 only when the machine is gone (or provably never was);
+anything else keeps it on Harbor's list.
+
+A step that runs past its limit has its whole process group stopped: TERM, then KILL
+five seconds later.
+
+What Harbor leaves out of Orca's lifecycle JSON: `projectId` and `workspaceId`, which
+Orca also leaves out when it has none.
+
+#### An example recipe
+
+`examples/environment-recipes/` has a complete small pair, `local-orca-create.sh` and
+`local-orca-destroy.sh`, whose "machine" is a second headless Orca server on the same
+machine. It needs no cloud account, so it is the way to try this end to end, and it is
+the shape to adapt: where it starts a process, a provider's recipe starts a machine.
+Its `create`, in outline:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+instance="${ORCA_VM_INSTANCE_ID:?}"                      # the machine's name, from the first line
+state="$STATE_DIR/$instance"
+
+# Idempotent for an instance id: a machine already up for it is the answer.
+if running && parses; then emit; exit 0; fi
+
+# Whatever goes wrong from here, nothing is left behind.
+trap 'status=$?; [ "$status" -ne 0 ] && remove_everything; exit "$status"' EXIT
+
+echo "starting $instance" >&2                            # progress: stderr, never stdout
+start_the_machine                                         # provider create / run / boot
+# on the machine: orca serve --port "$port" --project-root "$root" \
+#                   --pairing-address "$reachable_address" --recipe-json > recipe.json &
+wait_until recipe.json parses, or fail with the server's log on stderr
+
+emit                                                      # serve's JSON + userData, one object
+trap - EXIT
+```
+
+and its `destroy`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+payload="$(cat)"                                          # the lifecycle JSON
+instance="$(ruby -rjson -e 'print JSON.parse(ARGV[0])["instanceId"].to_s' "$payload")"
+[ -n "$instance" ] || { echo "no instanceId in the lifecycle payload" >&2; exit 1; }
+remove_the_machine_named "$instance"                      # by its name: works with no recipeResult
+```
+
+Declared for a site to try it:
+
+```yaml
+environment_recipes:
+  local-orca:
+    name: Local Orca server
+    create: <%= Gem.loaded_specs["harbor-engine"].full_gem_path %>/examples/environment-recipes/local-orca-create.sh
+    destroy: <%= Gem.loaded_specs["harbor-engine"].full_gem_path %>/examples/environment-recipes/local-orca-destroy.sh
+    timeout_seconds: { create: 120, destroy: 60 }
+```
+
+with `LOCAL_ORCA_PROJECT_ROOT` (the repository's folder) in the app's environment.
+`try-with-a-local-orca.rb`, beside the scripts, does the machine's half of a run with
+them from a checkout of this repository: a real `orca serve`, a worktree, a terminal,
+then `destroy`. For
+a cloud provider, Orca's guide has the full method (a base image with the tools and the
+agent logged in, the Git token passed only at run time, the pairing address derived
+from the machine's public URL) and a worked example; a recipe written with it works
+here unchanged.
+
+#### The runtime
+
+On **New runtime**, Orca (per workspace) has one field, **Recipe**, a list of the
+declared recipes, and under Advanced **The repository's setup hooks** (as the other Orca
+kinds). There is no JSON. Its config is `{ "recipe": "aws-sandbox", "setup": "skip" }`.
+A site with no recipe declared isn't offered the kind: the form says how to declare
+one, or what is wrong with the file. The list shows the runtime as
+"Orca (per workspace) · AWS sandbox".
+
+- **Limit** is machines at once, as on any runtime.
+- **Not taking work** when the recipe isn't declared any more, the file can't be read,
+  or no runner address is set.
+- **Check health** finds the recipe and checks that each step's script is there and
+  executable. It starts nothing.
+- **The runner address** (Settings) is where each machine posts the run's output, so
+  it must be one a machine can reach. The runtime's page warns when it is this
+  machine's own.
+
+The machine needs what any runner machine needs (`sh`, `curl`, the agent's command line
+and a login or a credential for it), `orca`, and the repository at `projectRoot`. The
+app needs the `orca` command, to talk to each machine's server.
+
+#### A run, step by step
+
+1. **Placed.** `Harbor::AgentSession` starts the session as on any runtime. The backend
+   writes a `Harbor::Machine` row for the run (its instance id, the recipe, status
+   `creating`) and queues `Harbor::Machines::ProvisionJob`. It returns at once: nothing
+   is run where the session was started, which may be a web request. The run is
+   `running`, with no session yet (`runner_state["machine"]["phase"]` is `creating`).
+2. **`create`.** The job runs the step. While it runs, the row is touched every five
+   seconds and nothing is held: no lock, no transaction, no database connection.
+3. **The result** is read and checked. A result that is not Orca-server mode's (no
+   `pairingCode`, a relative `projectRoot`, schema version 2, **an SSH `connection`
+   block**) ends the run with a message saying which, and the machine is destroyed.
+   A good one is kept, encrypted, on the machine's row (below).
+4. **On the machine.** With the pairing code, Harbor asks the machine's Orca for its
+   status (up to five times, three seconds apart: an address can take a moment to
+   answer), asks for a worktree `harbor-run-<run id>` in the repository at
+   `projectRoot` (a server that doesn't know that folder yet is told about it with
+   `orca repo add`, then asked again), and starts a terminal there running the run's
+   command inside the runner script.
+5. **An Orca session.** The session is written on the run and the run's own clock
+   starts: the time `create` took is not counted against `timeout:`, and no limit or
+   silent check applies while the machine is being made (`create` has its own). From
+   here everything under Agent sessions holds: recording, stop, timeouts, the silent
+   check, interruptions. Every Orca command for the run (stop, "is it still there?",
+   starting again) goes to that run's machine with that run's pairing code.
+6. **The end.** However the run ends (finished, failed, stopped, timed out, never
+   started) the finisher queues `Harbor::Machines::DestroyJob`, which runs `destroy`
+   with the lifecycle JSON. `destroy` never runs in the runner's request or a page's.
+   The worktree isn't removed first: it goes with the machine. `keep_worktree: true`
+   does not keep a machine.
+
+A run stopped while `create` is running: the job notices at its next heartbeat, stops
+`create` with everything it started, and runs `destroy` itself.
+
+The run's capacity slots are leases sized for the timeout as first given, so after a
+long `create` they can lapse before the session ends, as after an interruption.
+
+#### Machines are not left running
+
+A paid machine nobody knows about is the worst thing this feature can do, so every
+machine is a row written **before** `create` starts, and a row is only done with when
+`destroy` exited 0, when the recipe says `destroy: none`, when `create` provably never
+ran, or when a person said the machine is gone. What stops each way of leaking one:
+
+| What happens | What stops a machine being left |
+| --- | --- |
+| The run ends, any way at all | The finisher queues `destroy` (`run_over`), whether or not the run ever got a session. |
+| `create` fails, overruns or prints something unusable | `destroy` runs with the instance id and no `recipeResult`; an object it did print is passed on. |
+| `create` overruns | Its whole process group is stopped, so nothing it started carries on making a machine. |
+| The run is stopped during `create` | `create` is stopped at the next heartbeat, then `destroy` runs. A queued `destroy` waits while `create` is still being stopped, so it never runs too early. |
+| The app goes down during `create` | See Restarts, below: `destroy` by instance id, before anything is made again. |
+| The machine's Orca never answers, or can't start the run | The run fails and `destroy` runs with the result. |
+| `destroy` fails, or its job is lost | The sweep. |
+| The recipe's declaration is removed while machines exist | The `destroy` command is kept with each machine when it is made, and used when the file no longer has the recipe. |
+| A run with no timeout never ends | The sweep stops a run whose machine is older than **A machine for each run: longest life** (24 hours; 0 for no limit). |
+| The run's row is deleted | The sweep treats a machine with no run as one whose run is over. |
+| Two things remove a machine at once | One claims it; the other does nothing. |
+
+**The sweep** (`Harbor::Machines.sweep`) looks at every machine that is not done with
+and runs `destroy` for each whose run is over. One it could not remove is tried again
+ten minutes later, for ever: Harbor never gives up on a machine by itself. Schedule it
+like the automations tick, every few minutes:
+
+```yaml
+# sidekiq-scheduler or sidekiq-cron (config/sidekiq.yml)
+:scheduler:
+  :schedule:
+    harbor_machines_sweep:
+      cron: "*/5 * * * *"
+      class: Harbor::Machines::SweepJob
+```
+
+**A site with an Orca (per workspace) runtime must schedule it.** Without it a failed
+`destroy` is only tried again from the button.
+
+**The runtime's page** has a Machines section: the machines in use (with their runs),
+and the ones finished runs left behind, each with how often removing it was tried and
+the last error. **Remove leftover machines** runs the sweep for that runtime now.
+**Forget it** is for a machine a person has checked is gone (they removed it by hand,
+or nothing was ever made): Harbor stops trying. It is refused while the machine's run
+is still going. Each failure is also an error line in the app's log.
+
+What Harbor can't see: a machine a script started and then lost track of itself (it
+exited 0 from `destroy` without removing it, or `create` made two). The instance id in
+the machine's name is what makes those findable at the provider.
+
+#### Restarts
+
+- **Mid-run.** The session is in the machine's Orca, not in the app, and what Harbor
+  needs is in the database: the session on the run, the pairing code on the machine's
+  row. `Harbor::AgentSession.recover!` picks the session up as it does any Orca
+  session, and a session whose terminal has gone is started again **on the same
+  machine**, in the same worktree. If the machine itself doesn't answer, it is asked
+  again every minute for ten minutes; after that the machine is destroyed and the run
+  starts over on a new one.
+- **During `create`.** The step dies with the worker (a job stopped by its worker
+  shutting down stops the step's process group itself), and its heartbeat stops. After
+  90 seconds without one the run is no longer "being set up", the silent check finds
+  it has no terminal, and it is started again like any session cut off while starting.
+  Before `create` runs again, Harbor stops whatever is left of the old step's process
+  on this machine (matched by its process id and start time), then runs **`destroy`
+  with the instance id and no result**. Only when that exits 0 does `create` run again,
+  **under the same instance id**. If `destroy` fails, no second machine is made: the
+  run ends as an error and the machine stays on the list for the sweep and for a
+  person. Harbor does not rely on `create` being idempotent, because it can't know
+  that it is; a recipe that follows Orca's advice and is idempotent per instance id
+  loses nothing by this.
+- **During `destroy`.** The claim on the machine lapses after the step's time limit
+  and a minute, and the sweep runs it again.
+- **Between `create` returning and the terminal starting.** The machine is recorded as
+  up before Orca is asked. A job run twice does nothing the second time; a run started
+  again in this state destroys the machine and makes a new one.
+
+#### Where the pairing code is kept
+
+A machine's pairing code controls the machine. It is kept in one place: the
+`sealed_result` column of the machine's row in `harbor_machines`, which holds what
+`create` printed, encrypted with a key derived from the app's `secret_key_base`
+(`ActiveSupport::MessageEncryptor`). It has to be kept while the machine may be up,
+because the app must reach the machine after a restart and `destroy` is handed
+`recipeResult`. The column is emptied when the machine is done with (destroyed,
+`destroy: none`, or forgotten); a machine whose `destroy` failed keeps it until one
+works.
+
+It is not on the run (`runner_state`, `input`, `output`), not in a job's arguments,
+not in a log, an event, a page or an error. A script that prints it on stderr has it
+replaced with `[pairing code]` before the line reaches the run's log (anything shaped
+`orca://…`, and the code itself once known), and the same is done to what Orca answers
+and to a failed `destroy`'s last words. The model filters the column from `inspect`.
+Two places it does pass through: the `destroy` script's stdin, as Orca's contract has
+it, and the argument list of each `orca` command while it runs (`--pairing-code`),
+which other users of the app's own machine could read with `ps`.
+
+If `secret_key_base` changes while a machine is up, its result can no longer be read:
+the run's later Orca calls fail, and `destroy` is given the instance id only.
+
+#### Not supported yet
+
+- **SSH mode.** A recipe that returns a `connection` block is refused with a message
+  saying so. Only recipes that start an Orca server and return its pairing code run.
+- **`checkoutMode: provisioned-root`** (it is SSH mode's).
+- **`suspend` and `resume`.** Read from the file and checked; never run. A machine
+  lives for its run.
+- **Keeping a machine for follow-up work.** The backend answers `keeps_workspaces?`
+  with false.
+- **A check that the sweep is scheduled.** Harbor can't tell; the page says what it
+  found, not whether anything is looking.
+
 ## Agent sessions
 
 An agent session is one run of an AI coding agent's command line, `claude -p`
 for an Anthropic model or `codex exec` for an OpenAI one, as the command in an
 Orca terminal. Only HTTP passes between the machine it runs on and the app.
-(On a Conductor Cloud runtime the agent runs in a cloud workspace instead and
+(On an Orca (per workspace) runtime the terminal is on a machine made for the run:
+see A machine for each run. On a Conductor Cloud runtime the agent runs in a cloud workspace instead and
 Harbor asks how it is doing; everything in this section that speaks of a
 terminal, a runner or a worktree is different there, as Conductor Cloud above
 says.)
@@ -2452,9 +2810,10 @@ Harbor is configured in four places, and a value goes in the first one it can:
    a change takes effect at once, with no deploy or restart.
 2. **The environment.** Secrets only.
 3. **`config/harbor.yml`.** What must be decided on the machine and never from
-   a browser, because getting it wrong destroys data: which databases are
-   backed up and what may be restored over what (see Databases). It names the
-   ENV keys that hold the secrets.
+   a browser, because getting it wrong destroys data or runs a command: which
+   databases are backed up and what may be restored over what (see Databases),
+   and the recipes whose scripts start a machine for a run (see A machine for
+   each run). It names the ENV keys that hold the secrets.
 4. **Ruby**, in a host initializer. Only what is code:
 
 ```ruby

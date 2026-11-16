@@ -21,7 +21,7 @@ module Harbor
   module ConfigFile
     Error = Class.new(StandardError)
 
-    SECTIONS = %w[databases restore_environments].freeze
+    SECTIONS = %w[databases restore_environments environment_recipes].freeze
     # Top-level entries that are one value, not a mapping.
     VALUES = %w[path].freeze
 

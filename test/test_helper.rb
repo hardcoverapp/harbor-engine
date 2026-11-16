@@ -160,6 +160,10 @@ class FakeOrcaServer
       { "terminal" => { "handle" => "term-#{@terminals += 1}", "worktreeId" => argv[argv.index("--worktree") + 1] } }
     when "terminal wait"
       { "wait" => { "satisfied" => exited, "status" => exited ? "exited" : "running" } }
+    when "status --json" then { "runtime" => { "appVersion" => "1.4.257", "state" => "ready" } }
+    when "repo add"
+      path = argv[argv.index("--path") + 1]
+      { "repo" => { "id" => "repo-1", "displayName" => File.basename(path), "path" => path } }
     else {}
     end
   end
@@ -342,6 +346,92 @@ module HarborAgentSessions
   def live_log(run) = Harbor::LiveLog.read(run.live_log_path).to_s
 
   def raw_stream(run) = File.binread(Harbor::LiveLog.absolute(run.raw_log_path))
+end
+
+# A site with environment recipes: a config file of its own declaring them
+# (the scripts are the real ones in test/fixtures/recipes), a folder the
+# scripts write what they were given into, and an "Orca (per workspace)"
+# runtime on the recipe `sandbox`. Include it after HarborAgentSessions.
+# Nothing here starts a machine or an Orca server.
+module HarborMachines
+  RECIPES = File.expand_path("fixtures/recipes", __dir__)
+
+  def self.included(base)
+    base.setup do
+      Harbor::Machine.delete_all
+      @recipe_env = ENV["RECIPE_TEST_DIR"]
+      @recipe_dir = Dir.mktmpdir("harbor-recipes")
+      ENV["RECIPE_TEST_DIR"] = @recipe_dir
+      @recipe_config = Harbor.config.config_file
+      @recipe_config_dir = Dir.mktmpdir("harbor-config")
+      Harbor.config.config_file = File.join(@recipe_config_dir, "harbor.yml")
+      declare_recipes("sandbox" => recipe)
+      Harbor::Machines.beat = 0.1
+      Harbor::Machines::Provisioner.ready_wait = 0
+      @sandbox = Harbor::Runtime.create!(key: "sandbox", name: "Sandbox", backend: "orca_per_workspace", max_concurrent: 2,
+                                         config: { "recipe" => "sandbox" })
+    end
+    base.teardown do
+      Harbor::Machines.beat = nil
+      Harbor::Machines::Provisioner.ready_wait = nil
+      Harbor.config.config_file = @recipe_config
+      Harbor::ConfigFile.reload!
+      Harbor::EnvironmentRecipes.reset!
+      @recipe_env ? ENV["RECIPE_TEST_DIR"] = @recipe_env : ENV.delete("RECIPE_TEST_DIR")
+      [ @recipe_dir, @recipe_config_dir ].each { |dir| FileUtils.remove_entry(dir) if dir && File.exist?(dir) }
+      Harbor::Machine.delete_all
+    end
+  end
+
+  def script(name) = File.join(RECIPES, "#{name}.sh")
+
+  # A recipe's declaration, from the fixture scripts' names.
+  def recipe(create: "create-ok", destroy: "destroy-ok", **more)
+    { "name" => "Test sandbox", "create" => script(create), "destroy" => (destroy == "none" ? "none" : script(destroy)) }.merge(more.stringify_keys)
+  end
+
+  # Write the config file: a hash of recipes, or the file's text.
+  def declare_recipes(recipes)
+    File.write(Harbor.config.config_file, recipes.is_a?(String) ? recipes : { "environment_recipes" => recipes }.to_yaml)
+    Harbor::ConfigFile.reload!
+    Harbor::EnvironmentRecipes.reset!
+  end
+
+  # What the scripts were run as, in order: "create", "destroy"…
+  def recipe_calls = File.exist?(File.join(@recipe_dir, "calls")) ? File.readlines(File.join(@recipe_dir, "calls"), chomp: true) : []
+
+  # The ORCA_ variables a step was given.
+  def recipe_env(step) = File.readlines(File.join(@recipe_dir, "#{step}.env"), chomp: true).to_h { |line| line.split("=", 2) }
+
+  # The lifecycle JSON the last destroy read on stdin.
+  def destroy_payload = JSON.parse(File.read(File.join(@recipe_dir, "destroy.json")))
+
+  def machine_of(run) = Harbor::Machine.find_by(run_id: run.id)
+
+  # The pairing code the fixture create step makes for a run's machine.
+  def pairing_code(run) = "orca://pair?code=SECRET-#{machine_of(run).instance_id}"
+
+  def start_machine_session(run: new_run, prompt: "Fix the test.", **options)
+    Harbor::AgentSession.start!(run:, agent: @agent, prompt:, runtime: @sandbox, choice: @choice, **options)
+  end
+
+  # Runs the queued jobs that make machines, or remove them.
+  def provision! = perform_enqueued_jobs(only: Harbor::Machines::ProvisionJob)
+  def destroy! = perform_enqueued_jobs(only: Harbor::Machines::DestroyJob)
+
+  # A session whose machine is up and whose command has started.
+  def running_machine_session(**options)
+    run = start_machine_session(**options)
+    provision!
+    run.reload
+  end
+
+  def process_alive?(pid)
+    Process.kill(0, pid)
+    true
+  rescue Errno::ESRCH
+    false
+  end
 end
 
 # Workflows: empty tables, the registry as Harbor ships it (put back after a

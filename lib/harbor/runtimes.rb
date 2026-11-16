@@ -38,6 +38,9 @@ module Harbor
         backend_names.flat_map { |name| backend(name).offered? ? backend(name).choices(name) : [] }
       end
 
+      # What the "New runtime" page says about the backends it doesn't offer.
+      def unoffered_notes = backend_names.filter_map { |name| backend(name).offered? ? nil : backend(name).unoffered_note }
+
       # The choices of one backend, offered or not (to edit a runtime it has).
       def choices_for(name) = backend(name).choices(name.to_s)
 
@@ -63,3 +66,4 @@ end
 # Harbor's own ways of running work. A host registers any others.
 Harbor::Runtimes.register "orca", "Harbor::Runtimes::Backends::Orca"
 Harbor::Runtimes.register "conductor_cloud", "Harbor::Runtimes::Backends::ConductorCloud"
+Harbor::Runtimes.register "orca_per_workspace", "Harbor::Runtimes::Backends::OrcaPerWorkspace"

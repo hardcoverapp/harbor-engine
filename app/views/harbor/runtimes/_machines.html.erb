@@ -1,0 +1,46 @@
+<%# The machines of an Orca (per workspace) runtime: the ones in use, and the
+    ones a finished run left that could not be removed. Nothing here shows
+    what a machine's recipe returned. %>
+<% machines = Harbor::Machine.live.where(runtime_id: runtime.id).order(:id).to_a %>
+<% runs = Harbor.run_class.where(id: machines.map(&:run_id)).index_by(&:id) %>
+<% left, in_use = machines.partition { |machine| runs[machine.run_id].nil? || runs[machine.run_id].finished? } %>
+<section class="max-w-3xl mt-10 pt-6 border-t border-hairline" data-machines>
+  <div class="flex flex-wrap justify-between items-start gap-4">
+    <div>
+      <h2 class="text-sm font-medium text-ink">Machines</h2>
+      <p class="meta mt-1"><%= pluralize(in_use.size, "machine") %> in use · <%= left.empty? ? "none left behind" : "#{pluralize(left.size, 'machine')} left behind by finished runs" %></p>
+    </div>
+    <%= button_to "Remove leftover machines", sweep_runtime_path(runtime), class: "btn-quiet", form_class: "inline" %>
+  </div>
+  <p class="meta mt-2 max-w-2xl">A run's machine is removed when the run ends. The sweep removes any a finished run left behind, and runs on the schedule the site gives <span class="font-mono">Harbor::Machines::SweepJob</span>; the button runs it now.</p>
+
+  <% if left.any? %>
+    <ul class="mt-4 space-y-3" data-machines-left>
+      <% left.each do |machine| %>
+        <li class="card p-4 text-sm" data-machine="<%= machine.instance_id %>">
+          <p class="text-ink"><span class="font-mono"><%= machine.instance_id %></span> · <%= machine.recipe_name %> ·
+            <% if runs[machine.run_id] %><%= link_to "run ##{machine.run_id}", run_path(machine.run_id), class: "underline" %><% else %>run #<%= machine.run_id %> (gone)<% end %></p>
+          <p class="text-xs text-ink-yellow mt-1 [overflow-wrap:anywhere]">
+            <% if machine.destroy_attempts.positive? %>
+              Could not be removed (<%= pluralize(machine.destroy_attempts, "try") %>, last <%= time_ago_in_words(machine.destroy_tried_at) %> ago): <%= machine.destroy_error %>
+            <% elsif machine.creating? %>
+              Its create step has not finished or been stopped yet.
+            <% else %>
+              Waiting to be removed.
+            <% end %>
+          </p>
+          <%= button_to "Forget it", forget_machine_runtime_path(runtime, machine_id: machine.id), method: :delete, class: "text-xs text-ink-red underline mt-2",
+                data: { turbo_confirm: "Forget #{machine.instance_id}? Only when you have checked that the machine is gone: Harbor stops trying to remove it." } %>
+        </li>
+      <% end %>
+    </ul>
+  <% end %>
+
+  <% if in_use.any? %>
+    <ul class="mt-4 space-y-1 text-sm" data-machines-in-use>
+      <% in_use.each do |machine| %>
+        <li data-machine="<%= machine.instance_id %>"><span class="font-mono"><%= machine.instance_id %></span> · <%= machine.creating? ? "being made" : "up" %> for <%= time_ago_in_words(machine.created_at) %> · <%= link_to "run ##{machine.run_id}", run_path(machine.run_id), class: "underline" %></li>
+      <% end %>
+    </ul>
+  <% end %>
+</section>

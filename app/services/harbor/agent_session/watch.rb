@@ -16,6 +16,10 @@ module Harbor
 
       def call(run, check)
         return nil unless CHECKS.include?(check.to_s) && run.running? && AgentSession.session?(run)
+        # A run whose runtime is still getting ready for it (a machine being
+        # made) is not on its own time yet: every limit is looked at again
+        # once it is, or once that has plainly stopped.
+        return Interruption::RETRY.to_i if check.to_s != "resume" && AgentSession.setting_up?(run)
         public_send(check, run)
       end
 

@@ -211,6 +211,10 @@ module Harbor
           guarded("closing the terminal") { backend.stop(session) }
           guarded("removing the worktree") { backend.cleanup(session) } unless @state["keep_worktree"]
         end
+        # A backend that made something for the run that must not outlive it
+        # (a machine), whether or not the run got as far as a session.
+        ending = backend || AgentSession.adapter_for(@run)
+        guarded("putting away what its runtime made for it") { ending.run_over(@run) } if ending.respond_to?(:run_over)
         guarded("ending the log") do
           Harbor::LiveLog.append(@run.live_log_path, "\n<!-- run finished at #{Time.current.iso8601}: #{@run.status} -->\n")
         end

@@ -139,11 +139,15 @@ module Harbor
 
         # A remote host posts its output to the runner address, so one that
         # only this machine can reach is no use to it.
-        def warnings
-          return [] unless remote? && Harbor::Runner.configured?
+        def warnings = remote? ? runner_address_warnings(host_name) : []
+
+        # What to say when `who` (another machine) is to post to a runner
+        # address that only this machine can reach.
+        def runner_address_warnings(who)
+          return [] unless Harbor::Runner.configured?
           address = URI.parse(Harbor::Runner.base_url).host.to_s rescue ""
           return [] unless address.in?(%w[localhost 127.0.0.1 ::1 [::1] 0.0.0.0])
-          [ "The runner address (#{Harbor::Runner.base_url}) is this machine's own, which #{host_name} can't reach. Set one it can reach on the Settings page." ]
+          [ "The runner address (#{Harbor::Runner.base_url}) is this machine's own, which #{who} can't reach. Set one it can reach on the Settings page." ]
         end
 
         # Raises unless the server answers and can take work, and (for a

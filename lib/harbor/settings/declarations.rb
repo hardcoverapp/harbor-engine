@@ -61,6 +61,25 @@ Harbor::Settings.declare :conductor_cloud_setup_minutes,
   description: "How long a new Conductor Cloud workspace may take to get ready (its setup script runs first) before the run " \
                "is finished as an error. This time is not counted against the run's own timeout."
 
+# A machine for each run (Harbor::Machines): what a recipe's steps get when
+# the recipe gives them no time limit of their own, and how long a machine
+# may live at all.
+Harbor::Settings.declare :machine_create_minutes,
+  type: :integer, default: 30, min: 1, max: 1440, group: "Runtimes", label: "A machine for each run: minutes to start one",
+  description: "How long a recipe's create step may take when the recipe gives it no limit of its own (timeout_seconds). " \
+               "A step that overruns is stopped with everything it started, and the run is finished as an error. " \
+               "This time is not counted against the run's own timeout."
+
+Harbor::Settings.declare :machine_destroy_minutes,
+  type: :integer, default: 10, min: 1, max: 1440, group: "Runtimes", label: "A machine for each run: minutes to remove one",
+  description: "How long a recipe's destroy step may take when the recipe gives it no limit of its own. " \
+               "A machine that could not be removed is tried again by the sweep and listed on its runtime's page."
+
+Harbor::Settings.declare :machine_max_hours,
+  type: :integer, default: 24, min: 0, max: 720, group: "Runtimes", label: "A machine for each run: longest life (hours)",
+  description: "A run still going on a machine this old is stopped by the sweep, and its machine removed. " \
+               "It bounds what a run started with no timeout can cost. 0 sets no limit."
+
 # Databases: backups and restores (Harbor::DbOps). Where dumps go and what is
 # run are `Harbor.config` values, set on the machine. What may be restored
 # where, and whether it is switched on, is the config file's and is never a

@@ -129,7 +129,9 @@ module Harbor
           away = now - Time.zone.parse(cut["at"])
           current["timeout_at"] = (Time.zone.parse(current["timeout_at"]) + away).iso8601 if current["timeout_at"].present?
           # Being started again counts as being heard from.
-          current.merge!("session" => fresh.to_h, "last_seen_at" => now.iso8601, "alive_at" => now.iso8601)
+          current.merge!("last_seen_at" => now.iso8601, "alive_at" => now.iso8601)
+          # A backend that starts the command later records the session itself.
+          current["session"] = fresh.to_h if fresh.to_h.present?
           current.delete("interrupted")
           run.update_columns(command: command.display, runner_state: current)
           false
