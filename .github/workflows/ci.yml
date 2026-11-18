@@ -14,7 +14,10 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # The runner image is named, not `ubuntu-latest`: when GitHub moved that
+    # name to ubuntu-26.04, setup-ruby had no Ruby 3.3.5 for it and every job
+    # failed before running anything.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     services:
@@ -47,7 +50,7 @@ jobs:
         run: bin/test
 
   rubocop:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
