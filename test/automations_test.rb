@@ -338,7 +338,9 @@ class HarborAutomationsTest < ActionDispatch::IntegrationTest
     assert_equal "Tidy the shelf. Leave {{other}} alone.", run.input.dig("agent_session", "prompt")
     assert_equal at(10, 10), Time.zone.parse(run.runner_state["timeout_at"])
     assert_equal "#{automation.key}/run-#{run.id}.log", run.live_log_path
-    assert_equal [ 1, 1 ], [ Harbor::Slots.busy(@agent), @runtime.busy ]
+    # Asked at that moment: the slots are leases taken at 10:00 on a fixed
+    # day, and by today's clock they have long run out.
+    travel_to(at(10, 1)) { assert_equal [ 1, 1 ], [ Harbor::Slots.busy(@agent), @runtime.busy ] }
     assert_equal %w[worktree\ create terminal\ create], @orca.commands.first(2)
     assert_no_enqueued_jobs only: AgentRunJob
 
