@@ -27,6 +27,11 @@ module Harbor
       #                  The code is a secret, so the config names where it
       #                  is, never the code. It wins over "environment".
       #
+      # A pairing code can also be pasted on the runtime's page. It is then
+      # the runtime's secret (Harbor::Runtime#secret): kept encrypted, used on
+      # every command, never shown, and it wins over both of the above. That
+      # is how an Orca server is added from the site, with no restart.
+      #
       # The remote kind was built against Orca 1.4.257's commands
       # (`worktree create --project … --host ssh:…`) and has not yet been run
       # against a real remote host.
@@ -71,15 +76,29 @@ module Harbor
 
           def remote_choice?(choice) = choice.value.end_with?(REMOTE)
 
+          # Orca lists a server's SSH hosts only for the machine it is asked
+          # on, never through a pairing code: a paired server has none here.
           def catalog(client: Harbor::Orca::Client.new)
-            Catalog.new(repos: client.repos, hosts: client.hosts.select(&:ssh?), projects: client.projects)
+            hosts = begin
+              client.hosts.select(&:ssh?)
+            rescue Harbor::Orca::Error
+              []
+            end
+            Catalog.new(repos: client.repos, hosts:, projects: client.projects)
           rescue Harbor::Orca::Error => e
             Catalog.new(repos: [], hosts: [], projects: [], error: e.message)
           end
 
-          def settings_from(fields, choice:, catalog: nil)
+          def settings_from(fields, choice:, catalog: nil, runtime: nil, **)
             pairing = fields[:pairing_code_env].to_s.strip.presence
-            raise ArgumentError, "The pairing code is named by an environment variable, like ORCA_PAIRING_CODE, not typed here." if pairing && !pairing.match?(/\A[A-Z_][A-Z0-9_]*\z/)
+            if pairing && !pairing.match?(/\A[A-Z_][A-Z0-9_]*\z/)
+              raise ArgumentError, "That field takes the name of an environment variable, like ORCA_PAIRING_CODE. To give the code itself, paste it into \"Pairing code\"."
+            end
+            code = fields[:pairing_code].to_s.strip
+            raise ArgumentError, "A pairing code is one link with no spaces in it (orca://pair?…)." if code.match?(/\s/)
+            forget = code.empty? && fields[:forget_pairing_code].to_s == "1"
+            paired = code.present? || pairing.present? || (runtime&.secret? && !forget)
+
             config = { "setup" => fields[:setup].presence_in(SETUPS.keys), "environment" => fields[:environment].to_s.strip.presence,
                        "pairing_code_env" => pairing }
             if remote_choice?(choice)
@@ -88,13 +107,19 @@ module Harbor
               raise ArgumentError, "Choose who hosts the external host." unless PROVIDERS.key?(fields[:provider].to_s)
               raise ArgumentError, "Choose the project to work in." if fields[:project].blank?
               host = "ssh:#{host}" unless host.include?(":")
-              name = (catalog || self.catalog).hosts.find { |found| found.selector == host }&.name
+              name = paired ? nil : (catalog || self.catalog).hosts.find { |found| found.selector == host }&.name
               config.merge!("provider" => fields[:provider], "host" => host, "host_name" => name, "project" => fields[:project].to_s.strip)
             else
-              raise ArgumentError, "Choose the repository to work in." if fields[:repo].blank?
-              config["repo"] = fields[:repo].to_s.strip
+              # A server just paired from the page has its repositories listed
+              # once the code is saved, so the runtime may be saved first and
+              # the repository chosen next. It takes no work until then.
+              raise ArgumentError, "Choose the repository to work in." if fields[:repo].blank? && !paired
+              config["repo"] = fields[:repo].to_s.strip.presence
             end
-            { "config" => config.compact, "host" => nil }
+            settings = { "config" => config.compact, "host" => nil }
+            settings["secret"] = code if code.present?
+            settings["secret"] = nil if forget
+            settings
           end
           def keeps_workspaces? = true
 
@@ -115,6 +140,13 @@ module Harbor
           end
         end
 
+        # Reached by a pairing code, pasted on the page or named in the
+        # environment, and so possibly not the Orca on this machine.
+        def paired? = runtime.secret? || pairing_code_env.present?
+
+        # The lists the form offers, from the server this runtime reaches.
+        def catalog = self.class.catalog(client: client)
+
         def remote? = host.present?
         def label = remote? ? "Orca (Remote)" : "Orca"
         def choice_value = remote? ? "#{runtime.backend}#{REMOTE}" : runtime.backend
@@ -123,12 +155,14 @@ module Harbor
 
         def place
           return [ provider_name, host_name ].compact_blank.join(" · ") if remote?
+          return "Orca server paired here" if runtime.secret?
           return "Orca server (#{pairing_code_env})" if pairing_code_env
           environment || "This server"
         end
 
         def unready_reason
-          return "the Orca server's pairing code isn't set (#{pairing_code_env})" if pairing_code_env && pairing_code.blank?
+          return "the saved pairing code can't be read by this app (its secret key has changed); paste the code again" if runtime.secret_unreadable?
+          return "the Orca server's pairing code isn't set (#{pairing_code_env})" if !runtime.secret? && pairing_code_env && pairing_code.blank?
           if remote?
             return "no project set" if project.blank?
           elsif repo.blank?
@@ -157,7 +191,7 @@ module Harbor
           raise "Orca #{status[:version]} is not ready" unless status[:ready]
           # Orca answers `host list` only for the machine it is asked on, never
           # through a pairing code, so a server reached by one can't be asked.
-          if remote? && !pairing_code_env && client.hosts.none? { |found| found.selector == host }
+          if remote? && !paired? && client.hosts.none? { |found| found.selector == host }
             raise "Orca doesn't know the host #{host_name} any more"
           end
           status
@@ -255,7 +289,7 @@ module Harbor
         def project = runtime.config["project"].to_s.strip.presence
         def environment = runtime.config["environment"].to_s.strip.presence
         def pairing_code_env = runtime.config["pairing_code_env"].to_s.strip.presence
-        def pairing_code = pairing_code_env && ENV[pairing_code_env].presence
+        def pairing_code = runtime.secret.presence || (pairing_code_env && ENV[pairing_code_env].presence)
       end
     end
   end

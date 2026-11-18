@@ -27,6 +27,11 @@ module Harbor
         next unless key.to_s == "token_env" && value.is_a?(String)
         value.replace("[FILTERED]") unless value.strip.match?(/\A[A-Z_][A-Z0-9_]*\z/)
       end
+      # A pairing code pasted on a runtime's form is a secret: never in the
+      # log with the request's parameters.
+      app.config.filter_parameters << lambda do |key, value|
+        value.replace("[FILTERED]") if key.to_s == "pairing_code" && value.is_a?(String) && !value.empty?
+      end
     end
 
     # Harbor's Stimulus controllers, for a host on importmap-rails (the Rails

@@ -123,8 +123,9 @@ module Harbor
       end
       runtime.backend = @choice.backend
       fields = form.dig(:fields, @choice.value)&.permit!&.to_h&.with_indifferent_access || {}.with_indifferent_access
-      @fields = fields
-      runtime.assign_attributes(@choice.backend_class.settings_from(fields, choice: @choice))
+      # What is shown again when the form comes back never includes a secret.
+      @fields = fields.except("pairing_code")
+      runtime.assign_attributes(@choice.backend_class.settings_from(fields, choice: @choice, runtime: runtime))
       true
     rescue ArgumentError => e
       runtime.errors.add(:base, e.message)

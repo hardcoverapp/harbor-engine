@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_15_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_17_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -308,7 +308,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_15_120000) do
     t.datetime "updated_at", null: false
     t.index ["repo", "pr_number", "head_sha"], name: "index_review_rounds_on_repo_and_pr_number_and_head_sha"
     t.index ["repo", "pr_number", "round"], name: "index_review_rounds_on_repo_and_pr_number_and_round"
-    t.index ["repo", "pr_number"], name: "index_review_rounds_one_open_per_pr", unique: true, where: "((phase)::text <> ALL ((ARRAY['published'::character varying, 'cancelled'::character varying, 'failed'::character varying])::text[]))"
+    t.index ["repo", "pr_number"], name: "index_review_rounds_one_open_per_pr", unique: true, where: "((phase)::text <> ALL (ARRAY[('published'::character varying)::text, ('cancelled'::character varying)::text, ('failed'::character varying)::text]))"
   end
 
   create_table "review_rule_versions", force: :cascade do |t|
@@ -423,6 +423,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_15_120000) do
     t.text "last_error"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.text "sealed_secret"
+    t.datetime "secret_set_at"
     t.index ["key"], name: "index_runtimes_on_key", unique: true
   end
 

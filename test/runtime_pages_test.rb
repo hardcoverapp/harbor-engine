@@ -35,12 +35,16 @@ class HarborRuntimePagesTest < ActionDispatch::IntegrationTest
   # Answers the Orca commands the runtime form asks: its repos, hosts and
   # projects, as Orca 1.4.257 gives them.
   class ListingOrca
-    attr_reader :commands
+    attr_reader :commands, :argvs
     attr_accessor :down
 
-    def initialize = @commands = []
+    def initialize
+      @commands = []
+      @argvs = []
+    end
 
     def call(argv, timeout:)
+      @argvs << argv
       @commands << argv[1, 2].join(" ")
       return [ "", "orca: not running", 1 ] if down
       result = case argv[1, 2].join(" ")
@@ -50,7 +54,7 @@ class HarborRuntimePagesTest < ActionDispatch::IntegrationTest
                        { "kind" => "ssh", "name" => "droplet-1", "id" => "ssh-1", "connected" => true },
                        { "kind" => "ssh", "name" => "droplet-2", "id" => "ssh-2", "connected" => false } ] }
       when "project list" then { "projects" => [ { "id" => "github:acme/app", "displayName" => "App" } ] }
-      when "status" then { "runtime" => { "appVersion" => "1.4.257", "state" => "ready" } }
+      when /\Astatus/ then { "runtime" => { "appVersion" => "1.4.257", "state" => "ready" } }
       else {}
       end
       [ JSON.generate("ok" => true, "result" => result), "", 0 ]
@@ -196,7 +200,7 @@ class HarborRuntimePagesTest < ActionDispatch::IntegrationTest
       post harbor.runtimes_path, params: { runtime: { name: "Typed code", type: "orca", max_concurrent: 1,
                                                       fields: { "orca" => { repo: "id:r-1", pairing_code_env: "orca://pair?code=abc" } } } }
       assert_response :unprocessable_entity
-      assert_select "[role=alert]", text: /named by an environment variable/
+      assert_select "[role=alert]", text: /takes the name of an environment variable/
       post harbor.runtimes_path, params: { runtime: { name: "Cloud Orca", type: "orca", max_concurrent: 1, enabled: "1",
                                                       fields: { "orca" => { repo: "id:r-1", pairing_code_env: "HARBOR_TEST_ORCA_CODE" } } } }
     end
@@ -215,6 +219,102 @@ class HarborRuntimePagesTest < ActionDispatch::IntegrationTest
     ENV.delete("HARBOR_TEST_ORCA_CODE")
     Harbor::Setting.where(key: "runner_url").delete_all
     Harbor::Orca.runner = nil
+  end
+
+  CODE = "orca://pair?code=eyJzZWNyZXQiOiJub3QtZm9yLWxvZ3MifQ".freeze
+
+  test "an Orca server is added from the page by pasting its pairing code, which is kept encrypted and never shown" do
+    with_orca do |orca|
+      get harbor.new_runtime_path
+      assert_select "input[type=password][name='runtime[fields][orca][pairing_code]'][autocomplete=off]"
+
+      # Saved with the code and no repository yet: the server's own are listed next.
+      post harbor.runtimes_path, params: { runtime: { name: "Sam's Orca", type: "orca", max_concurrent: 2, enabled: "1",
+                                                      fields: { "orca" => { pairing_code: " #{CODE} " } } } }
+      assert_redirected_to harbor.runtimes_path
+      runtime = Harbor::Runtime.find_by!(key: "sam-s-orca")
+      assert_equal CODE, runtime.secret
+      assert runtime.secret_set_at
+      assert_equal({}, runtime.config, "the code is not in the config")
+      raw = Harbor::Runtime.connection.select_one("SELECT * FROM runtimes WHERE id = #{runtime.id}")
+      assert_not_includes raw.to_s, CODE, "nor readable anywhere in its row"
+      assert_not_includes runtime.inspect, CODE
+      assert_not_includes runtime.to_json, CODE
+      assert_equal "no repository set", runtime.unavailable_reason
+      assert_equal "Orca server paired here", runtime.adapter.place
+
+      # Its page asks that server, with the code, and never shows the code.
+      orca.argvs.clear
+      get harbor.edit_runtime_path(runtime)
+      assert_response :success
+      assert_not_includes response.body, CODE
+      assert_select "[data-orca-pairing-saved]", text: /A pairing code is saved/
+      assert_select "input[name='runtime[fields][orca][pairing_code]']" do |inputs|
+        assert_nil inputs.first["value"], "the field comes back empty"
+      end
+      assert_select "select[name='runtime[fields][orca][repo]'] option[value='id:r-1']", text: "app · /code/app"
+      repo_list = orca.argvs.find { |argv| argv[1, 2] == %w[repo list] }
+      assert_equal [ "--pairing-code", CODE ], repo_list.last(2), "the lists are that server's"
+
+      # The repository is chosen; nothing else was typed again, and the code stays.
+      patch harbor.runtime_path(runtime), params: { runtime: { name: "Sam's Orca", type: "orca", max_concurrent: 2, enabled: "1",
+                                                              fields: { "orca" => { repo: "id:r-1", pairing_code: "" } } } }
+      assert_redirected_to harbor.runtimes_path
+      assert_equal [ CODE, { "repo" => "id:r-1" } ], runtime.reload.then { |r| [ r.secret, r.config ] }
+      Harbor::Setting.set!(:runner_url, "https://harbor.example.com")
+      assert_nil runtime.unavailable_reason
+
+      orca.argvs.clear
+      assert runtime.adapter.health_check
+      assert_equal [ "--pairing-code", CODE ], orca.argvs.last.last(2), "and every command carries it, with no restart"
+      get harbor.runtimes_path
+      assert_not_includes response.body, CODE
+    end
+  ensure
+    Harbor::Setting.where(key: "runner_url").delete_all
+  end
+
+  test "a saved pairing code is replaced or forgotten, and one that can't be used is refused without being echoed" do
+    with_orca do
+      runtime = Harbor::Runtime.create!(name: "Paired", backend: "orca", config: { "repo" => "id:r-1" })
+      runtime.update!(secret: CODE)
+
+      patch harbor.runtime_path(runtime), params: { runtime: { name: "Paired", type: "orca", max_concurrent: 1,
+                                                              fields: { "orca" => { repo: "id:r-1", pairing_code: "orca://pair?code=second" } } } }
+      assert_equal "orca://pair?code=second", runtime.reload.secret
+
+      patch harbor.runtime_path(runtime), params: { runtime: { name: "Paired", type: "orca", max_concurrent: 1,
+                                                              fields: { "orca" => { repo: "id:r-1", pairing_code: "two words here" } } } }
+      assert_response :unprocessable_entity
+      assert_select "[role=alert]", text: /one link with no spaces/
+      assert_not_includes response.body, "two words here"
+      assert_equal "orca://pair?code=second", runtime.reload.secret, "what was saved is untouched"
+
+      patch harbor.runtime_path(runtime), params: { runtime: { name: "Paired", type: "orca", max_concurrent: 1,
+                                                              fields: { "orca" => { repo: "id:r-1", forget_pairing_code: "1" } } } }
+      assert_equal [ nil, nil, false ], runtime.reload.then { |r| [ r.secret, r.sealed_secret, r.secret? ] }
+      assert_equal "This server", runtime.adapter.place
+
+      # Forgotten, and with no repository given: back to needing one.
+      patch harbor.runtime_path(runtime), params: { runtime: { name: "Paired", type: "orca", max_concurrent: 1, fields: { "orca" => { repo: "" } } } }
+      assert_select "[role=alert]", text: /Choose the repository to work in/
+    end
+  end
+
+  test "a code saved under another secret key is said to be unreadable, and the request's parameters are logged without it" do
+    runtime = Harbor::Runtime.create!(name: "Stale", backend: "orca", config: { "repo" => "id:r-1" })
+    other = ActiveSupport::MessageEncryptor.new(SecureRandom.bytes(32))
+    runtime.update_columns(sealed_secret: other.encrypt_and_sign(CODE, purpose: Harbor::Runtime::SECRET_PURPOSE))
+    assert runtime.secret_unreadable?
+    assert_match "can't be read by this app", runtime.unavailable_reason
+    with_orca do
+      get harbor.edit_runtime_path(runtime)
+      assert_select "[data-orca-pairing-saved]", text: /can no longer read it/
+    end
+
+    filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
+    logged = filter.filter("runtime" => { "fields" => { "orca" => { "pairing_code" => CODE.dup, "repo" => "id:r-1" } } })
+    assert_equal({ "pairing_code" => "[FILTERED]", "repo" => "id:r-1" }, logged.dig("runtime", "fields", "orca"))
   end
 
   test "a second runtime of the same name gets a key of its own" do

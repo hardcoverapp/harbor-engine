@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.31.0
+
+- **An Orca server is added from the site.** An Orca runtime's form has a "Pairing code"
+  field: paste the link `orca pair` prints on the machine that runs Orca, and the runtime
+  reaches that server at once, with no environment variable and no restart. The code is
+  kept encrypted in the runtime's row (a key made from the app's `secret_key_base`), sent
+  with every `orca` command, never shown again, never in a log, an error or JSON, and
+  replaced or forgotten on the same page.
+- **A runtime can be saved with only its pairing code.** Its page then lists that
+  server's repositories (asked with the code), where before the list was always this
+  machine's own Orca's. It takes no work until a repository is chosen.
+- `Harbor::Runtime#secret`, `#secret=`, `#secret?` and `#secret_unreadable?`: a runtime's
+  own secret, for any backend. A code saved under another `secret_key_base` is reported
+  as unreadable, not as missing.
+- The environment-variable way (`pairing_code_env`) stays, for a site that keeps secrets
+  out of its database; a code pasted on the page wins over it.
+
+Upgrading from 0.30:
+
+- Run the migration: `runtimes` gains `sealed_secret` and `secret_set_at`.
+- A host's backend with its own form receives `runtime:` in `settings_from`; accept it
+  (`**`) as the base class does.
+- Rotating `secret_key_base` makes saved pairing codes unreadable. The runtime then
+  takes no work and says so; paste the code again.
+
 ## 0.30.0
 
 - **Identities: which account each agent acts as.** A `Harbor::Identity` (table

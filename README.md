@@ -666,17 +666,31 @@ runtime form offers both:
   host.**
 
 **Where the Orca server is.** With nothing else said, Harbor runs the `orca` command
-against the Orca on its own machine. For an Orca server elsewhere there are two ways:
-`"environment"` names a server this machine has saved with `orca environment add`, and
-`"pairing_code_env"` names the environment variable that holds a server's pairing code
-(`orca serve` prints one), which Harbor sends with every command. The second keeps
-nothing on disk, so it is the one for an app in a container: put the `orca` command in
-the image and the code in the container's environment (it is a secret; the runtime only
-names the variable). The second way has been run against a real headless Orca server (1.4.257). A server
-that has just been started knows no repository: name it by its folder there
-(`"repo": "path:/srv/app"`) and Harbor adds it the first time. Orca won't list a
-server's SSH hosts through a pairing code, so for Orca (Remote) on such a server the
-host is typed.
+against the Orca on its own machine. For an Orca server elsewhere there are three ways:
+
+- **Paste its pairing code on the runtime's page** ("Pairing code"; the link
+  `orca pair` or `orca serve` prints on that machine). This is how a server is added
+  from the site: the code is used at once, with no change to the environment and no
+  restart, and Harbor sends it with every command. It is kept encrypted in the
+  runtime's row (`sealed_secret`, with a key made from the app's `secret_key_base`), is
+  never shown again, never logged, and can be replaced or forgotten on the same page.
+  A runtime may be saved with only the code: its page then lists that server's
+  repositories to choose from. If the app's secret key changes, a saved code can no
+  longer be read and the page says to paste it again.
+- **`"pairing_code_env"`** names an environment variable that holds the code, for a site
+  that would rather keep it out of the database. A code pasted on the page wins over it.
+- **`"environment"`** names a server this machine has saved with `orca environment add`.
+
+A containerised app needs the first or second: put the `orca` command in the image. Both
+have been run against a real headless Orca server (1.4.257). A server that has just been
+started knows no repository: name it by its folder there (`"repo": "path:/srv/app"`) and
+Harbor adds it the first time. Orca won't list a server's SSH hosts through a pairing
+code, so for Orca (Remote) on such a server the host is typed.
+
+**Who can read a saved code.** Anyone with both the database and the app's
+`secret_key_base`. A database dump alone holds only the encrypted value. A pairing code
+lets its holder run commands through that Orca, so treat the two together as you would
+the code itself.
 
 Either kind also takes `"setup"` (whether the repository's own setup hooks run in a new
 worktree: `"skip"`, the default, `"run"` or `"inherit"`) and `"environment"` (another

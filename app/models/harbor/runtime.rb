@@ -6,6 +6,9 @@ module Harbor
   # `config.runtime_class`.
   class Runtime < ApplicationRecord
     self.table_name = "runtimes"
+    self.filter_attributes += [ :sealed_secret ]
+
+    SECRET_PURPOSE = "harbor.runtime.secret".freeze
 
     # A failed health check keeps the runtime out of new placements for this
     # long; a passing check clears it straight away.
@@ -54,6 +57,35 @@ module Harbor
     rescue StandardError => e
       update!(checked_at: Time.current, last_error: "#{e.class.name.demodulize}: #{e.message}".truncate(500))
       false
+    end
+
+    # The runtime's own secret: what its backend needs to reach where the
+    # work runs (an Orca server's pairing code). It is given on the runtime's
+    # page, so a new place to run work needs no change to the environment and
+    # no restart. It is kept encrypted with a key made from the app's
+    # `secret_key_base`, read back only to be used, and never shown again.
+    def secret
+      return nil if sealed_secret.blank?
+      self.class.secret_encryptor.decrypt_and_verify(sealed_secret, purpose: SECRET_PURPOSE)
+    rescue ActiveSupport::MessageEncryptor::InvalidMessage
+      nil
+    end
+
+    # Blank removes it.
+    def secret=(value)
+      value = value.to_s.strip
+      self.sealed_secret = value.empty? ? nil : self.class.secret_encryptor.encrypt_and_sign(value, purpose: SECRET_PURPOSE)
+      self.secret_set_at = value.empty? ? nil : Time.current
+    end
+
+    def secret? = sealed_secret.present?
+
+    # One is saved, and this app can no longer read it: its secret key is
+    # not the one the secret was saved under.
+    def secret_unreadable? = secret? && secret.nil?
+
+    def self.secret_encryptor
+      @secret_encryptor ||= ActiveSupport::MessageEncryptor.new(Rails.application.key_generator.generate_key(SECRET_PURPOSE, 32))
     end
 
     def busy = Harbor::Runtimes::Slots.busy(self)

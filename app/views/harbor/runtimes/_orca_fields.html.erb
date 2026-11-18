@@ -3,7 +3,10 @@
     Orca on this server; when it can't be asked, the values are typed. %>
 <% backend = Harbor::Runtimes::Backends::Orca %>
 <% remote = backend.remote_choice?(choice) %>
-<% catalog = (@orca_catalog ||= backend.catalog) %>
+<%# A runtime that has a pairing code saved lists what that server has;
+    otherwise the lists are this machine's own Orca's. %>
+<% paired = chosen && runtime.persisted? && runtime.secret? && !runtime.secret_unreadable? %>
+<% catalog = paired ? (@orca_paired_catalog ||= runtime.adapter.catalog) : (@orca_catalog ||= backend.catalog) %>
 <% config = chosen ? runtime.config : {} %>
 <% value = ->(key) { sent.key?(key) ? sent[key].to_s : config[key.to_s].to_s } %>
 <%# A list with the saved value kept in it, even when Orca no longer has it. %>
@@ -13,8 +16,21 @@
      select_tag "#{prefix}[#{key}]", options_for_select(options, current), include_blank: blank, required: true, class: "field w-full sm:w-96"
    end %>
 
+<div data-orca-pairing>
+  <%= label_tag "#{prefix}[pairing_code]", "Pairing code", class: "block text-sm mb-2" %>
+  <%= password_field_tag "#{prefix}[pairing_code]", nil, autocomplete: "off", class: "field w-full sm:w-96 font-mono",
+        placeholder: (chosen && runtime.secret? ? "Saved. Paste a new one to replace it" : "Leave empty for the Orca on this server") %>
+  <p class="meta mt-1">To use an Orca server somewhere else, paste the link <span class="font-mono">orca pair</span> prints on that machine (<span class="font-mono">orca://pair?…</span>). It is kept encrypted, used at once with no restart, and never shown again.</p>
+  <% if chosen && runtime.secret? %>
+    <p class="text-sm mt-2 <%= runtime.secret_unreadable? ? "text-ink-red" : "text-ink-green" %>" data-orca-pairing-saved>
+      <%= runtime.secret_unreadable? ? "A pairing code is saved, but this app can no longer read it. Paste it again." : "A pairing code is saved#{runtime.secret_set_at ? " (#{time_ago_in_words(runtime.secret_set_at)} ago)" : ""}." %>
+    </p>
+    <label class="text-sm flex gap-2 items-center mt-2"><%= check_box_tag "#{prefix}[forget_pairing_code]", "1", false %> Forget the saved code</label>
+  <% end %>
+</div>
+
 <% if catalog.error.present? %>
-  <p class="text-sm text-ink-yellow" data-orca-unreachable>Orca on this server didn't answer, so there are no lists to choose from: <%= catalog.error.truncate(160) %></p>
+  <p class="text-sm text-ink-yellow" data-orca-unreachable><%= paired ? "The paired Orca server didn't answer" : "Orca on this server didn't answer" %>, so there are no lists to choose from: <%= catalog.error.truncate(160) %></p>
 <% end %>
 
 <% if remote %>
@@ -24,7 +40,7 @@
   </div>
   <div>
     <%= label_tag "#{prefix}[host]", "External host", class: "block text-sm mb-2" %>
-    <% if catalog.error.present? %>
+    <% if catalog.error.present? || paired %>
       <%= text_field_tag "#{prefix}[host]", value.(:host), required: true, class: "field w-full sm:w-96 font-mono", placeholder: "ssh:…" %>
     <% else %>
       <%= pick.(:host, catalog.hosts.map { |host| [ host.connected ? host.name : "#{host.name} (not connected)", host.selector ] }, blank: "Choose a host…") %>
@@ -44,11 +60,13 @@
   <div>
     <%= label_tag "#{prefix}[repo]", "Repository", class: "block text-sm mb-2" %>
     <% if catalog.error.present? %>
-      <%= text_field_tag "#{prefix}[repo]", value.(:repo), required: true, class: "field w-full sm:w-96 font-mono", placeholder: "name:app" %>
+      <%= text_field_tag "#{prefix}[repo]", value.(:repo), class: "field w-full sm:w-96 font-mono", placeholder: "name:app" %>
     <% else %>
-      <%= pick.(:repo, catalog.repos.map { |repo| [ "#{repo.name} · #{repo.path}", repo.selector ] }, blank: "Choose a repository…") %>
+      <% current = value.(:repo); options = catalog.repos.map { |repo| [ "#{repo.name} · #{repo.path}", repo.selector ] } %>
+      <% options += [ [ "#{current} (not in Orca now)", current ] ] if current.present? && options.none? { |_, v| v == current } %>
+      <%= select_tag "#{prefix}[repo]", options_for_select(options, current), include_blank: "Choose a repository…", class: "field w-full sm:w-96" %>
     <% end %>
-    <p class="meta mt-1">The folder on this server that each run gets its own worktree of.</p>
+    <p class="meta mt-1">The folder on the Orca server's machine that each run gets its own worktree of. When pairing with a new server, save first: its repositories are listed here afterwards.</p>
   </div>
 <% end %>
 
@@ -66,7 +84,7 @@
       <p class="meta mt-1">The name of an Orca server paired with this one (<span class="font-mono">orca environment add</span>), to ask it instead.</p>
     </div>
     <div>
-      <%= label_tag "#{prefix}[pairing_code_env]", "Or an Orca server by its pairing code", class: "block text-sm mb-2" %>
+      <%= label_tag "#{prefix}[pairing_code_env]", "Or a pairing code kept in the environment", class: "block text-sm mb-2" %>
       <%= text_field_tag "#{prefix}[pairing_code_env]", value.(:pairing_code_env), class: "field w-full sm:w-96 font-mono", placeholder: "ORCA_PAIRING_CODE" %>
       <p class="meta mt-1">The name of the environment variable that holds the server's pairing code (<span class="font-mono">orca serve</span> prints it). For an app in a container, which keeps no pairing on disk. The code itself is a secret and is never typed here.</p>
     </div>
