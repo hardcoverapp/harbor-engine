@@ -42,13 +42,19 @@ module Harbor
 
     DEFAULT_PATH = "/factory".freeze
 
-    # Where Harbor's pages live in the host: every page's address starts with
-    # this ("/factory/runtimes"). `path:` in the config file changes it;
-    # "/" puts the pages at the root. It is read once, when routes are drawn,
-    # so changing it takes a restart.
+    # Where Harbor's pages live in the host: the one address every page of
+    # its sits under. `path:` in the config file says where, and what is
+    # written there is the whole of it, with nothing added:
+    #
+    #   (left out)            /factory, /factory/runs
+    #   path: /development    /development, /development/runs
+    #   path: /               /, /runs
+    #
+    # The section's front page (Overview) is the path itself. It is read once,
+    # when routes are drawn, so changing it takes a restart.
     #
     # A host that still has pages of the section in its own routes puts them
-    # under the same path: `scope Harbor.path do … end`.
+    # under the same path: `scope Harbor.path.presence do … end`.
     def path
       @path ||= begin
         normalize_path(ConfigFile.value("path"))
@@ -60,11 +66,31 @@ module Harbor
       end
     end
 
-    # "" for the root, else "/like/this": a leading slash, no trailing one.
+    # The pages sit at the root of the site ("" as a path).
+    def at_root? = path.blank?
+
+    # The address of the section's front page: the path, or "/" at the root.
+    def front_path = path.presence || "/"
+
+    # At the root the front page is "/", which a host's own home page takes
+    # when it has one (its routes come first). The front page also answers
+    # here, so it can always be reached and linked to.
+    def front_page_also = "/overview"
+
+    # Where a menu sends someone for the front page: the path, unless the
+    # pages are at the root and the host has a home page of its own there.
+    def front_link
+      return front_path unless at_root? && Rails.application.routes.named_routes.key?(:root)
+      front_page_also
+    end
+
+    # "/development", from "/development", "development" or "/development/";
+    # "" for "/"; the default when nothing is given.
     def normalize_path(value)
       return DEFAULT_PATH if value.nil?
       text = value.to_s.strip
       return "" if text == "/"
+      text = "/#{text.delete_prefix('/').delete_suffix('/')}"
       unless text.match?(%r{\A(/[a-z0-9][a-z0-9_-]*)+\z})
         raise ArgumentError, "#{ConfigFile.label}: path must look like /factory (lowercase letters, numbers, - and _), or / for the root; got #{value.inspect}"
       end

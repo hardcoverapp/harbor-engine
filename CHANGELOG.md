@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.32.0
+
+- **`path: /` puts the section at the root of the site, front page and all.** Overview is
+  served at `/`, where before it was at `/overview` and `/` was left to the host. A host
+  with a home page of its own keeps it (its routes come first); Overview is then reached
+  at `/overview`, which is where the menu links.
+- **A path is the whole address.** `path: /development` puts the front page at
+  `/development` and pages at `/development/runs`: nothing is added to what is written.
+  This was already so; it is now stated, tested by drawing the routes under other paths,
+  and the README has a table of what each setting gives.
+- **A path is read however its slashes were typed**: `development`, `/development` and
+  `/development/` are the same path. The first and last used to be refused, leaving the
+  pages under `/factory` with a line in the log.
+- `Harbor.front_path`, `Harbor.at_root?`, `Harbor.front_link`.
+
+Upgrading from 0.31:
+
+- Nothing changes for a site with no `path:`, or with one other than `/`.
+- A site with `path: /` and no home page of its own now has Overview at `/`. `/overview`
+  still answers.
+- A site that relied on `path: factory` (no slash) being refused, and so defaulting, gets
+  the same address, `/factory`.
+
 ## 0.31.0
 
 - **An Orca server is added from the site.** An Orca runtime's form has a "Pairing code"

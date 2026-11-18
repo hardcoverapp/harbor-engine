@@ -15,7 +15,22 @@ class HarborPathTest < ActionDispatch::IntegrationTest
     Harbor.config.config_file = @config_file
     Harbor::ConfigFile.reload!
     Harbor.reset_path!
+    Rails.configuration.x.harbor_dummy_no_home = false
+    Rails.application.reload_routes! if @redrawn
   end
+
+  # The pages as a site with this config file has them: routes are drawn
+  # again under its path, and put back afterwards.
+  def with_pages_at(text, home: true)
+    with_file(text) do
+      Rails.configuration.x.harbor_dummy_no_home = !home
+      @redrawn = true
+      Rails.application.reload_routes!
+      yield
+    end
+  end
+
+  def page_paths = Harbor::Engine.routes.routes.map { |route| route.path.spec.to_s }.reject { |path| path.start_with?("/harbor/runner/") }
 
   def with_file(text)
     file = Tempfile.new([ "harbor", ".yml" ])
@@ -59,15 +74,85 @@ class HarborPathTest < ActionDispatch::IntegrationTest
   test "the config file's path: moves the pages, and / puts them at the root" do
     with_file("path: /ops\n") { assert_equal "/ops", Harbor.path }
     with_file("path: /tools/agents\n") { assert_equal "/tools/agents", Harbor.path }
-    with_file("path: /\n") { assert_equal "", Harbor.path }
-    with_file("databases: {}\n") { assert_equal "/factory", Harbor.path }
+    with_file("path: /\n") { assert_equal [ "", true, "/" ], [ Harbor.path, Harbor.at_root?, Harbor.front_path ] }
+    with_file("databases: {}\n") { assert_equal [ "/factory", false, "/factory" ], [ Harbor.path, Harbor.at_root?, Harbor.front_path ] }
+  end
+
+  test "a path is taken as written, whichever way its slashes were typed" do
+    [ "development", "/development", "/development/", "development/" ].each do |written|
+      with_file("path: #{written.to_json}\n") { assert_equal "/development", Harbor.path, written.inspect }
+    end
+  end
+
+  test "what is written is the whole address: nothing is added to it" do
+    with_pages_at("path: /development\n") do
+      assert_equal "/development", harbor.overview_path
+      assert_equal "/development/runs", harbor.runs_path
+      assert_equal "/development/settings", harbor.settings_path
+      assert_empty page_paths.grep(/factory/), "no page keeps /factory in its address"
+      page_paths.each { |path| assert path.start_with?("/development"), "#{path} is outside /development" }
+
+      get "/development"
+      assert_response :success
+      assert_select "h1", text: "Overview"
+      assert_select "[data-harbor-nav] a[aria-current=page]", text: "Overview"
+      get "/development/runs"
+      assert_response :success
+      assert_select "[data-harbor-nav] a[aria-current=page]", text: "Runs"
+      [ "/factory", "/factory/runs", "/development/factory", "/development/factory/runs", "/overview" ].each do |gone|
+        get gone
+        assert_response :not_found, gone
+      end
+      assert_equal 3, Harbor::Engine.routes.routes.count { |route| route.path.spec.to_s.start_with?("/harbor/runner/") }, "the runner's address never moves"
+    end
+  end
+
+  test "at / the site's front page is what /factory was, and every page sits at the root" do
+    with_pages_at("path: /\n", home: false) do
+      assert_equal "/", harbor.overview_path
+      assert_equal "/runs", harbor.runs_path
+      assert_equal "/settings", harbor.settings_path
+      assert_empty page_paths.grep(/factory/)
+
+      get "/"
+      assert_response :success
+      assert_select "h1", text: "Overview"
+      assert_select "[data-harbor-nav] a[aria-current=page]", text: "Overview", count: 1
+      assert_select "[data-harbor-nav] a[href='/']", text: "Overview"
+      get "/overview"
+      assert_response :success
+      assert_select "h1", text: "Overview"
+
+      get "/runs"
+      assert_response :success
+      assert_select "[data-harbor-nav] a[aria-current=page]", text: "Runs", count: 1, message: "at the root, only the page itself is current"
+      get "/factory"
+      assert_response :not_found
+    end
+  end
+
+  test "at / a host's own home page stays the host's, and Overview is linked where it can be reached" do
+    with_pages_at("path: /\n") do
+      get "/"
+      assert_response :success
+      assert_select "h1", text: "Overview", count: 0, message: "the host's routes come first"
+      assert_equal "/overview", Harbor.front_link
+
+      get "/overview"
+      assert_response :success
+      assert_select "h1", text: "Overview"
+      assert_select "[data-harbor-nav] a[href='/overview'][aria-current=page]", text: "Overview"
+      get "/settings"
+      assert_select "[data-harbor-nav] a[href='/overview']", text: "Overview"
+      assert_select "[data-harbor-nav] a[aria-current=page]", text: "Settings", count: 1
+    end
   end
 
   test "a path that isn't one, or a broken file, leaves the pages under /factory" do
-    [ "factory", "/Factory", "/factory/", "/fac tory", "//x", "/x?y", 7 ].each do |bad|
+    [ "/Factory", "/fac tory", "//x", "/x?y", "/a//b" ].each do |bad|
       with_file("path: #{bad.to_json}\n") { assert_equal "/factory", Harbor.path, bad.inspect }
     end
     with_file("path: [unclosed\n") { assert_equal "/factory", Harbor.path }
-    assert_raises(ArgumentError) { Harbor.normalize_path("factory") }
+    assert_raises(ArgumentError) { Harbor.normalize_path("/Factory") }
   end
 end

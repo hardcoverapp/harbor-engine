@@ -1,6 +1,12 @@
 Rails.application.routes.draw do
   # The host's own pages and login.
-  root "pages#home"
+  # (A test of a site with no home page of its own switches this off; the
+  # layout's link home then goes to "/" all the same.)
+  if Rails.configuration.x.harbor_dummy_no_home == true
+    direct(:root) { "/" }
+  else
+    root "pages#home"
+  end
   get "login" => "sessions#new", as: :login
   post "login" => "sessions#create"
   delete "logout" => "sessions#destroy", as: :logout

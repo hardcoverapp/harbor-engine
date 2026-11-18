@@ -3,9 +3,11 @@
 Harbor::Engine.routes.draw do
   # Every page sits under Harbor.path ("/factory" unless the config file's
   # `path:` says otherwise), so the section's addresses are its own.
-  # Overview is the section's front page: the section's own address, or
-  # /overview where the section's pages sit at the root, which is the host's.
-  get (Harbor.path.presence || "/overview"), to: "overview#show", as: :overview
+  # Overview is the section's front page: the path itself. With the pages at
+  # the root that is "/", and it answers at /overview too, which is where it
+  # is found when the host has a home page of its own at "/".
+  get Harbor.front_path, to: "overview#show", as: :overview
+  get Harbor.front_page_also, to: "overview#show", as: :overview_also if Harbor.at_root?
 
   scope path: Harbor.path.presence do
     # A stage's note on Overview, edited in place.

@@ -107,6 +107,9 @@ module Harbor
         next unless routes.respond_to?(item.route)
 
         path = routes.public_send(item.route)
+        # The section's front page, at the root of a site with a home page
+        # of its own, is linked where it can be reached.
+        path = Harbor.front_link if item.scope == :harbor && item.route == :overview_path
         active = active?(current, path, item.also)
         Link.new(label: item.label, path: path, active: active, key: item.key, group: item.group, icon: item.icon)
       end
@@ -126,11 +129,13 @@ module Harbor
     private
       # A page is current on its own address and anything beneath it, and on
       # its `also` prefixes, which are given without the section's path
-      # ("/workflow_runs") and live under it like every page. The page at the
-      # section's own address (an overview at "/factory") is current only
-      # there: everything else is beneath it too.
+      # ("/workflow_runs") and live under it like every page. The section's
+      # front page (an overview at "/factory", or at "/" and "/overview" when
+      # the pages are at the root) is current only on itself: everything else
+      # is beneath it too.
       def active?(current, path, also)
-        return current == path if path == Harbor.path && path.present?
+        front = [ Harbor.front_path, (Harbor.front_page_also if Harbor.at_root?) ].compact
+        return front.include?(current) if front.include?(path)
         prefixes = [ path, *also.map { |prefix| "#{Harbor.path}#{prefix}" } ]
         prefixes.any? { |prefix| under?(current, prefix) }
       end

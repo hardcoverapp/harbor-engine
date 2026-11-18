@@ -38,8 +38,9 @@ Mount Harbor last in the host's routes, so the host's own routes win:
 mount Harbor::Engine => "/", as: :harbor
 ```
 
-Harbor's pages then live under `/factory` (`/factory/settings`); "Where the pages
-live" says how to change that.
+Harbor's pages then live under `/factory` (`/factory/settings`). To put them
+somewhere else, or at the root of the site, see "Where the pages live": the path
+you give is the whole address.
 
 ### 3. Migrate
 
@@ -2406,7 +2407,7 @@ Harbor's records:
 ## Overview
 
 Overview is the section's front page, at the section's own address (`/factory`,
-`harbor.overview_path`; `/overview` where the section's pages sit at the root). It says
+`harbor.overview_path`; `/` where the section's pages sit at the root, and `/overview` too). It says
 what is set up and how it has been going, **read from Harbor's records every time the page
 is drawn**, so it can't fall behind them. Only the short note on each stage is written by
 hand. A site with no code of its own sees:
@@ -2854,25 +2855,39 @@ A host with a base job of its own for tracked work names it
 
 ## Where the pages live
 
-Mount the engine at `/`. Harbor puts every page of its own under one path,
-`/factory` by default: `/factory/runtimes`, `/factory/databases`,
-`/factory/settings`. To change it, say so in `config/harbor.yml`:
+Mount the engine at `/`, last in the host's routes. Where Harbor's pages then sit is one
+setting, `path:` in `config/harbor.yml`, and what you write there is the whole address.
+Nothing is added to it.
 
-```yaml
-path: /ops      # or / to put the pages at the root
-```
+| `config/harbor.yml` | Front page | A page |
+|---|---|---|
+| (no `path:`) | `/factory` | `/factory/runs` |
+| `path: /development` | `/development` | `/development/runs` |
+| `path: /tools/agents` | `/tools/agents` | `/tools/agents/runs` |
+| `path: /` | `/` | `/runs` |
 
-Overview is the page at the path itself (`/factory`). With the pages at the
-root it is at `/overview`, because the root is the host's.
+The front page is Overview. `development`, `/development` and `/development/` are read as
+the same path.
 
-It is read when routes are drawn, so a change takes a restart. A host with
-pages of the same section in its own routes puts them under the same path:
+**At the root** (`path: /`) Harbor's front page is the site's own `/`, and every page sits
+directly under it. A host's routes come before Harbor's, so:
+
+- a host with a home page of its own (`root "…"`) keeps it at `/`. Overview is then
+  reached at `/overview`, and that is where Harbor's menu links;
+- a host route with the same address as one of Harbor's pages (`/runs`, `/settings`)
+  hides that page. Give the section a path of its own if they would clash.
+
+It is read when routes are drawn, so a change takes a restart. A host with pages of the
+same section in its own routes puts them under the same path:
 
 ```ruby
-scope Harbor.path do
+scope Harbor.path.presence do
   resources :reports
 end
 ```
+
+`Harbor.path` is the path as written (`""` at the root), `Harbor.front_path` the front
+page's address (`"/"` at the root) and `Harbor.at_root?` says which.
 
 The runner's endpoints stay at `/harbor/runner/` whatever the path is, because
 runners and firewall rules are given that address.
